@@ -24,3 +24,24 @@ export interface MessageView {
   id: number; fromHandle: string; fromSession?: string; toHandle: string; kind: MessageKind;
   body: string; status: MessageStatus; sentAt: number; deliveredAt?: number; ackedAt?: number;
 }
+
+export interface ActivityView {
+  id: number; at: number; handle: string; sessionId?: string; kind: ActivityKind; path?: string; detail: string;
+}
+export interface TestRunView { id: number; handle: string; repo: string; command: string; exitCode: number; at: number }
+export interface CertificationView {
+  id: number; path: string; handle: string; task: string; result: 'bloom' | 'refused'; reason: string; at: number;
+}
+
+/** One frame of the garden: everything the browser would hold from SpacetimeDB at time `at`. */
+export interface GardenSnapshot {
+  at: number;
+  members: MemberView[];
+  agents: AgentView[];
+  plants: PlantView[];
+  claims: ClaimView[];
+  messages: MessageView[];
+  testRuns: TestRunView[];
+  certifications: CertificationView[];
+  activity: ActivityView[];
+}

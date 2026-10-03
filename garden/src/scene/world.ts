@@ -3,10 +3,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GardenSnapshot, PlantStage } from '../../../shared/types.ts';
 import { layoutGarden, type GardenLayout } from '../layout.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
-import { Actors, type WorldLookup } from './actors.ts';
+import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
 import { flowerColor, geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField } from './plantField.ts';
+import { Nav } from '../nav.ts';
 import { CameraRig } from './camera.ts';
 import { PALETTE } from './palette.ts';
 import { Props, type Quality } from './props.ts';
@@ -25,6 +26,7 @@ export class GardenWorld implements WorldLookup {
   private actors: Actors;
   private sun = new THREE.DirectionalLight(0xfff0d0, 2.2);
   private hemi = new THREE.HemisphereLight(0xdff2ff, 0x6b8a4a, 1.1);
+  nav = new Nav([]);
   private props!: Props;
   readonly quality: Quality = new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high';
   /** Called when the 3D shed is clicked (toggles the HTML shed panel). */
@@ -37,7 +39,6 @@ export class GardenWorld implements WorldLookup {
   private layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
   private layoutKey = '';
   private layoutFirst = true;
-  private fenceKey = '';
   private snap!: GardenSnapshot;
   private plantXZ = new Map<string, THREE.Vector3>();
   private bedLabels: HTMLElement[] = [];
@@ -167,6 +168,7 @@ export class GardenWorld implements WorldLookup {
     for (const c of u.snapshot.certifications.slice(-2)) notes.push(c.result === 'bloom' ? 'bloom' : 'refused');
     this.props.setNotes(notes.slice(0, 8));
     for (const a of u.newActivity) this.actors.onActivity(a);
+    for (const e of u.events) if (e.table === 'handoffs' && e.op !== 'deleted') this.actors.onHandoff(e.row as never, e.op);
     const d = new Date(u.snapshot.at || Date.now());
     const hour = d.getHours() + d.getMinutes() / 60;
     const c = this.props.setHour(hour);
@@ -194,9 +196,9 @@ export class GardenWorld implements WorldLookup {
         this.bedLabels.push(this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => lp, 'label bed'));
       }
       mergeByMaterial(this.bedGroup);
+      this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
       this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ);
-      this.fenceKey = '';
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;
     }
@@ -281,6 +283,7 @@ export class GardenWorld implements WorldLookup {
       if (pv.bugs < r.bugsBefore && r.bugsBefore > 0) this.fx.burst(this.tmpV.set(lp.x, 0.8, lp.z), 0x222222, 12, 1.2, 4);
     }
     if (this.showPlantLabels) this.syncPlantLabels();
+    this.syncWarnIcons();
   }
 
   // ---- botanist hooks (WorldLookup) ----
@@ -296,28 +299,76 @@ export class GardenWorld implements WorldLookup {
     if (n) this.lockMesh.position.set(n.x + 0.45, 1.35 * n.size + 0.2, n.z);
   }
 
+  /** One animated fence per claim: grows in, pulses when about to expire, collapses when released. */
+  private fences = new Map<string, { group: THREE.Group; born: number; dying?: number; expiresAt: number; mats: THREE.MeshStandardMaterial[]; base: THREE.Color }>();
+  private warnIcons = new Map<string, THREE.Sprite>();
+
   private syncFences() {
     const color = (h: string) => this.snap.members.find((m) => m.handle === h)?.color ?? '#888';
-    const key = JSON.stringify(this.snap.claims.map((c) => [c.id, c.path, c.handle])) + this.layoutKey + this.snap.plants.length;
-    if (key === this.fenceKey) return;
-    this.fenceKey = key; this.fenceGroup.clear(); this.gates.clear();
+    this.gates.clear();
+    const want = new Set<string>();
     for (const c of this.snap.claims) {
       const r = this.fenceRect(c.path); if (!r) continue;
       this.gates.set(c.path, new THREE.Vector3((r.minX + r.maxX) / 2, 0, r.maxZ));
-      const m = mat(color(c.handle), { emissive: 0x111111 });
-      const side = (x0: number, z0: number, x1: number, z1: number) => {
-        const len = Math.hypot(x1 - x0, z1 - z0), posts = Math.max(2, Math.round(len / 1.1) + 1);
-        for (let i = 0; i < posts; i++) {
-          const t = i / (posts - 1);
-          this.fenceGroup.add(mesh(geo.box, m, 0.08, 0.6, 0.08, x0 + (x1 - x0) * t, 0.5, z0 + (z1 - z0) * t));
-        }
-        const rail = mesh(geo.box, m, 0.05, 0.05, len, (x0 + x1) / 2, 0.62, (z0 + z1) / 2);
-        rail.rotation.y = Math.atan2(x1 - x0, z1 - z0); // box length runs along +z
-        this.fenceGroup.add(rail);
-      };
-      side(r.minX, r.minZ, r.maxX, r.minZ); side(r.maxX, r.minZ, r.maxX, r.maxZ);
-      side(r.maxX, r.maxZ, r.minX, r.maxZ); side(r.minX, r.maxZ, r.minX, r.minZ);
+      const key = `${c.id}|${r.minX.toFixed(1)},${r.minZ.toFixed(1)},${r.maxX.toFixed(1)},${r.maxZ.toFixed(1)}`;
+      want.add(key);
+      const have = this.fences.get(key);
+      if (have) { have.expiresAt = c.expiresAt; have.dying = undefined; continue; }
+      const base = new THREE.Color(color(c.handle));
+      const m = new THREE.MeshStandardMaterial({ color: base, flatShading: true, emissive: 0x000000, roughness: 0.8 });
+      const group = new THREE.Group(); group.scale.y = 0.001;
+      const add = (o: THREE.Mesh) => { o.castShadow = true; group.add(o); };
+      if (!c.path.endsWith('/')) { // one file: a ring of posts around the plant, not a whole pen
+        const hit = this.layout.plants.find((q) => q.path === c.path);
+        const cx = hit?.x ?? (r.minX + r.maxX) / 2, cz = hit?.z ?? (r.minZ + r.maxZ) / 2;
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.05, 6, 24), m); ring.rotation.x = Math.PI / 2; ring.position.set(cx, 0.45, cz); add(ring);
+        for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; add(mesh(geo.box, m, 0.08, 0.55, 0.08, cx + Math.cos(a) * 0.8, 0.4, cz + Math.sin(a) * 0.8)); }
+      } else {
+        const side = (x0: number, z0: number, x1: number, z1: number) => {
+          const len = Math.hypot(x1 - x0, z1 - z0), posts = Math.max(2, Math.round(len / 1.1) + 1);
+          for (let i = 0; i < posts; i++) { const t = i / (posts - 1); add(mesh(geo.box, m, 0.08, 0.6, 0.08, x0 + (x1 - x0) * t, 0.5, z0 + (z1 - z0) * t)); }
+          const rail = mesh(geo.box, m, 0.05, 0.05, len, (x0 + x1) / 2, 0.62, (z0 + z1) / 2);
+          rail.rotation.y = Math.atan2(x1 - x0, z1 - z0); // box length runs along +z
+          add(rail);
+        };
+        side(r.minX, r.minZ, r.maxX, r.minZ); side(r.maxX, r.minZ, r.maxX, r.maxZ);
+        side(r.maxX, r.maxZ, r.minX, r.maxZ); side(r.minX, r.maxZ, r.minX, r.minZ);
+      }
+      this.fenceGroup.add(group);
+      this.fences.set(key, { group, born: this.time, expiresAt: c.expiresAt, mats: [m], base });
     }
+    for (const [key, f] of this.fences) if (!want.has(key) && f.dying === undefined) f.dying = this.time;
+  }
+
+  private tickFences(t: number, mo: number) {
+    const now = this.snap?.at ?? 0;
+    for (const [key, f] of this.fences) {
+      let k = Math.min(1, (t - f.born) / 0.5);
+      if (f.dying !== undefined) k = Math.max(0, 1 - (t - f.dying) / 0.4);
+      f.group.scale.y = Math.max(0.001, k * k * (3 - 2 * k)); // smoothstep
+      const left = (f.expiresAt - now) / 60000;
+      const m = f.mats[0]!;
+      if (left < 5 && f.dying === undefined) { // about to expire: pulse red
+        const pulse = 0.5 + 0.5 * Math.sin(t * 5 * Math.max(0.4, mo));
+        m.emissive.setRGB(0.8, 0.1, 0.05); m.emissiveIntensity = 0.15 + 0.5 * pulse * (left < 1 ? 1 : 0.6);
+      } else m.emissiveIntensity = 0;
+      if (f.dying !== undefined && k <= 0) { this.fenceGroup.remove(f.group); m.dispose(); this.fences.delete(key); }
+    }
+  }
+
+  /** A warning icon over any plant with three or more bugs. */
+  private syncWarnIcons() {
+    const want = new Set<string>();
+    for (const lp of this.layout.plants) {
+      const pv = this.snap.plants.find((p) => p.path === lp.path);
+      if (!pv || pv.bugs < 3) continue;
+      want.add(lp.path);
+      if (!this.warnIcons.has(lp.path)) {
+        const sp = new THREE.Sprite(iconMat('⚠️')); sp.scale.setScalar(0.55); sp.position.set(lp.x, 1.9 * lp.size + 0.3, lp.z);
+        this.scene.add(sp); this.warnIcons.set(lp.path, sp);
+      }
+    }
+    for (const [path, sp] of this.warnIcons) if (!want.has(path)) { this.scene.remove(sp); this.warnIcons.delete(path); }
   }
 
   /** Look at a plant/fence/member and ring it briefly so the eye finds it. */
@@ -439,6 +490,7 @@ export class GardenWorld implements WorldLookup {
       if (!this.rig.userMoved && !this.calm) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
     this.field.update(t, mo);
+    this.tickFences(t, mo);
     this.props.update(t, dt, 0, 0, mo);
     // Camera: follow a member, or director mode follows the latest action.
     let focus: THREE.Vector3 | undefined;

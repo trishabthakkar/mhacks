@@ -49,6 +49,11 @@ export class Labels {
     return el;
   }
 
+  /** Change a label's text (its size is re-measured on the next frame). */
+  setText(el: HTMLElement, text: string) {
+    for (const i of this.items) if (i.el === el) { el.textContent = text; i.arrowText = text; i.measured = false; }
+  }
+
   remove(el: HTMLElement) {
     for (const i of this.items) if (i.el === el) { el.remove(); i.arrow?.remove(); this.items.delete(i); }
   }
@@ -161,6 +166,7 @@ export class Particles {
   private rains: RainSlot[] = [];
   reducedMotion = false;
   private c = new THREE.Color();
+  private rings: Array<{ mesh: THREE.Mesh; life: number }> = [];
 
   constructor(private scene: THREE.Scene) {
     for (let i = 0; i < BURST_SLOTS; i++) {
@@ -169,6 +175,11 @@ export class Particles {
       const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.14, transparent: true, depthWrite: false }));
       pts.visible = false; pts.frustumCulled = false; scene.add(pts);
       this.bursts.push({ pts, pos, vel: new Float32Array(BURST_MAX * 3), life: 0, gravity: 4, count: 0, active: false });
+    }
+    for (let i = 0; i < 4; i++) { // expanding ground rings (test results)
+      const mesh = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.64, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+      mesh.rotation.x = -Math.PI / 2; mesh.visible = false; scene.add(mesh);
+      this.rings.push({ mesh, life: 0 });
     }
     for (let i = 0; i < RAIN_SLOTS; i++) {
       const pos = new THREE.BufferAttribute(new Float32Array(RAIN_N * 3), 3);
@@ -197,6 +208,14 @@ export class Particles {
     slot.count = count; slot.life = 1.4; slot.gravity = gravity; slot.active = true; slot.pts.visible = true;
   }
 
+  /** An expanding ring on the ground (green for a passing test, red for a failing one). */
+  ring(at: THREE.Vector3, color: number) {
+    if (this.reducedMotion) return;
+    const r = this.rings.find((x) => x.life <= 0) ?? this.rings[0]!;
+    r.mesh.position.set(at.x, 0.36, at.z); r.mesh.visible = true; r.life = 1;
+    (r.mesh.material as THREE.MeshBasicMaterial).color.set(color);
+  }
+
   shower(center: THREE.Vector3, w: number, d: number, ms = 2800) {
     if (this.reducedMotion) return;
     const slot = this.rains.find((r) => !r.active) ?? this.rains[0]!;
@@ -219,6 +238,13 @@ export class Particles {
       (b.pts.material as THREE.PointsMaterial).opacity = Math.max(0, b.life / 1.4);
       if (b.life <= 0) { b.active = false; b.pts.visible = false; }
     }
+    for (const r of this.rings) {
+      if (r.life <= 0) continue;
+      r.life -= dt * 1.3;
+      r.mesh.scale.setScalar(1 + (1 - Math.max(0, r.life)) * 4);
+      (r.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, r.life) * 0.8;
+      if (r.life <= 0) r.mesh.visible = false;
+    }
     const now = performance.now();
     for (const r of this.rains) {
       if (!r.active) continue;
@@ -232,5 +258,6 @@ export class Particles {
   clear() {
     for (const b of this.bursts) { b.active = false; b.pts.visible = false; }
     for (const r of this.rains) { r.active = false; r.pts.visible = false; }
+    for (const r of this.rings) { r.life = 0; r.mesh.visible = false; }
   }
 }

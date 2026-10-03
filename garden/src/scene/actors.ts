@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ActivityView, AgentView, GardenSnapshot, MessageView } from '../../../shared/types.ts';
 import { geo, mat, mesh } from './materials.ts';
 import type { Labels, Particles } from './effects.ts';
+import type { Nav, Pt } from '../nav.ts';
 
 export interface WorldLookup {
   plantPos(path: string): THREE.Vector3 | undefined;
@@ -10,6 +11,7 @@ export interface WorldLookup {
   fenceGate(path: string): THREE.Vector3 | undefined;
   extent: number;
   homeFrame: { halfW: number; frontZ: number };
+  nav: Nav;
   releaseBloom(path: string): void;
   wobblePlant(path: string, seconds: number): void;
   showLock(path: string | null): void;
@@ -19,10 +21,24 @@ class Mover {
   obj = new THREE.Group();
   target = new THREE.Vector3();
   moving = false;
+  /** When set, walking follows paths around the beds instead of straight lines. */
+  nav?: Nav;
+  private navUsed?: Nav;
+  private goal = new THREE.Vector3(1e9, 0, 1e9);
+  private wp: Pt[] = [];
   constructor(public speed = 3) {}
   step(dt: number, lerpY = false) {
     const p = this.obj.position;
-    const dx = this.target.x - p.x, dz = this.target.z - p.z, d = Math.hypot(dx, dz);
+    if (this.nav) {
+      // Re-plan only when the destination (or the garden layout) changed.
+      if (this.nav !== this.navUsed || this.goal.distanceToSquared(this.target) > 0.36) {
+        this.goal.copy(this.target); this.navUsed = this.nav;
+        this.wp = this.nav.path(p.x, p.z, this.target.x, this.target.z);
+      }
+      while (this.wp.length > 1 && Math.hypot(this.wp[0]!.x - p.x, this.wp[0]!.z - p.z) < 0.3) this.wp.shift();
+    }
+    const w = this.nav && this.wp.length ? this.wp[0]! : null;
+    const dx = (w ? w.x : this.target.x) - p.x, dz = (w ? w.z : this.target.z) - p.z, d = Math.hypot(dx, dz);
     this.moving = d > 0.06;
     if (this.moving) {
       const s = Math.min(d, this.speed * dt);
@@ -83,7 +99,7 @@ function makeGardener(color: string): Mover & { rig: GardenerRig } {
 
 // Little status icons floating over a bot (shared canvas textures).
 const iconCache = new Map<string, THREE.SpriteMaterial>();
-function iconMat(glyph: string): THREE.SpriteMaterial {
+export function iconMat(glyph: string): THREE.SpriteMaterial {
   let m = iconCache.get(glyph);
   if (!m) {
     const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -162,9 +178,9 @@ export class Actors {
   private snap: GardenSnapshot = { at: 0, members: [], agents: [], plants: [], claims: [], messages: [], testRuns: [], certifications: [], activity: [] };
   private gardeners = new Map<string, { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig }>();
   private bots = new Map<string, { obj: THREE.Object3D; m: Mover; alert: THREE.Object3D; body: THREE.Object3D; agent: AgentView; rig: BotRig }>();
-  private bees = new Map<string, { obj: THREE.Object3D; m: Mover; seed: number }>();
+  private bees = new Map<string, { obj: THREE.Object3D; m: Mover; seed: number; parent: string; handle: string; trail: THREE.Points; trailPos: Float32Array; returning: boolean }>();
   private flies = new Map<string, Fly>();
-  private meet = new Map<string, { pos: THREE.Vector3; until: number }>();
+  private meet = new Map<string, { pos: THREE.Vector3; until: number; with?: string }>();
   private botanist = makeBotanist();
   private job: { j: BotanistJob; phase: 'walk' | 'hold' | 'home'; t: number; bubble?: HTMLElement } | null = null;
   private shotPoint = new THREE.Vector3();
@@ -173,6 +189,8 @@ export class Actors {
   private queue: BotanistJob[] = [];
   private clock = 0;
   private homes = new Map<string, THREE.Vector3>();
+  private handoffs = new Map<number, { id: number; from: string; to: string; task: string; phase: 'walk' | 'pass' | 'hold' | 'accepted' | 'declined'; t: number; tag: THREE.Group; can: THREE.Object3D; chip?: HTMLElement; sprout?: THREE.Group }>();
+  private sprouts: Array<{ g: THREE.Group; until: number }> = [];
   private botHome = new THREE.Vector3();
   get botanistHome() { return this.botHome; }
   private tmp = new THREE.Vector3();
@@ -183,6 +201,7 @@ export class Actors {
   private static OFF_BOT_GATE = new THREE.Vector3(0, 0, 0.9);
   private off = new THREE.Vector3(1.3, 0, 0.9);
   private bubblePos = new THREE.Vector3();
+  private bp = new THREE.Vector3();
   motion = 1;
   /** Latest place something happened, for director mode. */
   focus: THREE.Vector3 | undefined;
@@ -217,6 +236,7 @@ export class Actors {
 
   clearTransient() {
     this.meet.clear(); this.queue = []; this.shot = null; this.world.showLock(null);
+    for (const [id, a] of [...this.handoffs]) this.endHandoff(id, a);
     if (this.job?.bubble) this.labels.remove(this.job.bubble);
     this.job = null;
   }
@@ -234,6 +254,15 @@ export class Actors {
     }, this.scene, (g) => this.labels.remove(g.label));
 
     // Ended sessions leave dormant rows behind; don't draw a bot for each one.
+    // Members who share a colour get a shape in front of their name, so the label never relies on colour alone.
+    const SHAPES = ['●', '▲', '■', '◆', '★'];
+    const byColor = new Map<string, string[]>();
+    for (const m of snap.members) { const l = byColor.get(m.color.toLowerCase()); if (l) l.push(m.handle); else byColor.set(m.color.toLowerCase(), [m.handle]); }
+    for (const [handle, g] of this.gardeners) {
+      const group = byColor.get(this.memberColor(handle).toLowerCase()) ?? [];
+      const text = group.length > 1 ? `${SHAPES[group.indexOf(handle) % SHAPES.length]} ${handle}` : handle;
+      if (g.label.dataset.text !== text) { g.label.dataset.text = text; this.labels.setText(g.label, text); }
+    }
     const claudes = snap.agents.filter((a) => a.kind === 'claude' && a.status !== 'dormant');
     reconcile(this.bots, claudes.map((a) => a.sessionId), (id) => {
       const a = claudes.find((x) => x.sessionId === id)!;
@@ -244,18 +273,28 @@ export class Actors {
     }, this.scene);
     for (const a of claudes) { const b = this.bots.get(a.sessionId); if (b) b.agent = a; }
 
+    // Bees: a subagent that finishes flies back to its parent bot before disappearing.
     const subs = snap.agents.filter((a) => a.kind === 'subagent' && a.status !== 'dormant');
-    reconcile(this.bees, subs.map((a) => a.sessionId), (id) => {
-      const a = subs.find((x) => x.sessionId === id)!;
-      const m = makeBee();
-      const parent = this.bots.get(a.parentSessionId ?? '');
-      m.obj.position.copy(parent ? parent.obj.position : this.home(a.handle)).setY(1);
-      return { obj: m.obj, m, seed: m.obj.position.x };
-    }, this.scene);
+    const live = new Set(subs.map((a) => a.sessionId));
     for (const a of subs) {
-      const b = this.bees.get(a.sessionId);
-      if (b) b.m.target.copy((a.currentPath ? this.world.plantPos(a.currentPath) : undefined) ?? this.home(a.handle)).setY(1.1);
+      let b = this.bees.get(a.sessionId);
+      if (!b) {
+        const m = makeBee();
+        const parent = this.bots.get(a.parentSessionId ?? '');
+        m.obj.position.copy(parent ? parent.obj.position : this.home(a.handle)).setY(1);
+        const trailPos = new Float32Array(14 * 3);
+        for (let i = 0; i < 14; i++) trailPos.set([m.obj.position.x, m.obj.position.y, m.obj.position.z], i * 3);
+        const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+        const trail = new THREE.Points(tg, new THREE.PointsMaterial({ color: 0xffd84a, size: 0.09, transparent: true, opacity: 0.55, depthWrite: false }));
+        trail.frustumCulled = false;
+        this.scene.add(m.obj, trail);
+        b = { obj: m.obj, m, seed: m.obj.position.x, parent: a.parentSessionId ?? '', handle: a.handle, trail, trailPos, returning: false };
+        this.bees.set(a.sessionId, b);
+      }
+      b.returning = false;
+      b.m.target.copy((a.currentPath ? this.world.plantPos(a.currentPath) : undefined) ?? this.home(a.handle)).setY(1.1);
     }
+    for (const [id, b] of this.bees) if (!live.has(id)) b.returning = true; // flies home in tick(), then is removed
 
     // Butterflies live until acked; acking bursts the pollen where they landed.
     // Very old unacked messages would circle forever; keep the garden readable.
@@ -285,8 +324,8 @@ export class Actors {
       const gate = this.world.fenceGate(a.path) ?? this.world.plantPos(a.path);
       if (gate) {
         const until = performance.now() + 5500;
-        this.meet.set(a.handle, { pos: gate.clone().add(new THREE.Vector3(0.5, 0, 0.3)), until });
-        if (owner) this.meet.set(owner, { pos: gate.clone().add(new THREE.Vector3(-0.5, 0, 0.3)), until });
+        this.meet.set(a.handle, { pos: gate.clone().add(new THREE.Vector3(0.5, 0, 0.3)), until, with: owner });
+        if (owner) this.meet.set(owner, { pos: gate.clone().add(new THREE.Vector3(-0.5, 0, 0.3)), until, with: a.handle });
         const bot = this.claudeAgent(a.handle);
         const target = bot && this.bots.get(bot.sessionId);
         const bp = new THREE.Vector3();
@@ -300,7 +339,7 @@ export class Actors {
     }
     if (a.kind === 'test_pass' || a.kind === 'test_fail') {
       const g = this.gardenerPos(a.handle);
-      if (g) this.fx.burst(g.clone().setY(1), a.kind === 'test_pass' ? 0x7ee081 : 0x333333, 14, 1.2, 3);
+      if (g) { this.fx.burst(this.tmp.copy(g).setY(1), a.kind === 'test_pass' ? 0x7ee081 : 0x333333, 14, 1.2, 3); this.fx.ring(g, a.kind === 'test_pass' ? 0x4cc46f : 0xe5484d); }
     }
     if (a.kind === 'certify_bloom' || a.kind === 'certify_refused') {
       const cert = [...this.snap.certifications].reverse().find((c) => c.path === a.path);
@@ -312,6 +351,84 @@ export class Actors {
       // A burst of verdicts: only animate the newest two; the shed still lists them all.
       while (this.queue.length > 2) { const dropped = this.queue.shift()!; this.world.releaseBloom(dropped.path); }
     }
+  }
+
+  /** A handoff row appeared or changed: the sender carries a watering can and a seed tag over to the receiver. */
+  onHandoff(h: { id: number; fromHandle: string; toHandle: string; task: string; status: string }, op: 'inserted' | 'updated') {
+    const cur = this.handoffs.get(h.id);
+    if (op === 'inserted' && h.status === 'offered' && !cur) {
+      if (!this.gardeners.has(h.fromHandle) || !this.gardeners.has(h.toHandle)) return; // nobody to animate
+      const tag = new THREE.Group();
+      tag.add(mesh(geo.box, mat('#c8a165'), 0.22, 0.3, 0.03, 0, 0, 0), mesh(geo.cyl, mat('#8d6e4c'), 0.008, 0.18, 0.008, 0, 0.22, 0), mesh(geo.sphere, mat('#7fc36a'), 0.06, 0.06, 0.02, 0, 0.05, 0.02));
+      const can = makeTools().can!.clone(); can.visible = true;
+      tag.add(can); can.position.set(-0.28, -0.1, 0);
+      this.scene.add(tag);
+      this.handoffs.set(h.id, { id: h.id, from: h.fromHandle, to: h.toHandle, task: h.task, phase: 'walk', t: 0, tag, can });
+      const g = this.gardeners.get(h.toHandle)!;
+      this.meet.set(h.fromHandle, { pos: g.obj.position.clone().add(new THREE.Vector3(0.9, 0, 0.5)), until: performance.now() + 14000, with: h.toHandle });
+    } else if (cur && op === 'updated') {
+      if (h.status === 'accepted') { cur.phase = 'accepted'; cur.t = 0; }
+      else if (h.status === 'declined') { cur.phase = 'declined'; cur.t = 0; }
+    }
+  }
+
+  private tickHandoffs(dt: number, t: number) {
+    for (const [id, a] of this.handoffs) {
+      const from = this.gardeners.get(a.from), to = this.gardeners.get(a.to);
+      if (!from || !to) { this.endHandoff(id, a); continue; }
+      a.t += dt;
+      const carry = this.tmp.copy(from.obj.position).setY(1.55);
+      if (a.phase === 'walk') {
+        a.tag.position.copy(carry);
+        if (!from.m.moving && from.obj.position.distanceToSquared(to.obj.position) < 4) { a.phase = 'pass'; a.t = 0; }
+        else if (a.t > 12) { a.phase = 'pass'; a.t = 0; }
+      } else if (a.phase === 'pass') {
+        const k = Math.min(1, a.t / 1.2);
+        a.tag.position.copy(carry).lerp(this.bp.copy(to.obj.position).setY(1.6), k);
+        a.tag.position.y += Math.sin(k * Math.PI) * 0.5;
+        if (k >= 1) {
+          a.phase = 'hold'; a.t = 0;
+          const chip = this.labels.add(`🌱 ${a.from} → ${a.to}: ${a.task.length > 60 ? `${a.task.slice(0, 59)}…` : a.task}`, () => this.bp.copy(a.tag.position).setY(2.1), 'bubble', 6000);
+          a.chip = chip;
+        }
+      } else if (a.phase === 'hold') {
+        a.tag.position.copy(to.obj.position).setY(1.65 + Math.sin(t * 3) * 0.05);
+        a.tag.rotation.y = t * 1.5;
+      } else if (a.phase === 'accepted') {
+        const k = Math.min(1, a.t / 1.0);
+        a.tag.position.copy(to.obj.position).setY(1.65 * (1 - k) + 0.25);
+        if (k >= 1) {
+          this.plantSprout(to.obj.position, 28000); this.fx.burst(this.bp.copy(to.obj.position).setY(0.5), 0x7fc36a, 24, 1.6, 2.5); this.endHandoff(id, a);
+        }
+      } else if (a.phase === 'declined') {
+        const k = Math.min(1, a.t / 1.4);
+        a.tag.position.copy(to.obj.position).setY(1.65).lerp(this.bp.copy(from.obj.position).setY(1.55), k);
+        if (k >= 1) { this.fx.burst(this.bp.copy(from.obj.position).setY(1.5), 0x888888, 14, 0.8, 0.5); this.endHandoff(id, a); }
+      }
+      a.can.visible = a.phase === 'walk' || a.phase === 'pass';
+    }
+    const now = performance.now();
+    for (const sp of [...this.sprouts]) {
+      const left = (sp.until - now) / 1000;
+      sp.g.scale.setScalar(Math.min(1, (28 - left) / 0.8, Math.max(0, left / 2)));
+      if (left <= 0) { this.scene.remove(sp.g); this.sprouts.splice(this.sprouts.indexOf(sp), 1); }
+    }
+  }
+
+  private plantSprout(at: THREE.Vector3, ms: number) {
+    const g = new THREE.Group();
+    g.add(mesh(geo.cyl, mat('#3f7d3a'), 0.03, 0.4, 0.03, 0, 0.2, 0));
+    for (const a of [0.6, 2.7]) { const l = mesh(geo.sphere, mat('#7fc36a'), 0.2, 0.05, 0.1, Math.cos(a) * 0.13, 0.36, Math.sin(a) * 0.13); l.rotation.y = -a; l.rotation.z = 0.4; g.add(l); }
+    g.position.set(at.x + 0.7, 0.2, at.z + 0.5); g.scale.setScalar(0.001);
+    this.scene.add(g); this.sprouts.push({ g, until: performance.now() + ms });
+  }
+
+  private endHandoff(id: number, a: { tag: THREE.Group; chip?: HTMLElement }) {
+    this.scene.remove(a.tag); if (a.chip) this.labels.remove(a.chip); this.handoffs.delete(id);
+  }
+
+  private dropBee(id: string, b: { obj: THREE.Object3D; trail: THREE.Points }) {
+    this.scene.remove(b.obj, b.trail); b.trail.geometry.dispose(); this.bees.delete(id);
   }
 
   tick(dt: number) {
@@ -328,7 +445,7 @@ export class Actors {
         const p = this.world.plantPos(agent.currentPath);
         if (p) { target = this.tgt.copy(p).add(Actors.OFF_GARDENER); kneel = agent.status === 'working'; }
       }
-      g.m.target.copy(target); g.m.step(dt);
+      g.m.nav = this.world.nav; g.m.target.copy(target); g.m.step(dt);
       // Tool in hand matches what the agent is doing; limbs swing while walking.
       const act = agent && agent.status === 'working' ? agent.currentAction : '';
       const tool = act === 'edit' || act === 'create' ? 'can' : act === 'read' ? 'glass' : act === 'search' ? 'clip' : act === 'bash' ? 'hammer' : '';
@@ -337,6 +454,13 @@ export class Actors {
       const swing = g.m.moving ? Math.sin(t * 9) * 0.7 * Math.max(0.3, mo) : 0;
       rg.armL.rotation.x = swing; rg.legL.rotation.x = -swing * 0.8; rg.legR.rotation.x = swing * 0.8;
       rg.armR.rotation.x = g.m.moving ? -swing : tool ? -1.0 + Math.sin(t * 7) * 0.3 * mo : 0;
+      // Stopped at the gate: face the other person and wave. Waiting on permission: look at the bot.
+      if (!g.m.moving) {
+        let look: THREE.Vector3 | undefined;
+        if (ov && now <= ov.until && ov.with) { look = this.gardenerPos(ov.with); if (look) rg.armR.rotation.x = -1.3 + Math.sin(t * 6) * 0.4 * mo; }
+        else if (agent?.status === 'waiting') look = this.bots.get(agent.sessionId)?.obj.position;
+        if (look) g.obj.rotation.y = Math.atan2(look.x - g.obj.position.x, look.z - g.obj.position.z);
+      }
       g.kneel += ((kneel && !g.m.moving ? 1 : 0) - g.kneel) * Math.min(1, dt * 6);
       g.obj.scale.y = 1 - 0.3 * g.kneel;
       g.obj.position.y = g.m.moving ? Math.abs(Math.sin(t * 9)) * 0.06 * mo : 0;
@@ -350,7 +474,7 @@ export class Actors {
         const p = this.world.plantPos(a.currentPath);
         if (p) target = a.status === 'blocked' ? this.tgt.copy(this.world.fenceGate(a.currentPath) ?? p).add(Actors.OFF_BOT_GATE) : this.tgt.copy(p).add(Actors.OFF_BOT_WORK);
       }
-      b.m.target.copy(target); b.m.step(dt);
+      b.m.nav = this.world.nav; b.m.target.copy(target); b.m.step(dt);
       b.alert.visible = a.status === 'waiting';
       if (b.m.moving) { b.rig.wheelL.rotateY(dt * 10); b.rig.wheelR.rotateY(dt * 10); }
       (b.rig.tip.material as THREE.MeshStandardMaterial).emissiveIntensity = a.status === 'working' ? 0.4 + 0.6 * Math.abs(Math.sin(t * 6)) : 0.12 + 0.1 * Math.sin(t * 2);
@@ -365,11 +489,22 @@ export class Actors {
       b.obj.scale.setScalar(a.status === 'dormant' ? 0.8 : 1);
     }
 
-    for (const b of this.bees.values()) {
+    for (const [id, b] of this.bees) {
+      if (b.returning) {
+        const home = this.bots.get(b.parent);
+        if (!home) { this.dropBee(id, b); continue; }
+        b.m.target.copy(home.obj.position).setY(1.0);
+        if (b.obj.position.distanceToSquared(b.m.target) < 0.25) { this.fx.burst(b.obj.position, 0xffd84a, 8, 0.8, 1.5); this.dropBee(id, b); continue; }
+      }
       b.m.step(dt, true);
       b.obj.position.y += Math.sin(t * 5 + b.seed) * 0.004 * mo;
       b.obj.position.x += Math.cos(t * 3 + b.seed) * 0.01 * mo;
       (b.obj.userData.wing as THREE.Object3D).scale.z = 0.07 * (0.5 + Math.abs(Math.sin(t * 40)));
+      // trail: shift history by one and put the head at the bee
+      const tp = b.trailPos;
+      for (let i = 13; i > 0; i--) { tp[i * 3] = tp[(i - 1) * 3]!; tp[i * 3 + 1] = tp[(i - 1) * 3 + 1]!; tp[i * 3 + 2] = tp[(i - 1) * 3 + 2]!; }
+      tp[0] = b.obj.position.x; tp[1] = b.obj.position.y; tp[2] = b.obj.position.z;
+      (b.trail.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     }
 
     for (const f of this.flies.values()) {
@@ -391,6 +526,7 @@ export class Actors {
       for (const w of f.obj.userData.wings as THREE.Object3D[]) w.rotation.z = Math.sin(t * flap) * 0.7 * (w.position.x > 0 ? -1 : 1) * Math.max(0.3, mo);
     }
 
+    this.tickHandoffs(dt, t);
     this.tickBotanist(dt, now, t);
   }
 
@@ -399,11 +535,11 @@ export class Actors {
     const homePos = this.botHome;
     if (!this.job && this.queue.length) this.job = { j: this.queue.shift()!, phase: 'walk', t: 0 };
     const job = this.job;
-    if (!job) { b.target.copy(homePos); b.step(dt); b.obj.rotation.x = 0; this.shot = null; return; }
+    if (!job) { b.nav = this.world.nav; b.target.copy(homePos); b.step(dt); b.obj.rotation.x = 0; this.shot = null; return; }
     const p = this.world.plantPos(job.j.path);
     if (job.phase === 'walk') {
       if (p) { this.tmp.copy(p).add(this.off); b.target.copy(this.tmp); } else b.target.copy(homePos);
-      b.step(dt);
+      b.nav = this.world.nav; b.step(dt);
       job.t += dt;
       if (!b.moving || job.t > 8) { // arrived (or took too long: show the verdict anyway)
         job.phase = 'hold'; job.t = 0;
@@ -426,7 +562,7 @@ export class Actors {
         b.obj.rotation.x = 0; job.phase = 'home'; this.shot = null; this.world.showLock(null);
       }
     } else {
-      b.target.copy(homePos); b.step(dt);
+      b.nav = this.world.nav; b.target.copy(homePos); b.step(dt);
       if (!b.moving) this.job = null;
     }
   }

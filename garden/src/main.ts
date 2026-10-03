@@ -106,6 +106,21 @@ function goDemo() {
   });
   setConn({ state: 'demo', attempt: 0 });
 }
+/** ?scenario=handoff (demo data only, use with &paused=1): offer one handoff that is accepted and one that is declined. */
+function runScenario(name: string) {
+  if (name !== 'handoff') return;
+  const base = store.snapshot;
+  const [a, b, c] = base.members.map((m) => m.handle);
+  if (!a || !b || !c) return;
+  const row = (id: number, from: string, to: string, task: string, status: 'offered' | 'accepted' | 'declined') =>
+    ({ id, fromHandle: from, toHandle: to, task, notes: '', status, createdAt: base.at });
+  const set = (hs: ReturnType<typeof row>[]) => store.set({ ...store.snapshot, handoffs: hs });
+  setTimeout(() => set([row(1, a, b, 'Finish the auth tests', 'offered')]), 1500);
+  setTimeout(() => set([row(1, a, b, 'Finish the auth tests', 'accepted')]), 11000);
+  setTimeout(() => set([row(1, a, b, 'Finish the auth tests', 'accepted'), row(2, b, c, 'Review the API docs', 'offered')]), 16000);
+  setTimeout(() => set([row(1, a, b, 'Finish the auth tests', 'accepted'), row(2, b, c, 'Review the API docs', 'declined')]), 26000);
+}
+
 async function retryLive() {
   fake?.stop(); fake = undefined; stopLive?.();
   if (!(await goLive())) goDemo();
@@ -224,4 +239,4 @@ if (q.get('present') === '1') {
 }
 // Keep the scene centered in the space the shed leaves free, whatever its size does.
 new ResizeObserver(() => { if (!world.rig.userMoved) world.refit(); }).observe(shed);
-void start().then(() => { world.frameGarden(true); if (shot) setTimeout(() => applyShot(shot, world, () => setPlan(true)), 400); });
+void start().then(() => { world.frameGarden(true); if (q.get('scenario') && source === 'fake') runScenario(q.get('scenario')!); if (shot) setTimeout(() => applyShot(shot, world, () => setPlan(true)), 400); });

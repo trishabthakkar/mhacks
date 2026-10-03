@@ -1,7 +1,11 @@
 import { Store } from './data/store.ts';
 import { startFake, type FakeController } from './data/fake.ts';
 import { startBench } from './data/bench.ts';
-import { connectLive, DEFAULT_DB, DEFAULT_HOST, type LiveState } from './data/spacetime.ts';
+import { connectLive, DEFAULT_DB, DEFAULT_HOST, loadHistory, type LiveState } from './data/spacetime.ts';
+import { historyFromSnapshot, Replay } from './data/timelapse.ts';
+import { FAKE_STEPS, makeFakeSnapshots } from '../../shared/fake-data.ts';
+import { initTimeline, renderTimeline, SPEED_STEPS } from './ui/timeline.ts';
+import type { GardenSnapshot } from '../../shared/types.ts';
 import { GardenWorld } from './scene/world.ts';
 import { initShed, renderShed, tickFreshness } from './ui/shed.ts';
 import { initPlan, renderPlan } from './ui/plan.ts';
@@ -19,6 +23,7 @@ const emptyState = document.getElementById('empty')!;
 const toasts = document.getElementById('toasts')!;
 const cueEl = document.getElementById('cue')!;
 const helpEl = document.getElementById('help')!;
+const timelineEl = document.getElementById('timeline')!;
 let source: 'live' | 'fake' = q.get('source') === 'fake' ? 'fake' : 'live';
 let layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
 let fake: FakeController | undefined;
@@ -83,10 +88,15 @@ banner.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest(
 
 const liveHost = () => q.get('host') ?? import.meta.env?.VITE_STDB_HOST ?? DEFAULT_HOST;
 const liveDb = () => q.get('db') ?? import.meta.env?.VITE_STDB_DB ?? DEFAULT_DB;
+// Live snapshots pass through a gate so a timelapse can borrow the Store without the live feed overwriting it.
+let replaying = false;
+let liveLatest: GardenSnapshot | undefined;
+const liveSink = { set(snap: GardenSnapshot, reset = false) { liveLatest = snap; if (!replaying) store.set(snap, reset); } };
+
 async function goLive(): Promise<boolean> {
   setConn({ state: 'connecting', attempt: 0 });
   try {
-    stopLive = await connectLive(store, liveHost(), liveDb(), 10_000, (st: LiveState) =>
+    stopLive = await connectLive(liveSink, liveHost(), liveDb(), 10_000, (st: LiveState) =>
       setConn(st.state === 'live' ? { state: 'live', attempt: 0 } : { state: 'reconnecting', attempt: st.attempt }));
     setConn({ state: 'live', attempt: 0 });
     return true;
@@ -125,6 +135,59 @@ async function retryLive() {
   fake?.stop(); fake = undefined; stopLive?.();
   if (!(await goLive())) goDemo();
 }
+
+// ---- timelapse (seasons) ----
+let replay: Replay | undefined;
+let tNow = 0, playing = false, speed = 60;
+let tlTimer: ReturnType<typeof setInterval> | undefined;
+const speedTo30 = () => (replay ? (replay.end - replay.start) / 30 : 60);
+
+function tlRender() { if (replay) renderTimeline(timelineEl, { t: tNow, start: replay.start, end: replay.end, playing, speed, replayLabel: 'replay' }); }
+function tlApply(forward: boolean) {
+  if (!replay) return;
+  store.set(replay.snapshotAt(tNow), !forward);
+  world.setSeason(replay.progress(tNow));
+  tlRender();
+}
+function tlStart() {
+  clearInterval(tlTimer);
+  tlTimer = setInterval(() => {
+    if (!replay || !playing) return;
+    tNow = Math.min(replay.end, tNow + speed * 100); // 100 ms of real time * speed
+    tlApply(true);
+    if (tNow >= replay.end) { playing = false; tlRender(); }
+  }, 100);
+}
+async function enterTimelapse(autoplay30 = false) {
+  if (replaying) return;
+  toast('Loading the weekend…');
+  let hist;
+  try { hist = source === 'live' ? await loadHistory(liveHost(), liveDb()) : historyFromSnapshot(makeFakeSnapshots(FAKE_STEPS + 1).at(-1)!); }
+  catch (e) { console.warn('history failed, using demo story', e); toast('Could not load the live history: showing the demo story.'); hist = historyFromSnapshot(makeFakeSnapshots(FAKE_STEPS + 1).at(-1)!); }
+  if (!hist.activity.length) { toast('Nothing to replay yet: the activity log is empty.'); return; }
+  fake?.stop();
+  replay = new Replay(hist); replaying = true; world.setCalm(world.calm); document.body.classList.add('timelapse');
+  timelineEl.hidden = false;
+  tNow = replay.start - 1; speed = 60; playing = false;
+  tlApply(false); tlStart(); setPlan(false);
+  if (autoplay30) { speed = speedTo30(); playing = true; tlRender(); }
+}
+function exitTimelapse() {
+  if (!replaying) return;
+  replaying = false; playing = false; clearInterval(tlTimer); replay = undefined;
+  document.body.classList.remove('timelapse'); timelineEl.hidden = true; world.setSeason(null);
+  if (conn.state === 'demo') goDemo(); else if (liveLatest) store.set(liveLatest, true);
+}
+initTimeline(timelineEl, {
+  onPlayPause: () => { if (!replay) return; if (tNow >= replay.end) tNow = replay.start - 1; playing = !playing; tlRender(); },
+  onScrub: (f) => { if (!replay) return; tNow = replay.start + f * (replay.end - replay.start); tlApply(false); },
+  onSpeed: (dir) => {
+    const i = SPEED_STEPS.indexOf(speed);
+    speed = SPEED_STEPS[Math.min(SPEED_STEPS.length - 1, Math.max(0, (i < 0 ? 2 : i) + dir))]!; tlRender();
+  },
+  onPlay30: () => { if (!replay) return; tNow = replay.start - 1; speed = speedTo30(); playing = true; tlApply(false); },
+  onExit: exitTimelapse,
+});
 
 async function start() {
   const bench = Number(q.get('bench'));
@@ -185,6 +248,9 @@ addEventListener('keydown', (e) => {
   if (k === '?' || k === '/') { setHelp(helpEl.hidden); return; }
   if (k === 'escape' && !helpEl.hidden) { setHelp(false); return; }
   if (k === 'c') { setCue(!cueOn); return; }
+  if (k === 't') { if (replaying) exitTimelapse(); else void enterTimelapse(); return; }
+  if (replaying && (k === ',' || k === '.')) { timelineEl.querySelector<HTMLElement>(k === ',' ? '[data-tl=slower]' : '[data-tl=faster]')?.click(); return; }
+  if (replaying && k === ' ') { e.preventDefault(); timelineEl.querySelector<HTMLElement>('[data-tl=play]')?.click(); return; }
   if (k === 'p') setPlan(!planOn);
   else if (k === 's') setCollapsed(!collapsed);
   else if (k === 'd') { world.director = !world.director; if (world.director) world.follow = null; refresh(); }
@@ -193,9 +259,9 @@ addEventListener('keydown', (e) => {
   else if (k === 'm') { calm = !calm; world.setCalm(calm); toast(calm ? 'Calm mode on: gentler motion' : 'Calm mode off'); }
   else if (k === 'k') { document.body.classList.toggle('hc'); }
   else if (k === 'l') { world.setPlantLabels(!world.showPlantLabels); }
-  else if (k === ' ' && fake) { e.preventDefault(); fake.toggle(); }
-  else if (k === 'arrowright' && fake && !planOn) fake.next();
-  else if (k === 'arrowleft' && fake && !planOn) fake.prev();
+  else if (k === ' ' && fake && !replaying) { e.preventDefault(); fake.toggle(); }
+  else if (k === 'arrowright' && fake && !planOn && !replaying) fake.next();
+  else if (k === 'arrowleft' && fake && !planOn && !replaying) fake.prev();
   else if (k === 'f') { world.follow = null; world.director = false; world.frameGarden(); refresh(); }
 });
 plan.hidden = true;
@@ -239,4 +305,4 @@ if (q.get('present') === '1') {
 }
 // Keep the scene centered in the space the shed leaves free, whatever its size does.
 new ResizeObserver(() => { if (!world.rig.userMoved) world.refit(); }).observe(shed);
-void start().then(() => { world.frameGarden(true); if (q.get('scenario') && source === 'fake') runScenario(q.get('scenario')!); if (shot) setTimeout(() => applyShot(shot, world, () => setPlan(true)), 400); });
+void start().then(() => { world.frameGarden(true); if (q.get('mode') === 'timelapse') void enterTimelapse(q.get('present') === '1' || q.get('autoplay') === '1'); if (q.get('scenario') && source === 'fake') runScenario(q.get('scenario')!); if (shot) setTimeout(() => applyShot(shot, world, () => setPlan(true)), 400); });

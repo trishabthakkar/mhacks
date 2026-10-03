@@ -440,6 +440,8 @@ export class GardenWorld implements WorldLookup {
     if (!this.rig.userMoved) this.scaleToDistance(this.rig.fit(this.fitBox(), undefined, true));
   }
 
+  /** Timelapse season grading (0..1), or null for normal. */
+  setSeason(p: number | null) { this.props.setSeason(p); }
   get motionFactor() { return this.reducedMotion || this.calm ? 0.25 : 1; }
   /** Calm mode: gentler motion, no camera push-ins, fewer particles. */
   setCalm(on: boolean) {

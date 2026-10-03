@@ -70,6 +70,10 @@
       body.stale #app canvas { filter:saturate(.65) brightness(.93); }
       .label.plant { font-weight:500; font-size:11px; background:rgba(255,252,243,.88); }
       body.hc .label, body.hc .bubble, body.hc .edgearrow { outline:2px solid #111; background:#fff; color:#000; border-color:#000; } body.hc aside#shed, body.hc #keys, body.hc #status { border:2px solid #000; background:#fff; } body.hc .sub { opacity:1; }
+      #timeline { position:fixed; left:50%; bottom:12px; transform:translateX(-50%); z-index:8; display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:8px 14px; width:min(96vw,780px); box-shadow:0 6px 20px rgba(0,0,0,.18); } #timeline[hidden] { display:none; }
+      #timeline button { font:inherit; padding:3px 10px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; } #timeline input[type=range] { flex:1; min-width:140px; }
+      .tl-time { font-size:12px; opacity:.8; } .tl-speed { font-size:12px; min-width:48px; text-align:center; font-weight:700; } .tl-note { width:100%; text-align:center; font-size:11px; opacity:.6; }
+      body.timelapse #status, body.timelapse #cue { display:none; }
       #cue { position:fixed; left:50%; bottom:52px; transform:translateX(-50%); z-index:8; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:8px 12px; max-width:min(96vw,920px); box-shadow:0 6px 20px rgba(0,0,0,.18); } #cue[hidden] { display:none; }
       .cue-steps { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; } .cue-say { text-align:center; font-size:14px; margin-top:6px; }
       button.cue { font:inherit; font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; cursor:pointer; }
@@ -92,6 +96,7 @@
     <div id="plan" hidden></div>
     <div id="banner" role="status" hidden></div>
     <div id="empty" hidden><b>No files planted yet</b><br/>Run <code>sprout join</code> in your repo and the garden fills in.</div>
+    <div id="timeline" hidden aria-label="Timelapse controls"></div>
     <div id="cue" hidden aria-label="Demo cue strip"></div>
     <div id="help" hidden role="dialog" aria-label="Keyboard shortcuts"><div class="help-card"><h2>Keys</h2>
       <dl><dt>Drag / wheel</dt><dd>orbit / zoom</dd><dt>Arrows, Q E, + -</dt><dd>pan, turn, zoom</dd><dt>1 2 3</dt><dd>overview, top-down, low camera</dd>
@@ -99,7 +104,7 @@
       <dt>S</dt><dd>garden shed panel</dd><dt>C</dt><dd>demo cue strip</dd><dt>H</dt><dd>hide all UI (screenshots)</dd>
       <dt>L</dt><dd>text labels with stage on every plant</dd><dt>B</dt><dd>show every plant in full (large gardens)</dd>
       <dt>M</dt><dd>calm mode (gentler motion)</dd><dt>K</dt><dd>high contrast</dd><dt>Space, ← →</dt><dd>pause, step (demo data only)</dd>
-      <dt>? or Esc</dt><dd>this help</dd></dl><p class="sub">Click anywhere to close.</p></div></div>
+      <dt>T</dt><dd>seasons timelapse (replay the weekend); Space play, , . speed</dd><dt>? or Esc</dt><dd>this help</dd></dl><p class="sub">Click anywhere to close.</p></div></div>
     <div id="toasts" aria-live="polite"></div>
     <div id="status" role="status"></div>
     <div id="fps" hidden></div>

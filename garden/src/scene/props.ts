@@ -22,6 +22,8 @@ export class Props {
   private notes: THREE.Mesh[] = [];
   private horizon = new THREE.Color(); private top = new THREE.Color(); private tmpC = new THREE.Color();
   private center = new THREE.Vector3();
+  private meadowMat?: THREE.MeshStandardMaterial;
+  private season: number | null = null;
   private radius = 60;
   hour = 12;
 
@@ -85,6 +87,15 @@ export class Props {
     return this.horizon;
   }
 
+  /** Timelapse grading: bare dry soil early, lush mid-way, golden at the end. 0..1; `null` = normal. */
+  setSeason(p: number | null) {
+    this.season = p;
+    const m = this.meadowMat; if (!m) return;
+    if (p === null) { m.color.set(0xffffff); return; }
+    const dry = this.tmpC.set('#d9c59c'), lush = new THREE.Color('#ffffff'), gold = new THREE.Color('#fff0bf');
+    if (p < 0.45) m.color.copy(dry).lerp(lush, p / 0.45); else m.color.copy(lush).lerp(gold, (p - 0.45) / 0.55);
+  }
+
   /** Rebuild the static world for a garden of this size. `halfW/halfD` = half extent of the beds. */
   rebuild(halfW: number, halfD: number, frontZ: number) {
     for (const o of [...this.world.children]) { this.world.remove(o); o.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); }); }
@@ -109,7 +120,9 @@ export class Props {
     }
     const mg = new THREE.BufferGeometry();
     mg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); mg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); mg.setIndex(idx); mg.computeVertexNormals();
-    const meadow = new THREE.Mesh(mg, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 }));
+    this.meadowMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 });
+    const meadow = new THREE.Mesh(mg, this.meadowMat);
+    this.setSeason(this.season); // keep the timelapse tint across layout rebuilds
     meadow.receiveShadow = true; this.world.add(meadow);
 
     // Plaza under the beds: the lanes between beds read as paths. Plus a lane to the shed and the front row.

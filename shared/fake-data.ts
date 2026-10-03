@@ -89,17 +89,17 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
       body: 'Can I touch src/api/auth.ts while you finish routes.ts?', status: 'sent', sentAt: at,
     };
     s.messages.push(m);
-    log(s, at, 'alex', 'message_sent', 'request to trisha', undefined, 's-alex');
+    log(s, at, 'alex', 'message_sent', `→ trisha (request) #${m.id}`, undefined, 's-alex');
   },
   // 7: delivered on trisha's next prompt
   (s, at) => {
     const m = s.messages[0]!; m.status = 'delivered'; m.deliveredAt = at;
-    log(s, at, 'trisha', 'message_delivered', 'inbox delivered', undefined, 's-trisha');
+    log(s, at, 'trisha', 'message_delivered', `#${m.id} from alex`, undefined, 's-trisha');
   },
   // 8: acked
   (s, at) => {
     const m = s.messages[0]!; m.status = 'acked'; m.ackedAt = at;
-    log(s, at, 'trisha', 'message_acked', 'acked alex\'s request', undefined, 's-trisha');
+    log(s, at, 'trisha', 'message_acked', `#${m.id} from alex`, undefined, 's-trisha');
   },
   // 9: tests fail -> bugs
   (s, at) => {

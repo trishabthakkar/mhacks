@@ -3,7 +3,10 @@ import type {
   ActivityKind, AgentView, GardenSnapshot, HandoffStatus, MessageView, PlantStage,
 } from '../../../shared/types.ts';
 import { AGENT_STATUSES, MESSAGE_KINDS, MESSAGE_STATUSES, PLANT_STAGES } from '../../../shared/constants.ts';
-import type { Store } from './store.ts';
+import type { HistoryInput } from './timelapse.ts';
+
+/** Where live snapshots go (the Store, or a gate in front of it). */
+export interface Sink { set(s: GardenSnapshot, reset?: boolean): void }
 
 export const DEFAULT_HOST = 'wss://maincloud.spacetimedb.com';
 export const DEFAULT_DB = 'sprout-mhacks';
@@ -73,7 +76,7 @@ export function buildSnapshot(db: LiveTables, now: number): GardenSnapshot {
  * GardenSnapshots into the Store. Resolves once the first snapshot is in; rejects on
  * connect error/timeout so the caller can fall back to demo data. Reconnects with backoff after that.
  */
-export function connectLive(store: Store, host: string, db: string, timeoutMs = 10_000, onState?: (s: LiveState) => void): Promise<() => void> {
+export function connectLive(store: Sink, host: string, db: string, timeoutMs = 10_000, onState?: (s: LiveState) => void): Promise<() => void> {
   return new Promise((resolve, reject) => {
     let stopped = false, settled = false, backoff = 1000, conn: DbConnection | undefined, pending = 0, first = true, attempt = 0;
 
@@ -119,5 +122,31 @@ export function connectLive(store: Store, host: string, db: string, timeoutMs = 
     };
     setTimeout(() => { if (!settled) { settled = true; stopped = true; conn?.disconnect(); reject(new Error(`timed out connecting to ${host}/${db}`)); } }, timeoutMs);
     connect();
+  });
+}
+
+/**
+ * One-shot read of the whole story for the timelapse: every activity row (not just the live window), all
+ * verdicts, the final plants and members. Opens its own short connection and closes it.
+ */
+export function loadHistory(host: string, db: string, timeoutMs = 20_000): Promise<HistoryInput> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timed out loading history from ${host}/${db}`)), timeoutMs);
+    DbConnection.builder().withUri(host).withDatabaseName(db)
+      .onConnect((c) => {
+        c.subscriptionBuilder()
+          .onApplied(() => {
+            clearTimeout(t);
+            const snap = buildSnapshot(c.db, Date.now());
+            const activity = [...c.db.activity.iter()].sort((a, b) => Number(a.id - b.id))
+              .map((a) => opt({ id: Number(a.id), at: ms(a.at), handle: a.handle, sessionId: a.sessionId, kind: a.kind as ActivityKind, path: a.path, detail: a.detail }));
+            c.disconnect();
+            resolve({ plants: snap.plants, activity, certifications: snap.certifications, members: snap.members });
+          })
+          .onError(() => { clearTimeout(t); reject(new Error('history subscription error')); })
+          .subscribe(['SELECT * FROM activity', 'SELECT * FROM certification', 'SELECT * FROM plant', 'SELECT * FROM member']);
+      })
+      .onConnectError((_c, e) => { clearTimeout(t); reject(e); })
+      .build();
   });
 }

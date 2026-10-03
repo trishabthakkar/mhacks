@@ -8,6 +8,7 @@ import { initTimeline, renderTimeline, SPEED_STEPS } from './ui/timeline.ts';
 import type { GardenSnapshot } from '../../shared/types.ts';
 import { GardenWorld } from './scene/world.ts';
 import { initShed, renderShed, tickFreshness } from './ui/shed.ts';
+import { createAnnouncer, summarize } from './ui/announce.ts';
 import { initPlan, renderPlan } from './ui/plan.ts';
 import { CUE_STEPS, renderCue, resetCue, seen, toggleManual } from './ui/cue.ts';
 import { applyShot } from './ui/shots.ts';
@@ -20,6 +21,11 @@ const shed = document.getElementById('shed')!;
 const plan = document.getElementById('plan')!;
 const status = document.getElementById('status')!;
 const emptyState = document.getElementById('empty')!;
+// The status chip: text plus a visible pause control for the looping demo timeline (WCAG 2.2.2).
+const statusText = document.createElement('span');
+const pauseBtn = document.createElement('button'); pauseBtn.hidden = true; pauseBtn.type = 'button';
+status.append(statusText, pauseBtn);
+pauseBtn.addEventListener('click', () => { fake?.toggle(); refresh(); });
 const toasts = document.getElementById('toasts')!;
 const cueEl = document.getElementById('cue')!;
 const helpEl = document.getElementById('help')!;
@@ -49,6 +55,12 @@ const world = new GardenWorld(app, store);
 world.onLayout = (l) => { layout = l; };
 world.onError = reportError;
 world.onShedClick = () => setCollapsed(!collapsed);
+const announcer = createAnnouncer(document.getElementById('announcer')!);
+const srSummary = document.getElementById('sr-summary')!;
+if (world.available) {
+  const c = world.renderer.domElement;
+  c.setAttribute('role', 'img'); c.setAttribute('aria-label', 'Interactive 3D garden. Drag to look around. Press the question mark for keys.'); c.setAttribute('aria-describedby', 'sr-summary');
+}
 
 // Remember the shed's open/closed state (storage can be blocked: never depend on it).
 const KEY = 'sprout.shed.collapsed';
@@ -170,7 +182,7 @@ async function enterTimelapse(autoplay30 = false) {
   timelineEl.hidden = false;
   tNow = replay.start - 1; speed = 60; playing = false;
   tlApply(false); tlStart(); setPlan(false);
-  if (autoplay30) { speed = speedTo30(); playing = true; tlRender(); }
+  if (autoplay30 && !world.reducedMotion) { speed = speedTo30(); playing = true; tlRender(); } // never auto-play for people who asked for less motion
 }
 function exitTimelapse() {
   if (!replaying) return;
@@ -219,7 +231,13 @@ function refresh() {
   const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
   renderShed(shed, s, { source, connection, collapsed });
   emptyState.hidden = s.plants.length > 0 || conn.state === 'connecting';
-  status.textContent = `${connection}${world.director ? ' · director' : ''}${world.follow ? ` · following ${world.follow}` : ''}${world.expandAll ? ' · all plants' : ''}`;
+  // The chip only carries what the shed pill doesn't: camera modes and the demo pause control.
+  const modes = `${world.director ? 'director' : ''}${world.follow ? `${world.director ? ' · ' : ''}following ${world.follow}` : ''}${world.expandAll ? ' · all plants' : ''}`;
+  statusText.textContent = conn.state === 'live' ? modes : `${connection}${modes ? ` · ${modes}` : ''}`;
+  pauseBtn.hidden = !(fake && !replaying);
+  status.hidden = !statusText.textContent && pauseBtn.hidden;
+  if (fake) pauseBtn.textContent = fake.paused ? '▶ Resume demo' : '⏸ Pause demo';
+  const sum = summarize(s); if (srSummary.textContent !== sum) srSummary.textContent = sum;
   if (planOn) renderPlan(s, layout);
 }
 let cueOn = false;
@@ -232,11 +250,18 @@ cueEl.addEventListener('click', (e) => {
   renderCue(cueEl);
 });
 store.subscribe((u) => {
-  for (const a of u.newActivity) seen(a.kind);
+  for (const a of u.newActivity) { seen(a.kind); announcer.push(a); }
   if (cueOn && u.newActivity.length) renderCue(cueEl);
   requestAnimationFrame(refresh);
 });
-function setHelp(on: boolean) { helpEl.hidden = !on; }
+let helpReturn: HTMLElement | null = null;
+function setHelp(on: boolean) {
+  if (on === !helpEl.hidden) return;
+  helpEl.hidden = !on;
+  if (on) { helpReturn = document.activeElement as HTMLElement | null; helpEl.querySelector<HTMLElement>('.help-card')?.focus(); }
+  else { helpReturn?.focus?.(); helpReturn = null; }
+}
+helpEl.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); helpEl.querySelector<HTMLElement>('.help-card')?.focus(); } }); // the dialog has nothing else to tab to
 helpEl.addEventListener('click', () => setHelp(false));
 setInterval(() => tickFreshness(shed), 1000);
 document.body.classList.toggle('shed-collapsed', collapsed);

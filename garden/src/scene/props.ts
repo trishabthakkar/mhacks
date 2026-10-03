@@ -176,6 +176,7 @@ export class Props {
 
   /** The garden shed at the back-right, with a noticeboard whose notes mirror the HTML panel. Click it to toggle the panel. */
   private buildShed(halfW: number, halfD: number) {
+    for (const o of this.shed.children) { const m = o as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); }
     this.shed.clear(); this.notes = [];
     const w = 3.4, d = 2.6, h = 2.4;
     this.shed.add(mesh(geo.box, mat(PALETTE.shedWall), w, h, d, 0, h / 2, 0));

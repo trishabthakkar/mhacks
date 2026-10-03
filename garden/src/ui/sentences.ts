@@ -1,6 +1,7 @@
 import type { ActivityView } from '../../../shared/types.ts';
 
-const base = (p?: string) => (p ? p.split('/').pop()! : 'the garden');
+// Last path segment; a folder ("src/api/") keeps its name instead of coming out empty.
+const base = (p?: string) => (p ? p.split('/').filter(Boolean).pop() ?? p : 'the garden');
 
 /** Plain-English line for the live feed. */
 export function sentence(a: ActivityView): string {

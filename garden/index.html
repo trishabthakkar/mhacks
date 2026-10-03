@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sprout garden</title>
     <style>
-      :root { --ink:#2b2a24; --card:rgba(255,252,243,.92); --line:rgba(60,50,30,.18); }
+      :root { --ink:#2b2a24; --card:rgba(255,252,243,.92); --line:rgba(60,50,30,.18); --ctl:rgba(43,42,36,.62); }
+      :focus-visible { outline:3px solid #2a6df4; outline-offset:2px; }
+      .sr-only { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
       * { box-sizing: border-box; }
       html, body { margin:0; height:100%; overflow:hidden; font-family: ui-rounded, "Avenir Next", system-ui, sans-serif; color:var(--ink); background:#cfe6ee; }
       #app { position:fixed; inset:0; }
@@ -35,24 +37,25 @@
       button.who, button.link { all:unset; cursor:pointer; display:inline-flex; gap:6px; align-items:center; } button.who:hover, button.link:hover { text-decoration:underline; }
       button.who:focus-visible, button.link:focus-visible, button.icon:focus-visible, button.chip:focus-visible, .plan-bar button:focus-visible { outline:3px solid #2a6df4; outline-offset:1px; border-radius:6px; }
       button.icon { all:unset; cursor:pointer; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; } button.icon:hover { background:rgba(0,0,0,.08); }
-      .dot { width:10px; height:10px; border-radius:50%; border:2px solid; display:inline-block; }
-      .chips { display:flex; gap:4px; flex-wrap:wrap; margin:2px 0 6px; } button.chip { all:unset; cursor:pointer; font-size:11px; padding:2px 9px; border-radius:999px; border:1px solid var(--line); background:#fff; } button.chip.on { background:var(--ink); color:#fff; }
+      .dot { width:10px; height:10px; border-radius:50%; border:2px solid; display:inline-block; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
+      .chips { display:flex; gap:4px; flex-wrap:wrap; margin:2px 0 6px; } button.chip { all:unset; cursor:pointer; font-size:11px; padding:2px 9px; border-radius:999px; border:1px solid var(--ctl); background:#fff; } button.chip.on { background:var(--ink); color:#fff; }
       .why { margin:2px 0 0 14px !important; list-style:disc !important; } .why li { border:0; padding:0; font-size:12px; }
       .feed li.new { animation: slidein .4s ease-out; background:rgba(255,226,122,.35); } @keyframes slidein { from { opacity:0; transform:translateY(-6px);} to { opacity:1; transform:none; } }
       @media (max-width: 899px) {
         aside#shed { top:auto; right:0; left:0; bottom:0; width:auto; max-height:42vh; border-radius:14px 14px 0 0; }
         aside#shed.collapsed { left:auto; right:8px; bottom:8px; border-radius:14px; }
         #keys { display:none; }
+        #status { bottom:auto; top:12px; left:12px; } #fps { bottom:auto; top:48px; }
       }
       #status { position:fixed; left:12px; bottom:12px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:3px 12px; font-size:12px; }
       #keys { position:fixed; left:12px; top:12px; max-width:calc(100vw - 360px); line-height:1.5; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
       #fps { position:fixed; left:12px; bottom:44px; font:12px monospace; background:#000a; color:#0f0; padding:2px 6px; }
       #plan { position:fixed; inset:0; background:#f6f1df; padding:12px 16px; display:flex; flex-direction:column; z-index:5; } #plan[hidden] { display:none; }
-      .plan-bar { display:flex; gap:8px; align-items:center; padding-bottom:8px; flex-wrap:wrap; } .plan-bar input { padding:5px 10px; border-radius:8px; border:1px solid var(--line); min-width:180px; font:inherit; }
-      .plan-bar button { font:inherit; padding:4px 10px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+      .plan-bar { display:flex; gap:8px; align-items:center; padding-bottom:8px; flex-wrap:wrap; } .plan-bar input { padding:5px 10px; border-radius:8px; border:1px solid var(--ctl); min-width:180px; font:inherit; }
+      .plan-bar button { font:inherit; padding:4px 10px; border-radius:8px; border:1px solid var(--ctl); background:#fff; cursor:pointer; }
       .plan-stage { position:relative; flex:1; min-height:0; } #plan svg { width:100%; height:100%; touch-action:none; cursor:grab; background:#fbf8ea; border-radius:12px; border:1px solid var(--line); }
       #plan .legend { font-size:13px; padding-top:6px; } .legend .k { display:inline-block; padding:0 8px; border-radius:999px; border:1px solid #3b3a30; margin-right:6px; font-size:12px; }
-      .legend .seed { background:#8b6a45; color:#fff; } .legend .sprout { background:#a8d88a; } .legend .growing { background:#5fa04a; color:#fff; } .legend .bud { background:#c9d86b; } .legend .bloom { background:#f48fb1; } .legend .dormant { background:#bdb9a4; }
+      .legend .seed { background:#8b6a45; color:#fff; } .legend .sprout { background:#a8d88a; } .legend .growing { background:#5fa04a; color:#1a1a16; } .legend .bud { background:#c9d86b; } .legend .bloom { background:#f48fb1; } .legend .dormant { background:#bdb9a4; }
       .plan-card { position:absolute; right:12px; top:12px; width:260px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,.15); } .plan-card[hidden] { display:none; }
       .plan-card h4 { margin:0 0 6px; font-size:14px; word-break:break-all; } .plan-card dl { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; margin:0 0 8px; } .plan-card dt { opacity:.65; } .plan-card dd { margin:0; }
       .plan-card .icon { position:absolute; right:6px; top:6px; }
@@ -71,17 +74,19 @@
       .label.plant { font-weight:500; font-size:11px; background:rgba(255,252,243,.88); }
       body.hc .label, body.hc .bubble, body.hc .edgearrow { outline:2px solid #111; background:#fff; color:#000; border-color:#000; } body.hc aside#shed, body.hc #keys, body.hc #status { border:2px solid #000; background:#fff; } body.hc .sub { opacity:1; }
       #timeline { position:fixed; left:50%; bottom:12px; transform:translateX(-50%); z-index:8; display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:8px 14px; width:min(96vw,780px); box-shadow:0 6px 20px rgba(0,0,0,.18); } #timeline[hidden] { display:none; }
-      #timeline button { font:inherit; padding:3px 10px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; } #timeline input[type=range] { flex:1; min-width:140px; }
-      .tl-time { font-size:12px; opacity:.8; } .tl-speed { font-size:12px; min-width:48px; text-align:center; font-weight:700; } .tl-note { width:100%; text-align:center; font-size:11px; opacity:.6; }
+      #timeline button { font:inherit; padding:3px 10px; border-radius:8px; border:1px solid var(--ctl); background:#fff; cursor:pointer; } #timeline input[type=range] { flex:1; min-width:140px; }
+      .tl-time { font-size:12px; opacity:.8; } .tl-speed { font-size:12px; min-width:48px; text-align:center; font-weight:700; } .tl-note { width:100%; text-align:center; font-size:11px; opacity:.78; }
       body.timelapse #status, body.timelapse #cue { display:none; }
       #cue { position:fixed; left:50%; bottom:52px; transform:translateX(-50%); z-index:8; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:8px 12px; max-width:min(96vw,920px); box-shadow:0 6px 20px rgba(0,0,0,.18); } #cue[hidden] { display:none; }
       .cue-steps { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; } .cue-say { text-align:center; font-size:14px; margin-top:6px; }
-      button.cue { font:inherit; font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+      button.cue { font:inherit; font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--ctl); background:#fff; cursor:pointer; }
       button.cue.done { background:#d8f3dc; border-color:#74c69d; } button.cue.partial { background:#fff3c4; border-color:#d9b94a; } button.cue.cur { outline:3px solid #2a6df4; outline-offset:1px; font-weight:700; } button.cue.reset { opacity:.6; }
       #help { position:fixed; inset:0; z-index:12; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; } #help[hidden] { display:none; }
       .help-card { background:var(--card); border-radius:16px; padding:18px 26px; max-width:520px; } .help-card h2 { margin:0 0 8px; } .help-card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 18px; margin:0; } .help-card dt { font-weight:700; font-family:ui-monospace,Menlo,monospace; font-size:13px; } .help-card dd { margin:0; }
       body.no-badge #status, body.no-badge .conn.demo { display:none; }
-      body.present #keys { display:none; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
+      #status button { font:inherit; margin-left:8px; padding:0 10px; border-radius:999px; border:1px solid var(--ctl); background:#fff; cursor:pointer; }
+      @media (pointer: coarse) { button, .chip, button.icon, #timeline button, .plan-bar button { min-height:44px; min-width:44px; } .plan-bar input { min-height:44px; } button.who, button.link { min-height:44px; } }
+      body.present #keys { display:none; } body.present aside#shed { font-size:16px; width:360px; } body.present .sub { font-size:14px; } body.present aside h3 { font-size:13px; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
       @media print { body > *:not(#plan) { display:none !important; } #plan { position:static; background:#fff; } .plan-bar button, .plan-bar input { display:none; } #plan svg { border:0; height:90vh; } }
       body.plan-open #shed, body.plan-open #status, body.plan-open #keys { display:none; }
       body.hide-ui #shed, body.hide-ui #status, body.hide-ui #keys, body.hide-ui .labels, body.hide-ui #banner, body.hide-ui #cue, body.hide-ui #toasts, body.hide-ui #fps, body.hide-ui .edgearrow { display:none !important; }
@@ -90,15 +95,17 @@
   </head>
   <body>
     <h1 style="position:absolute;left:-9999px">Sprout garden</h1>
-    <div id="app"></div>
-    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · arrows pan · <b>Q</b>/<b>E</b> turn · <b>+</b>/<b>-</b> zoom · <b>1</b>-<b>3</b> views · <b>P</b> plan · <b>S</b> shed · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI · <b>L</b> labels · <b>M</b> calm · <b>K</b> contrast</div>
+    <main id="app" aria-label="Garden view"></main>
+    <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+    <p id="sr-summary" class="sr-only"></p>
+    <div id="keys" aria-label="Keyboard shortcuts">Drag to look around · <b>?</b> all keys · <b>P</b> plan · <b>S</b> shed · <b>D</b> director · <b>T</b> timelapse</div>
     <aside id="shed" aria-label="Garden shed noticeboard"></aside>
-    <div id="plan" hidden></div>
+    <div id="plan" hidden role="region" aria-label="Garden plan"></div>
     <div id="banner" role="status" hidden></div>
     <div id="empty" hidden><b>No files planted yet</b><br/>Run <code>sprout join</code> in your repo and the garden fills in.</div>
-    <div id="timeline" hidden aria-label="Timelapse controls"></div>
-    <div id="cue" hidden aria-label="Demo cue strip"></div>
-    <div id="help" hidden role="dialog" aria-label="Keyboard shortcuts"><div class="help-card"><h2>Keys</h2>
+    <div id="timeline" hidden role="group" aria-label="Timelapse controls"></div>
+    <div id="cue" hidden role="region" aria-label="Demo cue strip"></div>
+    <div id="help" hidden role="dialog" aria-modal="true" aria-label="Keyboard shortcuts"><div class="help-card" tabindex="-1"><h2>Keys</h2>
       <dl><dt>Drag / wheel</dt><dd>orbit / zoom</dd><dt>Arrows, Q E, + -</dt><dd>pan, turn, zoom</dd><dt>1 2 3</dt><dd>overview, top-down, low camera</dd>
       <dt>F</dt><dd>reframe everything</dd><dt>D</dt><dd>director camera (follows the action)</dd><dt>P</dt><dd>garden plan (flat map)</dd>
       <dt>S</dt><dd>garden shed panel</dd><dt>C</dt><dd>demo cue strip</dd><dt>H</dt><dd>hide all UI (screenshots)</dd>

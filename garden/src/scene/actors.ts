@@ -50,14 +50,22 @@ class Mover {
 }
 
 const SKIN = '#e8b98f';
+// Geometry that never changes is created once: gardeners and tools appear and disappear all weekend.
+const RING_OUT = new THREE.RingGeometry(0.34, 0.46, 24), RING_IN = new THREE.RingGeometry(0.2, 0.34, 24);
+const GLASS_TORUS = new THREE.TorusGeometry(0.07, 0.015, 6, 14);
+const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x1d1d1d, side: THREE.DoubleSide, transparent: true, opacity: 0.55 });
 
 interface GardenerRig { armL: THREE.Object3D; armR: THREE.Object3D; legL: THREE.Object3D; legR: THREE.Object3D; tools: Record<string, THREE.Object3D>; tool: string }
-function makeTools(): Record<string, THREE.Object3D> {
+function makeCan(): THREE.Group {
   const can = new THREE.Group(); // watering can
   can.add(mesh(geo.box, mat('#4a90c2'), 0.2, 0.16, 0.14, 0, 0, 0), mesh(geo.cyl, mat('#4a90c2'), 0.02, 0.2, 0.02, 0.16, 0.06, 0));
   (can.children[1] as THREE.Object3D).rotation.z = -0.9; can.add(mesh(geo.box, mat('#2f6a94'), 0.03, 0.14, 0.03, -0.08, 0.1, 0));
+  return can;
+}
+function makeTools(): Record<string, THREE.Object3D> {
+  const can = makeCan();
   const glass = new THREE.Group(); // magnifier
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.015, 6, 14), mat('#8d6e4c')); ring.position.y = 0.13;
+  const ring = new THREE.Mesh(GLASS_TORUS, mat('#8d6e4c')); ring.position.y = 0.13;
   glass.add(ring, mesh(geo.cyl, mat('#8d6e4c'), 0.015, 0.12, 0.015, 0, 0.03, 0), mesh(geo.sphere, mat('#bfe8f5', { opacity: 0.5 }), 0.065, 0.065, 0.01, 0, 0.13, 0));
   const clip = new THREE.Group(); // clipboard
   clip.add(mesh(geo.box, mat('#8d6e4c'), 0.2, 0.26, 0.02, 0, 0.05, 0), mesh(geo.box, mat('#fffdf2'), 0.17, 0.22, 0.025, 0, 0.05, 0.005), mesh(geo.box, mat('#9aa0a6'), 0.07, 0.03, 0.03, 0, 0.17, 0.01));
@@ -77,8 +85,9 @@ const limb = (color: string, len: number, r: number) => {
 function makeGardener(color: string): Mover & { rig: GardenerRig } {
   const m = new Mover(3.2) as Mover & { rig: GardenerRig };
   // Feet ring in the member colour with a dark outline: stays readable on any ground.
-  const outline = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.46, 24), new THREE.MeshBasicMaterial({ color: 0x1d1d1d, side: THREE.DoubleSide, transparent: true, opacity: 0.55 }));
-  const ringM = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.34, 24), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+  const outline = new THREE.Mesh(RING_OUT, OUTLINE_MAT);
+  const ringM = new THREE.Mesh(RING_IN, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+  ringM.name = 'ring-colour';
   outline.rotation.x = ringM.rotation.x = -Math.PI / 2; outline.position.y = 0.025; ringM.position.y = 0.03;
   m.obj.add(outline, ringM);
   m.obj.add(mesh(geo.cyl, mat(color), 0.22, 0.5, 0.22, 0, 0.55, 0));
@@ -251,7 +260,7 @@ export class Actors {
       const label = this.labels.add(h, () => lp.copy(m.obj.position).setY(1.6), 'label member');
       label.style.borderColor = this.memberColor(h);
       return { obj: m.obj, m, label, kneel: 0, rig: m.rig };
-    }, this.scene, (g) => this.labels.remove(g.label));
+    }, this.scene, (g) => { this.labels.remove(g.label); g.obj.traverse((o) => { if (o.name === 'ring-colour') ((o as THREE.Mesh).material as THREE.Material).dispose(); }); });
 
     // Ended sessions leave dormant rows behind; don't draw a bot for each one.
     // Members who share a colour get a shape in front of their name, so the label never relies on colour alone.
@@ -270,7 +279,7 @@ export class Actors {
       b.m.obj.position.copy(this.home(a.handle)).add(new THREE.Vector3(0.8, 0, 0.8));
       b.m.target.copy(b.m.obj.position);
       return { obj: b.m.obj, m: b.m, alert: b.alert, body: b.body, agent: a, rig: b.rig };
-    }, this.scene);
+    }, this.scene, (b) => (b.rig.tip.material as THREE.Material).dispose());
     for (const a of claudes) { const b = this.bots.get(a.sessionId); if (b) b.agent = a; }
 
     // Bees: a subagent that finishes flies back to its parent bot before disappearing.
@@ -298,8 +307,15 @@ export class Actors {
 
     // Butterflies live until acked; acking bursts the pollen where they landed.
     // Very old unacked messages would circle forever; keep the garden readable.
-    const msgs = snap.messages.filter((m) => m.status !== 'acked' &&
+    const fresh = snap.messages.filter((m) => m.status !== 'acked' &&
       snap.at - (m.status === 'sent' ? m.sentAt : (m.deliveredAt ?? m.sentAt)) < (m.status === 'sent' ? 30 : 10) * 60_000);
+    // A flood of messages (a stuck inbox) stays readable: newest first, at most 3 per pair and 10 in the air.
+    const perPair = new Map<string, number>();
+    const msgs = fresh.slice().sort((a, b) => b.sentAt - a.sentAt || b.id - a.id).filter((m) => {
+      const k = `${m.fromHandle}>${m.toHandle}`, n = perPair.get(k) ?? 0;
+      if (n >= 3) return false;
+      perPair.set(k, n + 1); return true;
+    }).slice(0, 10);
     const seen = new Set(msgs.map((m) => String(m.id)));
     for (const [k, f] of this.flies) if (!seen.has(k)) {
       this.fx.burst(f.obj.position.clone(), 0xffd34d, 30, 1.6, 2.5);
@@ -360,7 +376,7 @@ export class Actors {
       if (!this.gardeners.has(h.fromHandle) || !this.gardeners.has(h.toHandle)) return; // nobody to animate
       const tag = new THREE.Group();
       tag.add(mesh(geo.box, mat('#c8a165'), 0.22, 0.3, 0.03, 0, 0, 0), mesh(geo.cyl, mat('#8d6e4c'), 0.008, 0.18, 0.008, 0, 0.22, 0), mesh(geo.sphere, mat('#7fc36a'), 0.06, 0.06, 0.02, 0, 0.05, 0.02));
-      const can = makeTools().can!.clone(); can.visible = true;
+      const can = makeCan();
       tag.add(can); can.position.set(-0.28, -0.1, 0);
       this.scene.add(tag);
       this.handoffs.set(h.id, { id: h.id, from: h.fromHandle, to: h.toHandle, task: h.task, phase: 'walk', t: 0, tag, can });

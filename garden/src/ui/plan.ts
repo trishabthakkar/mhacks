@@ -71,6 +71,8 @@ export function initPlan(el: HTMLElement, h: PlanHandlers) {
     if (pl) { selected = pl.getAttribute('data-path') ?? undefined; if (last) renderPlan(last.s, last.l); }
   });
   el.addEventListener('keydown', (e) => {
+    const tgt = e.target as Element;
+    if ((e.key === 'Enter' || e.key === ' ') && tgt.matches?.('g[data-path]')) { e.preventDefault(); selected = tgt.getAttribute('data-path') ?? undefined; if (last) renderPlan(last.s, last.l); return; }
     if (e.target === input && e.key === 'Enter' && last) {
       const hit = last.l.plants.find((p) => search && p.path.toLowerCase().includes(search));
       if (hit) { selected = hit.path; view = { x: hit.x - 4, y: hit.z - 3, w: 8, h: 6 }; applyView(); renderPlan(last.s, last.l); }

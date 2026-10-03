@@ -14,3 +14,8 @@ test('every activity kind has a plain-English sentence', () => {
 test('missing path does not crash', () => {
   assert.ok(sentence({ id: 1, at: 0, handle: 'a', kind: 'edit', detail: '' }).length > 0);
 });
+
+test('folder paths keep their name', () => {
+  assert.match(sentence({ id: 1, at: 0, handle: 'ivy', kind: 'claim', path: 'src/api/', detail: '' }), /fenced off api/);
+  assert.match(sentence({ id: 1, at: 0, handle: 'ivy', kind: 'release', path: 'src/api/', detail: '' }), /around api/);
+});

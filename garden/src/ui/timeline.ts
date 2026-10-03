@@ -33,6 +33,7 @@ export function renderTimeline(el: HTMLElement, s: TimelineState) {
   if (document.activeElement !== range) range.value = String(Math.round(((s.t - s.start) / Math.max(1, s.end - s.start)) * 1000));
   el.querySelector('[data-tl="play"]')!.textContent = s.playing ? '⏸' : '▶';
   el.querySelector('.tl-time')!.textContent = `${fmt(Math.max(s.start, s.t))}  ·  ${fmt(s.start)} → ${fmt(s.end)}`;
+  range.setAttribute('aria-valuetext', fmt(Math.max(s.start, s.t)));
   el.querySelector('.tl-speed')!.textContent = speedLabel(s.speed);
 }
 

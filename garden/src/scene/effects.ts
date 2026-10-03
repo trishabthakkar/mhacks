@@ -5,7 +5,7 @@ interface Item {
   w: number; h: number; measured: boolean;
   x: number; y: number; vis: boolean; dist: number;
   lastX: number; lastY: number; lastS: number; lastO: number; lastDisplay: string;
-  arrow?: HTMLElement; arrowText: string;
+  arrow?: HTMLElement; arrowText: string; arrowRect?: Rect;
 }
 interface Rect { l: number; t: number; r: number; b: number }
 
@@ -92,12 +92,13 @@ export class Labels {
       else {
         this.hide(i);
         if (i.edge) this.showArrow(i, behind, ax0, ay0, ax1, ay1);
-        else if (i.arrow) i.arrow.style.display = 'none';
+        else if (i.arrow) { i.arrow.style.display = 'none'; i.arrowRect = undefined; }
       }
     }
     // Highest priority first; ties: nearer the camera first.
     this.order.sort((a, b) => b.pri - a.pri || a.dist - b.dist);
     this.placed.length = 0;
+    for (const i of this.items) if (i.arrow && i.arrow.style.display !== 'none' && i.arrowRect) this.placed.push(i.arrowRect); // edge arrows are obstacles too
     for (const i of this.order) {
       if (!i.measured) { i.el.style.display = ''; i.w = i.el.offsetWidth; i.h = i.el.offsetHeight; i.measured = true; }
       const s = i.pri >= 4 ? 1 : Math.min(1.08, Math.max(0.92, 1.25 - i.dist / 70));
@@ -118,7 +119,7 @@ export class Labels {
       this.placed.push(rect);
       const far = Math.min(1, Math.max(0, (i.dist - 60) / 40));
       this.show(i, x, y, s, i.pri >= 4 ? 1 : 1 - far * 0.7);
-      if (i.arrow) i.arrow.style.display = 'none';
+      if (i.arrow) { i.arrow.style.display = 'none'; i.arrowRect = undefined; }
     }
   }
 
@@ -152,6 +153,8 @@ export class Labels {
     if (i.arrow.textContent !== text) i.arrow.textContent = text;
     i.arrow.style.display = '';
     i.arrow.style.transform = `translate(${ex.toFixed(1)}px,${ey.toFixed(1)}px) translate(-50%,-50%)`;
+    const aw = i.arrow.offsetWidth || 70, ah = i.arrow.offsetHeight || 24;
+    i.arrowRect = { l: ex - aw / 2, r: ex + aw / 2, t: ey - ah / 2, b: ey + ah / 2 };
   }
 }
 

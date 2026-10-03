@@ -73,14 +73,16 @@ export function renderShed(el: HTMLElement, s: GardenSnapshot, o: ShedOptions) {
   el.classList.toggle('collapsed', o.collapsed);
 
   const dot = (c: string, on: boolean) => `<span class="dot" style="background:${on ? c : 'transparent'};border-color:${c}" aria-hidden="true"></span>`;
-  const gardeners = s.members.map((m) => {
+  const MAX_PEOPLE = 10;
+  const ordered = [...s.members].sort((a, b) => Number(b.online) - Number(a.online));
+  const gardeners = ordered.slice(0, MAX_PEOPLE).map((m) => {
     const bot = s.agents.find((a) => a.handle === m.handle && a.kind === 'claude' && a.status !== 'dormant');
     const unread = s.messages.filter((x) => x.toHandle === m.handle && x.status !== 'acked').length;
     const t = lastRun.get(m.handle);
     const what = !m.online ? 'offline' : bot ? `${bot.status}${bot.currentPath ? ` · ${esc(base(bot.currentPath))}` : ''}` : 'no agent';
     return `<li><button class="who" data-focus="member:${esc(m.handle)}" aria-label="Focus the camera on ${esc(m.handle)}">${dot(m.color, m.online)}<b>${esc(m.handle)}</b></button>
       <span class="sub">${what}${unread ? ` · ✉ ${unread} unread` : ''}${t === undefined ? '' : ` · tests ${t === 0 ? '✓ pass' : '✗ fail'}`}</span></li>`;
-  }).join('') || '<li class="sub">nobody has joined yet</li>';
+  }).join('') + (ordered.length > MAX_PEOPLE ? `<li class="sub">+${ordered.length - MAX_PEOPLE} more (offline)</li>` : '') || '<li class="sub">nobody has joined yet</li>';
 
   const color = (h: string) => s.members.find((m) => m.handle === h)?.color ?? '#888';
   const fences = s.claims.map((c) => {
@@ -89,11 +91,21 @@ export function renderShed(el: HTMLElement, s: GardenSnapshot, o: ShedOptions) {
       <span class="sub">${left <= 5 ? '⚠ ' : ''}expires in ${fmtMin(left)}</span></li>`;
   }).join('') || '<li class="sub">no fences up</li>';
 
-  const open = s.messages.filter((m) => m.status !== 'acked').map((m) => {
-    const age = fmtMin(mins(s.at - m.sentAt));
-    const state = m.status === 'sent' ? `waiting for delivery (${age})` : `delivered, not acknowledged (${age})`;
-    return `<li><b>${esc(m.fromHandle)}</b> → <b>${esc(m.toHandle)}</b> <span class="sub">${esc(m.kind)} · ${state}</span><div class="sub">${esc(clip(m.body, 140))}</div></li>`;
-  }).join('') || '<li class="sub">no open requests</li>';
+  // Many near-identical messages (a busy team, or a stuck inbox) collapse into one line per sender -> recipient.
+  const groups = new Map<string, { from: string; to: string; kind: string; count: number; oldest: number; waiting: number; body: string; sent: number }>();
+  for (const m of s.messages) {
+    if (m.status === 'acked') continue;
+    const k = `${m.fromHandle}\0${m.toHandle}`, g = groups.get(k);
+    if (g) { g.count++; g.oldest = Math.min(g.oldest, m.sentAt); if (m.status === 'sent') g.waiting++; if (m.sentAt >= g.sent) { g.sent = m.sentAt; g.body = m.body; } }
+    else groups.set(k, { from: m.fromHandle, to: m.toHandle, kind: m.kind, count: 1, oldest: m.sentAt, waiting: m.status === 'sent' ? 1 : 0, body: m.body, sent: m.sentAt });
+  }
+  const sortedGroups = [...groups.values()].sort((a, b) => b.sent - a.sent);
+  const MAX_GROUPS = 4;
+  const open = sortedGroups.slice(0, MAX_GROUPS).map((g) => {
+    const age = fmtMin(mins(s.at - g.oldest));
+    const state = g.waiting === g.count ? 'waiting for delivery' : g.waiting ? `${g.waiting} undelivered` : 'delivered, not acknowledged';
+    return `<li><b>${esc(g.from)}</b> → <b>${esc(g.to)}</b>${g.count > 1 ? ` <b>×${g.count}</b>` : ''} <span class="sub">${esc(g.kind)} · ${state} · oldest ${age}</span><div class="sub">${esc(clip(g.body, 110))}</div></li>`;
+  }).join('') + (sortedGroups.length > MAX_GROUPS ? `<li class="sub">+${sortedGroups.length - MAX_GROUPS} more conversations</li>` : '') || '<li class="sub">no open requests</li>';
 
   const hand = (s.handoffs ?? []).filter((h) => h.status === 'offered').map((h) =>
     `<li>🌱 <b>${esc(h.fromHandle)}</b> → <b>${esc(h.toHandle)}</b> <span class="sub">${esc(clip(h.task, 80))} · waiting to accept</span></li>`).join('');
@@ -125,7 +137,7 @@ export function renderShed(el: HTMLElement, s: GardenSnapshot, o: ShedOptions) {
       <h3>Botanist</h3><ul>${certs}</ul>
       <h3 id="feed-h">Happening now</h3>
       <div class="chips" role="group" aria-label="Filter the live feed">${chips}</div>
-      <ul class="feed" role="log" aria-live="polite" aria-labelledby="feed-h">${feed}</ul>
+      <ul class="feed" aria-labelledby="feed-h">${feed}</ul>
       <div class="fresh sub" data-fresh>updated just now</div>
     </div>`;
   const sc = el.querySelector<HTMLElement>('.shed-scroll');

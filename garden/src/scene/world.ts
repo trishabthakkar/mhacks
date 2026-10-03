@@ -12,8 +12,14 @@ import { CameraRig } from './camera.ts';
 import { PALETTE } from './palette.ts';
 import { Props, type Quality } from './props.ts';
 
+const FENCE_RING = new THREE.TorusGeometry(0.8, 0.05, 6, 24); // one-file fences share this
 const LOD_LIMIT = 80; // above this many plants, quiet ones become ground cover
 const ACTIVE_MS = 30 * 60_000;
+
+/** Free the GPU buffers of baked (merged) scenery before it is rebuilt; the shared unit shapes are left alone. */
+export function disposeGeometries(root: THREE.Object3D) {
+  root.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); });
+}
 
 export class GardenWorld implements WorldLookup {
   readonly renderer: THREE.WebGLRenderer;
@@ -187,6 +193,7 @@ export class GardenWorld implements WorldLookup {
     const key = JSON.stringify(this.layout.beds);
     if (key !== this.layoutKey) {
       this.layoutKey = key;
+      disposeGeometries(this.bedGroup);
       this.bedGroup.clear();
       for (const el of this.bedLabels) this.labels.remove(el);
       this.bedLabels = [];
@@ -296,7 +303,7 @@ export class GardenWorld implements WorldLookup {
   showLock(path: string | null) {
     const n = path ? this.field.get(path) : undefined;
     this.lockMesh.visible = !!n;
-    if (n) this.lockMesh.position.set(n.x + 0.45, 1.35 * n.size + 0.2, n.z);
+    if (n) this.lockMesh.position.set(n.x + 0.38, 1.0 * n.size + 0.45, n.z);
   }
 
   /** One animated fence per claim: grows in, pulses when about to expire, collapses when released. */
@@ -321,7 +328,7 @@ export class GardenWorld implements WorldLookup {
       if (!c.path.endsWith('/')) { // one file: a ring of posts around the plant, not a whole pen
         const hit = this.layout.plants.find((q) => q.path === c.path);
         const cx = hit?.x ?? (r.minX + r.maxX) / 2, cz = hit?.z ?? (r.minZ + r.maxZ) / 2;
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.05, 6, 24), m); ring.rotation.x = Math.PI / 2; ring.position.set(cx, 0.45, cz); add(ring);
+        const ring = new THREE.Mesh(FENCE_RING, m); ring.rotation.x = Math.PI / 2; ring.position.set(cx, 0.45, cz); add(ring);
         for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; add(mesh(geo.box, m, 0.08, 0.55, 0.08, cx + Math.cos(a) * 0.8, 0.4, cz + Math.sin(a) * 0.8)); }
       } else {
         const side = (x0: number, z0: number, x1: number, z1: number) => {
@@ -409,10 +416,11 @@ export class GardenWorld implements WorldLookup {
   /** Space the shed takes: a column on the right on wide screens, a bottom sheet on narrow ones. */
   private reservedPx(): number {
     const shed = document.getElementById('shed');
-    if (!shed || shed.offsetWidth === 0 || getComputedStyle(shed).display === 'none') { this.reservedBottom = 0; return 0; }
-    if (shed.classList.contains('collapsed')) { this.reservedBottom = 0; return 0; } // just a small pill
-    if (innerWidth < 900) { this.reservedBottom = shed.offsetHeight + 12; return 0; }
-    this.reservedBottom = 0;
+    const strip = document.body.classList.contains('hide-ui') ? 0 : 52; // room for the status chip, so the gardeners' row is never under it
+    if (!shed || shed.offsetWidth === 0 || getComputedStyle(shed).display === 'none') { this.reservedBottom = strip; return 0; }
+    if (shed.classList.contains('collapsed')) { this.reservedBottom = strip; return 0; } // just a small pill
+    if (innerWidth < 900) { this.reservedBottom = shed.offsetHeight + 12 + strip; return 0; }
+    this.reservedBottom = strip;
     return shed.offsetWidth + 24;
   }
   private reservedBottom = 0;

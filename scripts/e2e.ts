@@ -205,9 +205,11 @@ await step('16. restore claimMode=warn', async () => {
   await until('config', () => [...conn.db.config.iter()].find((c) => c.key === 'claimMode')?.value === 'warn');
 });
 
-// Remove the throwaway members (their plants stay; demo-reset or a sprout-demo wipe clears those).
+// Stop the daemons first (their heartbeats would re-create the members), then remove the throwaway members
+// (their plants stay; demo-reset or a sprout-demo wipe clears those).
+for (const h of [A, B]) { try { sprout(h, ['pause']); const pid = Number(execFileSync('cat', [join(root, `home-${h}`, 'daemon.pid')], { encoding: 'utf8' })); process.kill(pid); } catch { /* already gone */ } }
+await sleep(1000);
 for (const h of [A, B]) { try { conn.reducers.removeMember({ handle: h }); } catch { /* old module */ } }
 await sleep(800);
-for (const h of [A, B]) { try { sprout(h, ['pause']); const pid = Number(execFileSync('cat', [join(root, `home-${h}`, 'daemon.pid')], { encoding: 'utf8' })); process.kill(pid); } catch { /* already gone */ } }
 console.log(`\n${fail === 0 ? 'ALL GOOD' : 'FAILURES'}: ${pass} passed, ${fail} failed, ${skip} skipped`);
 process.exit(fail === 0 ? 0 : 1);

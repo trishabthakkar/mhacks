@@ -113,9 +113,15 @@ echo "==> Caddy config"
 cat > /etc/caddy/Caddyfile <<CADDY
 $HOST {
 	encode gzip
-	@mcp path /mcp /mcp/* /health
-	reverse_proxy @mcp 127.0.0.1:8080
-	respond "sprout" 200
+	handle /health {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle /mcp* {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		respond "sprout" 200
+	}
 }
 $CADDY_EXTRA
 CADDY

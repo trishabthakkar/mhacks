@@ -1,13 +1,13 @@
 // Put the shared Sprout state into the demo's starting position. Safe to re-run.
 //   cd mcp && SPROUT_STDB_URI=wss://maincloud.spacetimedb.com SPROUT_DB=sprout-demo \
-//     npx tsx ../demo/demo-reset.ts trisha alex
+//     npx tsx ../demo/demo-reset.ts manahil shriya
 // - claimMode=block (PreToolUse denies edits on fenced files), claimTtlMinutes=30
 // - releases every fence the demo members hold
 // - acks every un-acked message to them, declines their open handoffs
 // It does not touch plants: A's live edit makes the new diff the botanist checks.
 import { StdbDb } from '../mcp/src/stdbDb.ts';
 
-const [a = 'trisha', b = 'alex'] = process.argv.slice(2);
+const [a = 'manahil', b = 'shriya'] = process.argv.slice(2);
 const uri = process.env.SPROUT_STDB_URI;
 const name = process.env.SPROUT_DB;
 if (!uri || !name) {

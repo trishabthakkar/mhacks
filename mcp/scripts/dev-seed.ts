@@ -2,7 +2,7 @@
 // Usage: SPROUT_STDB_URI=ws://127.0.0.1:3000 SPROUT_DB=sprout npx tsx scripts/dev-seed.ts [handles...]
 import { StdbDb } from '../src/stdbDb.ts';
 
-const handles = process.argv.slice(2).length ? process.argv.slice(2) : ['trisha', 'alex'];
+const handles = process.argv.slice(2).length ? process.argv.slice(2) : ['manahil', 'shriya'];
 const db = new StdbDb(process.env.SPROUT_STDB_URI ?? 'ws://127.0.0.1:3000', process.env.SPROUT_DB ?? 'sprout', () => {});
 await db.ready(10_000);
 for (const h of handles) if (!db.member(h)) await db.joinMember(h);

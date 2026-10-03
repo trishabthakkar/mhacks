@@ -226,3 +226,28 @@ test('a db that throws anything becomes a friendly error string', async () => {
   assert.equal(t.isError, true);
   assert.match(t.text, /cache not ready/);
 });
+
+// ---- module error texts (real reducer messages) ----
+test('claim_files: a module conflict error is shown once, without a duplicated suggestion', async () => {
+  const { db, now } = setup();
+  const raced: SproutDb = Object.assign(Object.create(Object.getPrototypeOf(db)), db, {
+    claimFiles: async () => {
+      throw new Error('src/api/x.ts is fenced by alex (claim on src/api/) until 6:30pm. Use post_finding to ask them, or work elsewhere.');
+    },
+  });
+  const h = makeHandlers(raced, { now: () => now.t });
+  const r = await h.claim_files('trisha', { paths: ['src/api/x.ts'] });
+  assert.equal(r.isError, true);
+  assert.equal(r.text, 'Not claimed: src/api/x.ts is fenced by alex (claim on src/api/) until 6:30pm. Use post_finding to ask them, or work elsewhere.');
+});
+
+test('submit_evidence: unknown file → friendly refusal with a next step', async () => {
+  const { db, now } = setup();
+  const noPlant: SproutDb = Object.assign(Object.create(Object.getPrototypeOf(db)), db, {
+    submitEvidence: async () => { throw new Error('no plant for src/nope.ts; the botanist only certifies files the garden knows'); },
+  });
+  const h = makeHandlers(noPlant, { now: () => now.t });
+  const r = await h.submit_evidence('trisha', { path: 'src/nope.ts', task: 't' });
+  assert.equal(r.isError, true);
+  assert.match(r.text, /^Botanist can't check src\/nope\.ts: no plant for src\/nope\.ts.*Next: check the path is repo-relative/);
+});

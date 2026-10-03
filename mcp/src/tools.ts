@@ -164,7 +164,8 @@ export function makeHandlers(db: SproutDb, opts: HandlerOptions = {}) {
       try {
         await db.claimFiles(me, norm, ttl);
       } catch (e) {
-        return err(`Not claimed: ${msgOf(e)}. Use post_finding to ask them, or work elsewhere.`);
+        const m = msgOf(e).replace(/\.$/, '');
+        return err(/post_finding/.test(m) ? `Not claimed: ${m}.` : `Not claimed: ${m}. Use post_finding to ask them, or work elsewhere.`);
       }
       return ok(`Fenced ${norm.join(', ')} until ${clock(now() + ttl * 60_000)} (${ttl} min). Release with release_files when you are done.`);
     }),
@@ -250,7 +251,13 @@ export function makeHandlers(db: SproutDb, opts: HandlerOptions = {}) {
       const r = normPath(path);
       if ('error' in r) return err(r.error);
       const before = Math.max(0, ...db.certifications().map((c) => c.id));
-      await db.submitEvidence(me, r.path, (task ?? '').trim());
+      try {
+        await db.submitEvidence(me, r.path, (task ?? '').trim());
+      } catch (e) {
+        return err(
+          `Botanist can't check ${r.path}: ${msgOf(e)}. Next: check the path is repo-relative and that the Sprout companion is running in this repo (\`sprout join\`), so the garden knows the file.`
+        );
+      }
       const cert = await db.waitForCertification(
         (c) => c.id > before && c.path === r.path && c.handle === me,
         evidenceTimeoutMs

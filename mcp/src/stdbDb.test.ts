@@ -30,7 +30,7 @@ test('plumbing: connects, subscribes, reads from cache, calls reducers', { skip 
   assert.equal(await db.waitForCertification((c) => c.handle === `nobody${run}`, 50), undefined);
 });
 
-test('full loop: claim, message lifecycle, handoff, certification (needs P1 rule bodies)', { skip }, async () => {
+test('full loop: claim, message lifecycle, handoff, certification ', { skip }, async () => {
   db ??= new StdbDb(URI!, NAME);
   await db.ready(10_000);
   await db.claimFiles(A, [`src/${run}/`], 30);
@@ -49,6 +49,7 @@ test('full loop: claim, message lifecycle, handoff, certification (needs P1 rule
   await db.offerHandoff(A, B, `task ${run}`, 'notes');
   await waitUntil(() => db!.handoffs().some((h) => h.task === `task ${run}`), 2000, 'handoff row');
 
+  await db.seedRepo([{ path: `src/${run}/x.ts`, lines: 10 }]);
   await db.submitEvidence(A, `src/${run}/x.ts`, 'demo');
   const cert = await db.waitForCertification((c) => c.handle === A && c.path === `src/${run}/x.ts`, 3000);
   assert.ok(cert, 'certification row arrives');

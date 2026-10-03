@@ -13,7 +13,15 @@ Deployed MCP URL: **`https://35-225-24-109.sslip.io/mcp`** (GCP VM `sprout-mcp`,
 | Shriya | P3 (companion) | `shriya` | `claude mcp add --transport http sprout https://35-225-24-109.sslip.io/mcp --header "X-Sprout-Member: shriya"` |
 | Trisha | P4 (garden) | `trisha` | `claude mcp add --transport http sprout https://35-225-24-109.sslip.io/mcp --header "X-Sprout-Member: trisha"` |
 
-Then `claude mcp list` should show `sprout … ✔ Connected`. Use the same handle everywhere (`sprout join … --handle <same>` later); a different spelling is a different person. Handles: lowercase `[a-z0-9_-]`, ≤32 chars.
+Then `claude mcp list` should show `sprout … ✔ Connected`.
+
+Team code for `sprout join` (encodes `{stdbUri: https://maincloud.spacetimedb.com, db: sprout-mhacks, mcpUrl: https://35-225-24-109.sslip.io/mcp}`):
+
+```
+eyJzdGRiVXJpIjoiaHR0cHM6Ly9tYWluY2xvdWQuc3BhY2V0aW1lZGIuY29tIiwiZGIiOiJzcHJvdXQtbWhhY2tzIiwibWNwVXJsIjoiaHR0cHM6Ly8zNS0yMjUtMjQtMTA5LnNzbGlwLmlvL21jcCJ9
+```
+
+`sprout join <code> --handle <you>` (see companion/README.md) also prints the `claude mcp add` line above. Use the same handle everywhere (`sprout join … --handle <same>` later); a different spelling is a different person. Handles: lowercase `[a-z0-9_-]`, ≤32 chars.
 
 ## Connect Claude Code (any team)
 

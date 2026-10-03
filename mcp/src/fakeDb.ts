@@ -2,6 +2,7 @@
 // until the real SpacetimeDB bindings land. Rules here are a stand-in for the module's.
 import { checkEvidence } from '../../shared/botanist.ts';
 import { DEFAULT_CLAIM_TTL_MIN, MAX_MESSAGE_BODY, MEMBER_COLORS } from '../../shared/constants.ts';
+import { clock } from './time.ts';
 import type {
   AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView, ReportableStatus, SproutDb,
 } from './db.ts';
@@ -9,9 +10,6 @@ import type {
 const overlaps = (a: string, b: string) =>
   a === b || (a.endsWith('/') && b.startsWith(a)) || (b.endsWith('/') && a.startsWith(b));
 
-const clock = (ms: number) =>
-  new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Detroit' })
-    .replace(' ', '').toLowerCase();
 
 export class FakeDb implements SproutDb {
   private _members = new Map<string, MemberView>();

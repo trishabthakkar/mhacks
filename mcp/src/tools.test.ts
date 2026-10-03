@@ -251,3 +251,10 @@ test('submit_evidence: unknown file → friendly refusal with a next step', asyn
   assert.equal(r.isError, true);
   assert.match(r.text, /^Botanist can't check src\/nope\.ts: no plant for src\/nope\.ts.*Next: check the path is repo-relative/);
 });
+
+test('team_status: an action that just repeats the status is not printed twice', async () => {
+  const { db, h } = setup();
+  db.seedAgent({ sessionId: 'zzzzzz99', handle: 'alex', status: 'working', currentAction: 'working' });
+  const r = await h.team_status('trisha', {});
+  assert.match(r.text, /alex: agent zzzzzz working\n/);
+});

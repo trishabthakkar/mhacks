@@ -117,7 +117,7 @@ export function makeHandlers(db: SproutDb, opts: HandlerOptions = {}) {
       if (!agents.length) lines.push('  (none active)');
       for (const a of agents) {
         const who = a.kind === 'subagent' ? 'subagent' : 'agent';
-        const doing = [a.currentAction, a.currentPath].filter(Boolean).join(' ');
+        const doing = [a.currentAction === a.status ? '' : a.currentAction, a.currentPath].filter(Boolean).join(' ');
         lines.push(`  ${a.handle}: ${who} ${a.sessionId.slice(0, 6)} ${a.status}${doing ? ` — ${doing}` : ''}`);
       }
 

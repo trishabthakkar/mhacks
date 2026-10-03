@@ -9,6 +9,7 @@ import { checkEvidence } from '../../shared/botanist.ts';
 import {
   LIM, bedOf, cap, claimMatches, claimsOverlap, fmtUntil, reqHandle, reqPath, reqText, toMs,
 } from './rules.ts';
+import { shouldGoDormant, wakeStage } from './stages.ts';
 
 export default spacetimedb;
 
@@ -175,7 +176,9 @@ export const seedRepo = spacetimedb.reducer({ files: t.array(SeedFile) }, (ctx, 
     try { path = reqPath(f.path); } catch { continue; } // skip bad entries, keep the rest
     const p = ctx.db.plant.path.find(path);
     if (p) {
-      ctx.db.plant.path.update({ ...p, lines: f.lines, stage: p.stage === 'seed' && f.lines > 0 ? 'growing' : p.stage });
+      // Seeding (every `sprout join`) counts as activity: it wakes dormant plants.
+      const stage = wakeStage(p);
+      ctx.db.plant.path.update({ ...p, lines: f.lines, stage: stage === 'seed' && f.lines > 0 ? 'growing' : stage, lastActivity: ctx.timestamp });
     } else {
       ctx.db.plant.insert({
         path, bed: bedOf(path), lines: f.lines, stage: f.lines > 0 ? 'growing' : 'seed', bugs: 0,
@@ -259,12 +262,16 @@ export const ingestActivity = spacetimedb.reducer(
         });
         return;
       }
-      const stage = p.stage === 'seed' || p.stage === 'sprout' || p.stage === 'dormant' ? 'growing' : p.stage;
+      const woke = wakeStage(p);
+      const stage = woke === 'seed' || woke === 'sprout' ? 'growing' : woke;
       ctx.db.plant.path.update({ ...p, lines: a.lines ?? p.lines, stage, lastActivity: ctx.timestamp, lastTouchedBy: handle });
       return;
     }
-    // Any other activity on an existing plant: a seed sprouts.
-    if (p) ctx.db.plant.path.update({ ...p, stage: p.stage === 'seed' ? 'sprout' : p.stage, lastActivity: ctx.timestamp });
+    // Any other activity on an existing plant: a seed sprouts, a dormant plant wakes.
+    if (p) {
+      const woke = wakeStage(p);
+      ctx.db.plant.path.update({ ...p, stage: woke === 'seed' ? 'sprout' : woke, lastActivity: ctx.timestamp });
+    }
   }
 );
 
@@ -325,7 +332,7 @@ export const recordDiff = spacetimedb.reducer(
         const diffPending = !!p.lastDiffAt && (!p.lastBloomAt || p.lastDiffAt.microsSinceUnixEpoch > p.lastBloomAt.microsSinceUnixEpoch);
         const certified = p.stage === 'bloom' && !diffPending;
         if (commit && certified) continue; // committing certified work: nothing changes
-        if (commit && diffPending) ctx.db.plant.path.update({ ...p, lastActivity: ctx.timestamp, lastTouchedBy: handle });
+        if (commit && diffPending) ctx.db.plant.path.update({ ...p, stage: wakeStage(p), lastActivity: ctx.timestamp, lastTouchedBy: handle });
         else ctx.db.plant.path.update({ ...p, stage: 'bud', lastActivity: ctx.timestamp, lastTouchedBy: handle, lastDiffAt: ctx.timestamp });
       } else {
         ctx.db.plant.insert({
@@ -532,6 +539,9 @@ export const sweep = spacetimedb.reducer({ onSchedule: sweepTimer }, { arg: swee
     if (a.status !== 'dormant' && now - a.lastSeen.microsSinceUnixEpoch > 10n * MIN_US) {
       ctx.db.agent.sessionId.update({ ...a, status: 'dormant', currentAction: 'dormant' });
     }
+  }
+  for (const p of [...ctx.db.plant.iter()]) {
+    if (shouldGoDormant(p, now)) ctx.db.plant.path.update({ ...p, stage: 'dormant' });
   }
 });
 

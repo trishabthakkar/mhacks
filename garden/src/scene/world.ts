@@ -7,6 +7,7 @@ import { Actors, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
 import { flowerColor, geo, mat, mesh } from './materials.ts';
 import { buildPlant } from './plantMesh.ts';
+import { CameraRig } from './camera.ts';
 
 interface PlantNode { group: THREE.Group; holder: THREE.Group; stage: PlantStage; size: number; bugs: number; bugGroup: THREE.Group; born: number; phase: number; x: number; z: number; path: string }
 
@@ -25,6 +26,7 @@ export class GardenWorld implements WorldLookup {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
   readonly controls: OrbitControls;
+  readonly rig: CameraRig;
   private labels: Labels;
   private fx: Particles;
   private actors: Actors;
@@ -36,6 +38,7 @@ export class GardenWorld implements WorldLookup {
   private nodes = new Map<string, PlantNode>();
   private layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
   private layoutKey = '';
+  private layoutFirst = true;
   private fenceKey = '';
   private snap!: GardenSnapshot;
   private plantXZ = new Map<string, THREE.Vector3>();
@@ -74,6 +77,7 @@ export class GardenWorld implements WorldLookup {
     this.camera.position.set(0, 18, 22);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true; this.controls.maxPolarAngle = Math.PI * 0.48; this.controls.maxDistance = 90;
+    this.rig = new CameraRig(this.camera, this.controls, host);
     this.resize(); addEventListener('resize', () => this.resize());
 
     store.subscribe((u) => this.onUpdate(u));
@@ -89,6 +93,8 @@ export class GardenWorld implements WorldLookup {
     const r = claim && this.fenceRect(claim.path);
     return r ? new THREE.Vector3((r.minX + r.maxX) / 2, 0, r.maxZ) : undefined;
   }
+  /** Front edge of the garden where gardeners wait, and half the garden's width. */
+  get homeFrame() { return { halfW: Math.max(6, this.layout.width / 2), frontZ: Math.max(4, this.layout.depth / 2) + 2.4 }; }
   gardenerPos(handle: string) { return this.actors.gardenerPos(handle); }
   get botFocus() { return this.actors.focus; }
   setMotion(m: number) { this.actors.motion = m; this.fx.reducedMotion = m < 0.5; }
@@ -140,6 +146,8 @@ export class GardenWorld implements WorldLookup {
         this.bedLabels.push(this.labels.add(b.greenhouse ? `${b.name} (greenhouse)` : b.name, () => new THREE.Vector3(b.x, 0.35, b.z + b.d / 2 + 0.2), 'label bed'));
       }
       this.fenceKey = '';
+      if (!this.rig.userMoved) this.refit(this.layoutFirst);
+      this.layoutFirst = false;
     }
     this.onLayout(this.layout);
   }
@@ -201,14 +209,31 @@ export class GardenWorld implements WorldLookup {
   }
 
   focusOnMember(handle: string | null) { this.follow = handle; if (handle) this.director = false; }
-  frameGarden() {
-    this.controls.target.set(0, 0, 0);
-    this.camera.position.set(0, this.extent * 1.4 + 8, this.extent * 1.7 + 12);
+  /** Everything that should be on screen: beds, the gardeners' row in front, the botanist at the right. */
+  private fitBox() {
+    const bs = this.layout.beds;
+    const { halfW, frontZ } = this.homeFrame;
+    let minX = -halfW, maxX = halfW + 3.5, minZ = -4, maxZ = frontZ + 1.4;
+    for (const b of bs) { minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2); minZ = Math.min(minZ, b.z - b.d / 2); }
+    return { minX: minX - 1, maxX: maxX + 1, minZ: minZ - 1, maxZ };
   }
+  reservedForShed() { return this.reservedPx(); }
+  private reservedPx() {
+    const shed = document.getElementById('shed');
+    return shed && shed.offsetWidth > 0 && getComputedStyle(shed).display !== 'none' ? shed.offsetWidth + 24 : 0;
+  }
+  refit(instant = false) {
+    this.rig.setReserved(this.reservedPx());
+    this.rig.fit(this.fitBox(), undefined, instant);
+  }
+  /** Reframe (F): clears manual moves and fits everything. */
+  frameGarden(instant = false) { this.refit(instant); }
 
   private resize() {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
     this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.rig.setReserved(this.reservedPx());
+    if (!this.rig.userMoved) this.rig.fit(this.fitBox(), undefined, true);
   }
 
   private frame() {
@@ -231,6 +256,7 @@ export class GardenWorld implements WorldLookup {
       const d = focus.clone().sub(this.controls.target).multiplyScalar(Math.min(1, dt * 1.6));
       this.controls.target.add(d); this.camera.position.add(d);
     }
+    this.rig.update(dt);
     this.controls.update();
     this.labels.update(this.host.clientWidth, this.host.clientHeight);
     this.renderer.render(this.scene, this.camera);

@@ -69,4 +69,11 @@ if (q.get('debug') === '1') {
   const el = document.getElementById('fps')!; el.hidden = false;
   setInterval(() => { el.textContent = `${world.fps} fps`; }, 500);
 }
-void start().then(() => world.frameGarden());
+// ?present=1: projector mode (big labels, no hints, director camera).
+if (q.get('present') === '1') {
+  document.body.classList.add('present');
+  world.director = true;
+}
+// Keep the scene centered in the space the shed leaves free, whatever its height/width does.
+new ResizeObserver(() => { if (!world.rig.userMoved) world.refit(); else world.rig.setReserved(world.reservedForShed()); }).observe(shed);
+void start().then(() => world.frameGarden(true));

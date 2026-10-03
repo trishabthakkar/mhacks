@@ -25,7 +25,7 @@
       .dot { width:10px; height:10px; border-radius:50%; border:2px solid; display:inline-block; }
       .badge { display:inline-block; background:#ffe9a8; border:1px solid #d9b94a; border-radius:999px; padding:0 8px; font-size:11px; margin-bottom:4px; }
       #status { position:fixed; left:12px; bottom:12px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:3px 12px; font-size:12px; }
-      #keys { position:fixed; left:12px; top:12px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
+      #keys { position:fixed; left:12px; top:12px; max-width:calc(100vw - 360px); line-height:1.5; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
       #fps { position:fixed; left:12px; bottom:44px; font:12px monospace; background:#000a; color:#0f0; padding:2px 6px; }
       #plan { position:fixed; inset:0; background:#f6f1df; padding:16px; } #plan[hidden] { display:none; }
       #plan svg { width:100%; height:calc(100% - 28px); } #plan .legend { font-size:13px; padding-top:6px; }
@@ -33,6 +33,7 @@
       .small { font-size:.42px; fill:#3b3a30; } .stage { font-size:.4px; fill:#3b3a30; } .stage.b { font-weight:800; fill:#a02c6a; }
       .plant { stroke:#3b3a30; stroke-width:.06; } .plant.seed { fill:#8b6a45; } .plant.sprout { fill:#a8d88a; } .plant.growing { fill:#5fa04a; }
       .plant.bud { fill:#c9d86b; } .plant.bloom { fill:#f48fb1; } .plant.dormant { fill:#bdb9a4; }
+      body.present #keys { display:none; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
       body.hide-ui aside, body.hide-ui #status, body.hide-ui #keys, body.hide-ui .labels { display:none; }
       @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
     </style>
@@ -40,7 +41,7 @@
   <body>
     <h1 style="position:absolute;left:-9999px">Sprout garden</h1>
     <div id="app"></div>
-    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · <b>P</b> plan · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI</div>
+    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · arrows pan · <b>Q</b>/<b>E</b> turn · <b>+</b>/<b>-</b> zoom · <b>1</b>-<b>3</b> views · <b>P</b> plan · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI</div>
     <aside id="shed" aria-label="Garden shed noticeboard"></aside>
     <div id="plan" hidden></div>
     <div id="status" role="status"></div>

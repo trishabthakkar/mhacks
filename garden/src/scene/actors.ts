@@ -9,6 +9,7 @@ export interface WorldLookup {
   bedOfPath(path: string): string | undefined;
   fenceGate(path: string): THREE.Vector3 | undefined;
   extent: number;
+  homeFrame: { halfW: number; frontZ: number };
 }
 
 class Mover {
@@ -104,22 +105,35 @@ export class Actors {
   private job: { j: BotanistJob; phase: 'walk' | 'hold' | 'home'; t: number; bubble?: HTMLElement } | null = null;
   private queue: BotanistJob[] = [];
   private clock = 0;
+  private homes = new Map<string, THREE.Vector3>();
+  private botHome = new THREE.Vector3();
   motion = 1;
   /** Latest place something happened, for director mode. */
   focus: THREE.Vector3 | undefined;
 
   constructor(private scene: THREE.Scene, private world: WorldLookup, private labels: Labels, private fx: Particles) {
-    this.botanist.obj.position.set(world.extent + 4, 0, -2);
-    this.botanist.target.copy(this.botanist.obj.position);
+    this.botHome.set(world.homeFrame.halfW + 2.5, 0, world.homeFrame.frontZ - 1);
+    this.botanist.obj.position.copy(this.botHome);
+    this.botanist.target.copy(this.botHome);
     scene.add(this.botanist.obj);
     labels.add('Botanist', () => this.botanist.obj.position.clone().setY(1.7), 'label botanist');
   }
 
   private memberColor(h: string) { return this.snap.members.find((m) => m.handle === h)?.color ?? '#888888'; }
+  /** Where a member waits: a row along the front edge of the garden (toward the camera), spread left to right. */
   home(handle: string): THREE.Vector3 {
-    const i = Math.max(0, this.snap.members.findIndex((m) => m.handle === handle)), n = Math.max(1, this.snap.members.length);
-    const a = Math.PI * 0.15 + (i / n) * Math.PI * 1.1, r = this.world.extent + 3;
-    return new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+    return this.homes.get(handle) ?? this.computeHome(Math.max(0, this.snap.members.findIndex((m) => m.handle === handle)), Math.max(1, this.snap.members.length));
+  }
+  private computeHome(i: number, n: number): THREE.Vector3 {
+    const { halfW, frontZ } = this.world.homeFrame;
+    const a = Math.PI * (0.08 + 0.84 * ((i + 0.5) / n));
+    return new THREE.Vector3(-Math.cos(a) * Math.max(4, halfW - 1), 0, frontZ + 0.7 * Math.sin(a));
+  }
+  private refreshHomes() {
+    const n = Math.max(1, this.snap.members.length);
+    this.homes.clear();
+    this.snap.members.forEach((m, i) => this.homes.set(m.handle, this.computeHome(i, n)));
+    this.botHome.set(this.world.homeFrame.halfW + 2.5, 0, this.world.homeFrame.frontZ - 1);
   }
   gardenerPos(handle: string): THREE.Vector3 | undefined { return this.gardeners.get(handle)?.obj.position; }
   private claudeAgent(handle: string) { return this.snap.agents.find((a) => a.handle === handle && a.kind === 'claude'); }
@@ -132,6 +146,7 @@ export class Actors {
 
   sync(snap: GardenSnapshot) {
     this.snap = snap;
+    this.refreshHomes();
     reconcile(this.gardeners, snap.members.filter((m) => m.online).map((m) => m.handle), (h) => {
       const m = makeGardener(this.memberColor(h));
       m.obj.position.copy(this.home(h)); m.target.copy(m.obj.position);
@@ -282,7 +297,7 @@ export class Actors {
 
   private tickBotanist(dt: number, now: number, t: number) {
     const b = this.botanist;
-    const homePos = new THREE.Vector3(this.world.extent + 4, 0, -2);
+    const homePos = this.botHome;
     if (!this.job && this.queue.length) this.job = { j: this.queue.shift()!, phase: 'walk', t: 0 };
     const job = this.job;
     if (!job) { b.target.copy(homePos); b.step(dt); b.obj.rotation.x = 0; return; }

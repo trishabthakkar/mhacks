@@ -34,7 +34,9 @@ It uses its **own database `sprout-demo`** (same module, published by P1), becau
 ```bash
 # on each of A and B's laptops: put the repo back
 git -C ~/sprout-demo reset --hard demo-start && git -C ~/sprout-demo clean -fd
-# N, once: shared state (claimMode=block, release fences, ack inboxes, decline handoffs)
+# N, once: removes non-team handles (ivy, p3check, e2e-*… via removeMember), claimMode=block,
+# releases fences, acks inboxes, declines handoffs. Refuses to run on sprout-mhacks.
+# Stop any sim/companion running as a test handle first, or it re-joins.
 cd mhacks/mcp && SPROUT_STDB_URI=wss://maincloud.spacetimedb.com SPROUT_DB=sprout-demo \
   npx tsx ../demo/demo-reset.ts manahil shriya
 ```

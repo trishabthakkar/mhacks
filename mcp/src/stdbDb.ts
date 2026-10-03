@@ -145,6 +145,8 @@ export class StdbDb implements SproutDb {
   async joinMember(handle: string, color = '') { await this.call(this.c.reducers.joinMember({ handle, color })); }
   async seedRepo(files: Array<{ path: string; lines: number }>) { await this.call(this.c.reducers.seedRepo({ files })); }
   async setConfig(key: string, value: string) { await this.call(this.c.reducers.setConfig({ key, value })); }
+  /** Deletes the member, their agents, fences, messages and open handoffs (plants and history stay). */
+  async removeMember(handle: string) { await this.call(this.c.reducers.removeMember({ handle })); }
   async claimFiles(handle: string, paths: string[], ttlMinutes: number) {
     await this.call(this.c.reducers.claimFiles({ handle, paths, ttlMinutes }));
   }

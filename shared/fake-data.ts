@@ -51,7 +51,7 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
   },
   // 1: trisha fences src/api/
   (s, at) => {
-    const c: ClaimView = { id: s.nextId++, path: 'src/api/', handle: 'trisha', createdAt: at, expiresAt: at + 30 * MIN };
+    const c: ClaimView = { id: s.nextId++, path: 'src/api/', handle: 'trisha', createdAt: at, expiresAt: at + 180 * MIN }; // outlives the whole fake timeline so the fence stays up until the commit releases it
     s.claims.push(c);
     log(s, at, 'trisha', 'claim', 'claimed src/api/', 'src/api/');
   },

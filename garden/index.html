@@ -4,10 +4,47 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sprout garden</title>
+    <style>
+      :root { --ink:#2b2a24; --card:rgba(255,252,243,.92); --line:rgba(60,50,30,.18); }
+      * { box-sizing: border-box; }
+      html, body { margin:0; height:100%; overflow:hidden; font-family: ui-rounded, "Avenir Next", system-ui, sans-serif; color:var(--ink); background:#cfe6ee; }
+      #app { position:fixed; inset:0; }
+      #app canvas { display:block; }
+      .labels { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+      .label, .bubble { position:absolute; left:0; top:0; white-space:nowrap; font-size:12px; will-change:transform; }
+      .label { background:var(--card); border:2px solid var(--line); border-radius:999px; padding:1px 8px; font-weight:600; }
+      .label.bed { background:rgba(255,252,243,.7); font-weight:500; font-size:11px; border-style:dashed; }
+      .label.botanist { border-color:#6a4c93; }
+      .bubble { background:#fff; border:2px solid var(--ink); border-radius:12px; padding:6px 10px; max-width:300px; white-space:normal; font-size:13px; box-shadow:0 3px 10px rgba(0,0,0,.2); }
+      .bubble.refused { border-color:#c0392b; } .bubble.bloom { border-color:#2e8b57; }
+      aside#shed { position:fixed; top:12px; right:12px; width:290px; max-height:calc(100% - 24px); overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; font-size:13px; backdrop-filter: blur(6px); }
+      aside h2 { margin:0 0 4px; font-size:16px; } aside h3 { margin:12px 0 4px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.65; }
+      aside ul { list-style:none; margin:0; padding:0; } aside li { padding:3px 0; border-bottom:1px solid var(--line); }
+      aside li:last-child { border:0; } .sub { opacity:.65; font-size:12px; } code { font-size:12px; background:rgba(0,0,0,.06); padding:0 4px; border-radius:4px; }
+      .who { all:unset; cursor:pointer; display:inline-flex; gap:6px; align-items:center; } .who:focus-visible { outline:2px solid #2a6df4; border-radius:4px; }
+      .dot { width:10px; height:10px; border-radius:50%; border:2px solid; display:inline-block; }
+      .badge { display:inline-block; background:#ffe9a8; border:1px solid #d9b94a; border-radius:999px; padding:0 8px; font-size:11px; margin-bottom:4px; }
+      #status { position:fixed; left:12px; bottom:12px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:3px 12px; font-size:12px; }
+      #keys { position:fixed; left:12px; top:12px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
+      #fps { position:fixed; left:12px; bottom:44px; font:12px monospace; background:#000a; color:#0f0; padding:2px 6px; }
+      #plan { position:fixed; inset:0; background:#f6f1df; padding:16px; } #plan[hidden] { display:none; }
+      #plan svg { width:100%; height:calc(100% - 28px); } #plan .legend { font-size:13px; padding-top:6px; }
+      .bed { fill:#e6d5b4; stroke:#8a6b44; stroke-width:.12; } .bed.gh { fill:#d8eef3; } .bedname { font-size:.62px; font-weight:700; fill:#5b4129; }
+      .small { font-size:.42px; fill:#3b3a30; } .stage { font-size:.4px; fill:#3b3a30; } .stage.b { font-weight:800; fill:#a02c6a; }
+      .plant { stroke:#3b3a30; stroke-width:.06; } .plant.seed { fill:#8b6a45; } .plant.sprout { fill:#a8d88a; } .plant.growing { fill:#5fa04a; }
+      .plant.bud { fill:#c9d86b; } .plant.bloom { fill:#f48fb1; } .plant.dormant { fill:#bdb9a4; }
+      body.hide-ui aside, body.hide-ui #status, body.hide-ui #keys, body.hide-ui .labels { display:none; }
+      @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+    </style>
   </head>
   <body>
-    <h1 id="title">Sprout garden: P4 starts here</h1>
-    <p id="info"></p>
+    <h1 style="position:absolute;left:-9999px">Sprout garden</h1>
+    <div id="app"></div>
+    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · <b>P</b> plan · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI</div>
+    <aside id="shed" aria-label="Garden shed noticeboard"></aside>
+    <div id="plan" hidden></div>
+    <div id="status" role="status"></div>
+    <div id="fps" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

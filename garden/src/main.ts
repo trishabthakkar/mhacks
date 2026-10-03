@@ -1,5 +1,5 @@
 import { Store } from './data/store.ts';
-import { startFake } from './data/fake.ts';
+import { startFake, type FakeController } from './data/fake.ts';
 import { connectLive, DEFAULT_DB, DEFAULT_HOST } from './data/spacetime.ts';
 import { GardenWorld } from './scene/world.ts';
 import { renderShed } from './ui/shed.ts';
@@ -14,6 +14,7 @@ const plan = document.getElementById('plan')!;
 const status = document.getElementById('status')!;
 let source = q.get('source') === 'fake' ? 'fake' : 'live';
 let layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
+let fake: FakeController | undefined;
 
 const world = new GardenWorld(app, store);
 world.onLayout = (l) => { layout = l; };
@@ -28,7 +29,12 @@ async function start() {
       source = 'fake';
     }
   }
-  startFake(store, Number(q.get('speed') ?? 1) || 1);
+  const stepParam = q.get('step');
+  fake = startFake(store, {
+    speed: Number(q.get('speed') ?? 1) || 1,
+    step: stepParam !== null && stepParam !== '' ? Number(stepParam) : undefined,
+    paused: q.get('paused') === '1',
+  });
 }
 
 let planOn = false;
@@ -46,10 +52,20 @@ addEventListener('keydown', (e) => {
   if (k === 'p') { planOn = !planOn; plan.hidden = !planOn; refresh(); }
   else if (k === 'd') { world.director = !world.director; if (world.director) world.follow = null; refresh(); }
   else if (k === 'h') document.body.classList.toggle('hide-ui');
+  else if (k === ' ' && fake) { e.preventDefault(); fake.toggle(); }
+  else if (k === 'arrowright' && fake) fake.next();
+  else if (k === 'arrowleft' && fake) fake.prev();
   else if (k === 'f') { world.follow = null; world.director = false; world.frameGarden(); refresh(); }
 });
 plan.hidden = true;
 if (q.get('debug') === '1') {
+  (window as unknown as Record<string, unknown>).__garden = {
+    store, world,
+    setStep: (n: number) => fake?.setStep(n),
+    snapshot: () => store.snapshot,
+    get fps() { return world.fps; },
+    get step() { return fake?.step; },
+  };
   const el = document.getElementById('fps')!; el.hidden = false;
   setInterval(() => { el.textContent = `${world.fps} fps`; }, 500);
 }

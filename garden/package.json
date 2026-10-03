@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "tsc --noEmit && tsx --test src/*.test.ts"
+    "test": "tsc --noEmit && tsx --test src/*.test.ts src/*/*.test.ts"
   },
   "dependencies": {
     "spacetimedb": "^2.10.2",

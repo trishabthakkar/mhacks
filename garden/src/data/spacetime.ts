@@ -19,6 +19,43 @@ const opt = <T extends object>(o: T): T => {
   return o;
 };
 
+type Tbl<T> = { iter(): Iterable<T> };
+type Db = DbConnection['db'];
+type Row<K extends keyof Db> = Db[K] extends Tbl<infer R> ? R : never;
+/** The tables buildSnapshot reads; a real `conn.db` satisfies this, and tests can pass plain arrays. */
+export interface LiveTables {
+  member: Tbl<Row<'member'>>; agent: Tbl<Row<'agent'>>; plant: Tbl<Row<'plant'>>; claim: Tbl<Row<'claim'>>;
+  message: Tbl<Row<'message'>>; testRun: Tbl<Row<'testRun'>>; certification: Tbl<Row<'certification'>>; activity: Tbl<Row<'activity'>>;
+}
+
+/** Pure mapping from subscribed rows to the GardenSnapshot the scene renders. Optional fields stay absent. */
+export function buildSnapshot(db: LiveTables, now: number): GardenSnapshot {
+  const activity = [...db.activity.iter()].sort((a, b) => Number(a.id - b.id)).slice(-ACTIVITY_WINDOW)
+    .map((a) => opt({ id: Number(a.id), at: ms(a.at), handle: a.handle, sessionId: a.sessionId, kind: a.kind as ActivityKind, path: a.path, detail: a.detail }));
+  return {
+    at: now,
+    members: [...db.member.iter()].map((m) => ({ handle: m.handle, color: m.color, online: m.online, paused: m.paused, lastSeen: ms(m.lastSeen) })),
+    agents: [...db.agent.iter()].map((a) => opt({
+      sessionId: a.sessionId, handle: a.handle, kind: a.kind as AgentView['kind'], parentSessionId: a.parentSessionId,
+      status: a.status as AgentView['status'], currentPath: a.currentPath, currentAction: a.currentAction, lastSeen: ms(a.lastSeen),
+    })),
+    plants: [...db.plant.iter()].map((p) => opt({
+      path: p.path, bed: p.bed, lines: p.lines, stage: p.stage as PlantStage, bugs: p.bugs, lastActivity: ms(p.lastActivity),
+      lastTouchedBy: p.lastTouchedBy, lastDiffAt: optMs(p.lastDiffAt), lastBloomAt: optMs(p.lastBloomAt),
+    })),
+    claims: [...db.claim.iter()].map((x) => ({ id: Number(x.id), path: x.path, handle: x.handle, createdAt: ms(x.createdAt), expiresAt: ms(x.expiresAt) })),
+    messages: [...db.message.iter()].map((m) => opt({
+      id: Number(m.id), fromHandle: m.fromHandle, fromSession: m.fromSession, toHandle: m.toHandle, kind: m.kind as MessageView['kind'],
+      body: m.body, status: m.status as MessageView['status'], sentAt: ms(m.sentAt), deliveredAt: optMs(m.deliveredAt), ackedAt: optMs(m.ackedAt),
+    })),
+    testRuns: [...db.testRun.iter()].map((t) => ({ id: Number(t.id), handle: t.handle, repo: t.repo, command: t.command, exitCode: t.exitCode, at: ms(t.at) })),
+    certifications: [...db.certification.iter()].map((x) => ({
+      id: Number(x.id), path: x.path, handle: x.handle, task: x.task, result: x.result as 'bloom' | 'refused', reason: x.reason, at: ms(x.at),
+    })),
+    activity,
+  };
+}
+
 /**
  * Live source: subscribes to every public table via the generated bindings and pushes
  * GardenSnapshots into the Store. Resolves once the first snapshot is in; rejects on
@@ -28,32 +65,7 @@ export function connectLive(store: Store, host: string, db: string, timeoutMs = 
   return new Promise((resolve, reject) => {
     let stopped = false, settled = false, backoff = 1000, conn: DbConnection | undefined, pending = 0, first = true;
 
-    const snapshot = (c: DbConnection): GardenSnapshot => {
-      const activity = [...c.db.activity.iter()].sort((a, b) => Number(a.id - b.id)).slice(-ACTIVITY_WINDOW)
-        .map((a) => opt({ id: Number(a.id), at: ms(a.at), handle: a.handle, sessionId: a.sessionId, kind: a.kind as ActivityKind, path: a.path, detail: a.detail }));
-      return {
-        at: Date.now(),
-        members: [...c.db.member.iter()].map((m) => ({ handle: m.handle, color: m.color, online: m.online, paused: m.paused, lastSeen: ms(m.lastSeen) })),
-        agents: [...c.db.agent.iter()].map((a) => opt({
-          sessionId: a.sessionId, handle: a.handle, kind: a.kind as AgentView['kind'], parentSessionId: a.parentSessionId,
-          status: a.status as AgentView['status'], currentPath: a.currentPath, currentAction: a.currentAction, lastSeen: ms(a.lastSeen),
-        })),
-        plants: [...c.db.plant.iter()].map((p) => opt({
-          path: p.path, bed: p.bed, lines: p.lines, stage: p.stage as PlantStage, bugs: p.bugs, lastActivity: ms(p.lastActivity),
-          lastTouchedBy: p.lastTouchedBy, lastDiffAt: optMs(p.lastDiffAt), lastBloomAt: optMs(p.lastBloomAt),
-        })),
-        claims: [...c.db.claim.iter()].map((x) => ({ id: Number(x.id), path: x.path, handle: x.handle, createdAt: ms(x.createdAt), expiresAt: ms(x.expiresAt) })),
-        messages: [...c.db.message.iter()].map((m) => opt({
-          id: Number(m.id), fromHandle: m.fromHandle, fromSession: m.fromSession, toHandle: m.toHandle, kind: m.kind as MessageView['kind'],
-          body: m.body, status: m.status as MessageView['status'], sentAt: ms(m.sentAt), deliveredAt: optMs(m.deliveredAt), ackedAt: optMs(m.ackedAt),
-        })),
-        testRuns: [...c.db.testRun.iter()].map((t) => ({ id: Number(t.id), handle: t.handle, repo: t.repo, command: t.command, exitCode: t.exitCode, at: ms(t.at) })),
-        certifications: [...c.db.certification.iter()].map((x) => ({
-          id: Number(x.id), path: x.path, handle: x.handle, task: x.task, result: x.result as 'bloom' | 'refused', reason: x.reason, at: ms(x.at),
-        })),
-        activity,
-      };
-    };
+    const snapshot = (c: DbConnection): GardenSnapshot => buildSnapshot(c.db, Date.now());
 
     const push = (c: DbConnection) => {
       if (pending) return;

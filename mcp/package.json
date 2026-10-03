@@ -23,6 +23,8 @@
     "@modelcontextprotocol/node": "2.1.1",
     "@modelcontextprotocol/server": "2.3.0",
     "express": "5.2.1",
+    "spacetimedb": "2.10.2",
+    "undici": "6.29.0",
     "zod": "4.6.5"
   }
 }

@@ -112,7 +112,11 @@ export class FakeDb implements SproutDb {
     h.status = accept ? 'accepted' : 'declined';
   }
 
-  async reportStatus(handle: string, sessionId: string, status: ReportableStatus) {
+  async reportStatus(handle: string, sessionId: string | undefined, status: ReportableStatus) {
+    if (sessionId === undefined) {
+      for (const x of this._agents.values()) if (x.handle === handle) { x.status = status; x.lastSeen = this.now(); }
+      return;
+    }
     const a = this._agents.get(sessionId);
     if (!a || a.handle !== handle) throw new Error(`no session ${sessionId} for ${handle}`);
     a.status = status;

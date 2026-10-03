@@ -37,7 +37,7 @@ export interface SproutDb {
   certifications(): CertificationView[];
   config(key: 'claimMode' | 'claimTtlMinutes' | 'requireReview'): string | undefined;
 
-  // ---- writes (reducers) ---- TODO(contract): argument lists are P1's; CONTRACT.md only names them.
+  // ---- writes (reducers; argument shapes in CONTRACT.md "Generated casing") ----
   claimFiles(handle: string, paths: string[], ttlMinutes: number): Promise<void>;
   releaseFiles(handle: string, paths: string[]): Promise<void>;
   postMessage(fromHandle: string, toHandle: string, kind: MessageView['kind'], body: string): Promise<void>;
@@ -45,7 +45,8 @@ export interface SproutDb {
   ackMessage(handle: string, id: number): Promise<void>;
   offerHandoff(fromHandle: string, toHandle: string, task: string, notes: string): Promise<void>;
   respondHandoff(handle: string, id: number, accept: boolean): Promise<void>;
-  reportStatus(handle: string, sessionId: string, status: ReportableStatus): Promise<void>;
+  /** sessionId undefined = all of that member's live agents (module rule). */
+  reportStatus(handle: string, sessionId: string | undefined, status: ReportableStatus): Promise<void>;
   submitEvidence(handle: string, path: string, task: string): Promise<void>;
   review(handle: string, path: string, ok: boolean): Promise<void>;
 

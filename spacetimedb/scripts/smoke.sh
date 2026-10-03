@@ -2,7 +2,7 @@
 # Calls every reducer via `spacetime call` and asserts rows via `spacetime sql`.
 # Publishes a throwaway database (default sprout-smoke, data wiped) so it never touches the real one.
 #   bash scripts/smoke.sh [--server local] [--db sprout-smoke] [--no-publish] [--slow]
-# --slow also waits ~2.5 min to check claim expiry and the offline sweep.
+# --slow also waits ~3.5 min to check claim expiry and the offline sweep.
 set -uo pipefail
 
 SERVER=local
@@ -256,9 +256,9 @@ call set_config '"requireReview"' '"false"'
 reject "evidence for unknown plant" "no plant" submit_evidence '"alex"' '"nope.ts"' '"x"'
 
 if [ "$SLOW" = 1 ]; then
-  echo "-- slow: expiry + sweep (~2.5 min)"
+  echo "-- slow: expiry + sweep (~3.5 min)"
   call claim_files '"jo"' '["tests/"]' "$(some 1)"
-  sleep 150
+  sleep 200  # sweep ticks every 60s from publish; needs a tick >120s after the last heartbeat
   eq "expireClaims removed claim" "SELECT COUNT(*) AS n FROM claim WHERE handle = 'jo'" 0
   has "expiry release activity"   "SELECT detail FROM activity WHERE kind = 'release'" "released tests/ (expired)"
   eq "sweep marks offline"        "SELECT online FROM member WHERE handle = 'sam'" false

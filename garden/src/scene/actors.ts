@@ -113,6 +113,7 @@ export class Actors {
   private clock = 0;
   private homes = new Map<string, THREE.Vector3>();
   private botHome = new THREE.Vector3();
+  get botanistHome() { return this.botHome; }
   private tmp = new THREE.Vector3();
   private tgt = new THREE.Vector3();
   private static OFF_GARDENER = new THREE.Vector3(-0.75, 0, 0.55);

@@ -5,6 +5,8 @@ import { connectLive, DEFAULT_DB, DEFAULT_HOST, type LiveState } from './data/sp
 import { GardenWorld } from './scene/world.ts';
 import { initShed, renderShed, tickFreshness } from './ui/shed.ts';
 import { initPlan, renderPlan } from './ui/plan.ts';
+import { CUE_STEPS, renderCue, resetCue, seen, toggleManual } from './ui/cue.ts';
+import { applyShot } from './ui/shots.ts';
 import type { GardenLayout } from './layout.ts';
 
 const q = new URLSearchParams(location.search);
@@ -15,6 +17,8 @@ const plan = document.getElementById('plan')!;
 const status = document.getElementById('status')!;
 const emptyState = document.getElementById('empty')!;
 const toasts = document.getElementById('toasts')!;
+const cueEl = document.getElementById('cue')!;
+const helpEl = document.getElementById('help')!;
 let source: 'live' | 'fake' = q.get('source') === 'fake' ? 'fake' : 'live';
 let layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
 let fake: FakeController | undefined;
@@ -67,7 +71,7 @@ function setConn(c: Conn) {
   refresh();
 }
 function renderBanner() {
-  if (conn.state === 'live') { banner.hidden = true; return; }
+  if (conn.state === 'live' || (conn.state === 'demo' && q.get('badge') === '0')) { banner.hidden = true; return; }
   banner.hidden = false;
   const msg = conn.state === 'connecting' ? '<span class="spin" aria-hidden="true"></span> Connecting to the garden…'
     : conn.state === 'reconnecting' ? `<span class="spin" aria-hidden="true"></span> Connection lost: showing the last known garden. Reconnecting (attempt ${conn.attempt})…`
@@ -97,6 +101,7 @@ function goDemo() {
     speed: Number(q.get('speed') ?? 1) || 1,
     step: stepParam !== null && stepParam !== '' ? Number(stepParam) : undefined,
     paused: q.get('paused') === '1',
+    loop: q.get('loop') !== '0',
   });
   setConn({ state: 'demo', attempt: 0 });
 }
@@ -138,7 +143,22 @@ function refresh() {
   status.textContent = `${connection}${world.director ? ' · director' : ''}${world.follow ? ` · following ${world.follow}` : ''}${world.expandAll ? ' · all plants' : ''}`;
   if (planOn) renderPlan(s, layout);
 }
-store.subscribe(() => requestAnimationFrame(refresh));
+let cueOn = false;
+function setCue(on: boolean) { cueOn = on; cueEl.hidden = !on; if (on) renderCue(cueEl); }
+cueEl.addEventListener('click', (e) => {
+  const t = e.target as HTMLElement;
+  const step = t.closest<HTMLElement>('[data-cue]');
+  if (step) toggleManual(Number(step.dataset.cue));
+  if (t.closest('[data-cue-reset]')) resetCue();
+  renderCue(cueEl);
+});
+store.subscribe((u) => {
+  for (const a of u.newActivity) seen(a.kind);
+  if (cueOn && u.newActivity.length) renderCue(cueEl);
+  requestAnimationFrame(refresh);
+});
+function setHelp(on: boolean) { helpEl.hidden = !on; }
+helpEl.addEventListener('click', () => setHelp(false));
 setInterval(() => tickFreshness(shed), 1000);
 document.body.classList.toggle('shed-collapsed', collapsed);
 
@@ -146,6 +166,9 @@ addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLElement && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
+  if (k === '?' || k === '/') { setHelp(helpEl.hidden); return; }
+  if (k === 'escape' && !helpEl.hidden) { setHelp(false); return; }
+  if (k === 'c') { setCue(!cueOn); return; }
   if (k === 'p') setPlan(!planOn);
   else if (k === 's') setCollapsed(!collapsed);
   else if (k === 'd') { world.director = !world.director; if (world.director) world.follow = null; refresh(); }
@@ -189,6 +212,10 @@ if (q.get('debug') === '1') {
     get step() { return fake?.step; },
   };
 }
+if (q.get('badge') === '0') document.body.classList.add('no-badge');
+void CUE_STEPS; // (the strip lists every step; see ui/cue.ts)
+// ?shot=full|bed-src|botanist|plan: repeatable camera for screenshots.
+const shot = q.get('shot');
 // ?present=1: projector mode (big labels, no hints, director camera).
 if (q.get('present') === '1') {
   document.body.classList.add('present');
@@ -196,4 +223,4 @@ if (q.get('present') === '1') {
 }
 // Keep the scene centered in the space the shed leaves free, whatever its size does.
 new ResizeObserver(() => { if (!world.rig.userMoved) world.refit(); }).observe(shed);
-void start().then(() => world.frameGarden(true));
+void start().then(() => { world.frameGarden(true); if (shot) setTimeout(() => applyShot(shot, world, () => setPlan(true)), 400); });

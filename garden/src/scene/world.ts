@@ -291,6 +291,17 @@ export class GardenWorld implements WorldLookup {
     if (kind !== 'member') { this.follow = null; this.director = false; this.rig.flyTo(p); }
     this.pulseAt.copy(p); this.pulseT = 2.4;
   }
+  /** Instantly frame one bed from the current viewing direction (used for named screenshot shots). */
+  focusBed(name: string, dist = 11) {
+    const b = this.layout.beds.find((x) => x.name === name) ?? this.layout.beds[0];
+    if (b) this.lookAt(b.x, b.z, dist);
+  }
+  focusBotanist(dist = 8) { const h = this.actors.botanistHome; this.lookAt(h.x, h.z, dist); }
+  private lookAt(x: number, z: number, dist: number) {
+    this.rig.userMoved = true;
+    const dir = this.tmpV.set(0, Math.sin(0.62), Math.cos(0.62)).multiplyScalar(dist);
+    this.controls.target.set(x, 0.4, z); this.camera.position.set(x + dir.x, 0.4 + dir.y, z + dir.z); this.controls.update();
+  }
   private pulseAt = new THREE.Vector3();
   private pulseT = 0;
 

@@ -70,10 +70,17 @@
       body.stale #app canvas { filter:saturate(.65) brightness(.93); }
       .label.plant { font-weight:500; font-size:11px; background:rgba(255,252,243,.88); }
       body.hc .label, body.hc .bubble, body.hc .edgearrow { outline:2px solid #111; background:#fff; color:#000; border-color:#000; } body.hc aside#shed, body.hc #keys, body.hc #status { border:2px solid #000; background:#fff; } body.hc .sub { opacity:1; }
+      #cue { position:fixed; left:50%; bottom:52px; transform:translateX(-50%); z-index:8; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:8px 12px; max-width:min(96vw,920px); box-shadow:0 6px 20px rgba(0,0,0,.18); } #cue[hidden] { display:none; }
+      .cue-steps { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; } .cue-say { text-align:center; font-size:14px; margin-top:6px; }
+      button.cue { font:inherit; font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+      button.cue.done { background:#d8f3dc; border-color:#74c69d; } button.cue.partial { background:#fff3c4; border-color:#d9b94a; } button.cue.cur { outline:3px solid #2a6df4; outline-offset:1px; font-weight:700; } button.cue.reset { opacity:.6; }
+      #help { position:fixed; inset:0; z-index:12; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; } #help[hidden] { display:none; }
+      .help-card { background:var(--card); border-radius:16px; padding:18px 26px; max-width:520px; } .help-card h2 { margin:0 0 8px; } .help-card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 18px; margin:0; } .help-card dt { font-weight:700; font-family:ui-monospace,Menlo,monospace; font-size:13px; } .help-card dd { margin:0; }
+      body.no-badge #status, body.no-badge .conn.demo { display:none; }
       body.present #keys { display:none; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
       @media print { body > *:not(#plan) { display:none !important; } #plan { position:static; background:#fff; } .plan-bar button, .plan-bar input { display:none; } #plan svg { border:0; height:90vh; } }
       body.plan-open #shed, body.plan-open #status, body.plan-open #keys { display:none; }
-      body.hide-ui aside, body.hide-ui #status, body.hide-ui #keys, body.hide-ui .labels { display:none; }
+      body.hide-ui #shed, body.hide-ui #status, body.hide-ui #keys, body.hide-ui .labels, body.hide-ui #banner, body.hide-ui #cue, body.hide-ui #toasts, body.hide-ui #fps, body.hide-ui .edgearrow { display:none !important; }
       @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
     </style>
   </head>
@@ -85,6 +92,14 @@
     <div id="plan" hidden></div>
     <div id="banner" role="status" hidden></div>
     <div id="empty" hidden><b>No files planted yet</b><br/>Run <code>sprout join</code> in your repo and the garden fills in.</div>
+    <div id="cue" hidden aria-label="Demo cue strip"></div>
+    <div id="help" hidden role="dialog" aria-label="Keyboard shortcuts"><div class="help-card"><h2>Keys</h2>
+      <dl><dt>Drag / wheel</dt><dd>orbit / zoom</dd><dt>Arrows, Q E, + -</dt><dd>pan, turn, zoom</dd><dt>1 2 3</dt><dd>overview, top-down, low camera</dd>
+      <dt>F</dt><dd>reframe everything</dd><dt>D</dt><dd>director camera (follows the action)</dd><dt>P</dt><dd>garden plan (flat map)</dd>
+      <dt>S</dt><dd>garden shed panel</dd><dt>C</dt><dd>demo cue strip</dd><dt>H</dt><dd>hide all UI (screenshots)</dd>
+      <dt>L</dt><dd>text labels with stage on every plant</dd><dt>B</dt><dd>show every plant in full (large gardens)</dd>
+      <dt>M</dt><dd>calm mode (gentler motion)</dd><dt>K</dt><dd>high contrast</dd><dt>Space, ← →</dt><dd>pause, step (demo data only)</dd>
+      <dt>? or Esc</dt><dd>this help</dd></dl><p class="sub">Click anywhere to close.</p></div></div>
     <div id="toasts" aria-live="polite"></div>
     <div id="status" role="status"></div>
     <div id="fps" hidden></div>

@@ -66,12 +66,28 @@ export class GardenWorld implements WorldLookup {
   fps = 0;
   private frames = 0; private fpsT = 0;
 
+  /** False when WebGL could not start (or ?nogl=1): the page shows the plan view instead. */
+  readonly available: boolean;
+  calm = false;
+  /** Called with any error caught in a frame, so the page can show a toast instead of freezing. */
+  onError: (e: unknown) => void = () => {};
+  private plantLabels = new Map<string, { el: HTMLElement; text: string }>();
+  showPlantLabels = false;
+
   constructor(private host: HTMLElement, store: Store) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    host.appendChild(this.renderer.domElement);
+    let gl: THREE.WebGLRenderer | undefined;
+    try {
+      if (new URLSearchParams(location.search).get('nogl') === '1') throw new Error('WebGL disabled by ?nogl=1');
+      gl = new THREE.WebGLRenderer({ antialias: true });
+    } catch (e) { console.warn('WebGL unavailable:', e); }
+    this.available = !!gl;
+    this.renderer = gl ?? (null as unknown as THREE.WebGLRenderer);
+    if (gl) {
+      gl.setPixelRatio(Math.min(devicePixelRatio, 2));
+      gl.shadowMap.enabled = true;
+      gl.shadowMap.type = THREE.PCFSoftShadowMap;
+      host.appendChild(gl.domElement);
+    }
     const labelHost = document.createElement('div'); labelHost.className = 'labels'; host.appendChild(labelHost);
     this.labels = new Labels(labelHost, this.camera);
     this.field = new PlantField(this.scene);
@@ -96,13 +112,13 @@ export class GardenWorld implements WorldLookup {
     this.ground.add(disc);
 
     this.camera.position.set(0, 18, 22);
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls = new OrbitControls(this.camera, gl?.domElement ?? document.createElement('canvas'));
     this.controls.enableDamping = true; this.controls.maxPolarAngle = Math.PI * 0.48; this.controls.maxDistance = 90;
     this.rig = new CameraRig(this.camera, this.controls, host);
     this.resize(); addEventListener('resize', () => this.resize());
 
     store.subscribe((u) => this.onUpdate(u));
-    this.renderer.setAnimationLoop(() => this.frame());
+    if (gl) gl.setAnimationLoop(() => { try { this.frame(); } catch (e) { this.onError(e); } });
   }
 
   // ---- WorldLookup ----
@@ -166,7 +182,7 @@ export class GardenWorld implements WorldLookup {
           const glass = mesh(geo.box, mat('#bfe8f5', { opacity: 0.22 }), b.w, 2.4, b.d, b.x, 1.3, b.z); glass.castShadow = false;
           this.bedGroup.add(glass);
         }
-        this.bedLabels.push(this.labels.add(b.greenhouse ? `${b.name} (greenhouse)` : b.name, () => new THREE.Vector3(b.x, 0.35, b.z + b.d / 2 + 0.2), 'label bed'));
+        this.bedLabels.push(this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => new THREE.Vector3(b.x, 0.35, b.z + b.d / 2 + 0.2), 'label bed'));
       }
       this.fenceKey = '';
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
@@ -178,6 +194,28 @@ export class GardenWorld implements WorldLookup {
   private isClaimed(path: string) {
     for (const c of this.snap.claims) if (c.path === path || (c.path.endsWith('/') && path.startsWith(c.path))) return true;
     return false;
+  }
+
+  /** Readable mode (key L): every full plant gets a text label with its stage, so status never relies on colour alone. */
+  setPlantLabels(on: boolean) { this.showPlantLabels = on; this.syncPlantLabels(); }
+  private syncPlantLabels() {
+    if (!this.showPlantLabels || !this.snap) {
+      for (const v of this.plantLabels.values()) this.labels.remove(v.el);
+      this.plantLabels.clear(); return;
+    }
+    const byPath = new Map(this.snap.plants.map((p) => [p.path, p]));
+    const want = this.layout.plants.filter((p) => this.field.get(p.path)?.full).slice(0, 60);
+    const keep = new Set(want.map((p) => p.path));
+    for (const [path, v] of this.plantLabels) if (!keep.has(path)) { this.labels.remove(v.el); this.plantLabels.delete(path); }
+    for (const lp of want) {
+      const pv = byPath.get(lp.path)!, name = lp.path.split('/').pop()!;
+      const text = `${name.length > 14 ? `${name.slice(0, 13)}…` : name} · ${pv.stage}${pv.bugs ? ` · ${pv.bugs} bug${pv.bugs === 1 ? '' : 's'}` : ''}`;
+      const cur = this.plantLabels.get(lp.path);
+      if (cur && cur.text === text) continue;
+      if (cur) this.labels.remove(cur.el);
+      const at = new THREE.Vector3(lp.x, 0.9 * lp.size + 0.7, lp.z);
+      this.plantLabels.set(lp.path, { el: this.labels.add(text, () => at, 'label plant'), text });
+    }
   }
 
   /** Toggle between ground cover for quiet plants and showing every plant in full (key B). */
@@ -203,6 +241,7 @@ export class GardenWorld implements WorldLookup {
       }
       if (pv.bugs < r.bugsBefore && r.bugsBefore > 0) this.fx.burst(this.tmpV.set(lp.x, 0.8, lp.z), 0x222222, 12, 1.2, 4);
     }
+    if (this.showPlantLabels) this.syncPlantLabels();
   }
 
   // ---- botanist hooks (WorldLookup) ----
@@ -292,10 +331,18 @@ export class GardenWorld implements WorldLookup {
 
   private resize() {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
-    this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    if (this.available) this.renderer.setSize(w, h);
+    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     const r = this.reservedPx();
     this.rig.setReserved(r, this.reservedBottom);
     if (!this.rig.userMoved) this.scaleToDistance(this.rig.fit(this.fitBox(), undefined, true));
+  }
+
+  get motionFactor() { return this.reducedMotion || this.calm ? 0.25 : 1; }
+  /** Calm mode: gentler motion, no camera push-ins, fewer particles. */
+  setCalm(on: boolean) {
+    this.calm = on; this.rig.calm = on;
+    this.actors.motion = this.motionFactor; this.fx.reducedMotion = on || this.reducedMotion;
   }
 
   /** Run the simulation for `seconds` of scene time in 1/30 s steps, rendering only the last frame. Debug/test use. */
@@ -306,6 +353,7 @@ export class GardenWorld implements WorldLookup {
 
   /** Render `frames` frames back to back, forcing the GPU to finish each, and report honest per-frame timings. */
   benchFrames(frames = 120) {
+    if (!this.available) return { error: 'no WebGL' };
     const gl = this.renderer.getContext(), times: number[] = [];
     for (let i = 0; i < frames; i++) {
       const t0 = performance.now();
@@ -324,7 +372,7 @@ export class GardenWorld implements WorldLookup {
   private frame(dtOverride?: number, render = true) {
     const dt = dtOverride ?? Math.min(this.clock.getDelta(), 0.1);
     this.time += dt;
-    const t = this.time, mo = this.reducedMotion ? 0.25 : 1;
+    const t = this.time, mo = this.motionFactor;
     this.actors.tick(dt); this.fx.update(dt);
     // Botanist shot: dim the scene a little, light the plant, push the camera in.
     const shot = this.actors.shot;
@@ -337,7 +385,7 @@ export class GardenWorld implements WorldLookup {
     if (shot) {
       this.shaft.position.set(shot.point.x, 3.6, shot.point.z);
       this.spotRing.position.set(shot.point.x, 0.32, shot.point.z); this.spotRing.scale.setScalar(1 + Math.sin(t * 3) * 0.06 * mo);
-      if (!this.rig.userMoved) this.rig.pushIn(shot.point, 6.6);
+      if (!this.rig.userMoved && !this.calm) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
     this.field.update(t, mo);
     // Camera: follow a member, or director mode follows the latest action.
@@ -358,7 +406,7 @@ export class GardenWorld implements WorldLookup {
     this.rig.update(dt);
     this.controls.update();
     this.labels.update(this.host.clientWidth, this.host.clientHeight, this.rig.reservedRight, this.rig.reservedBottom);
-    if (render) this.renderer.render(this.scene, this.camera);
+    if (render && this.available) this.renderer.render(this.scene, this.camera);
     this.frames++; this.fpsT += dt;
     if (this.fpsT >= 0.5) { this.fps = Math.round(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }
   }

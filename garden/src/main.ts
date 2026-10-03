@@ -1,7 +1,7 @@
 import { Store } from './data/store.ts';
 import { startFake, type FakeController } from './data/fake.ts';
 import { startBench } from './data/bench.ts';
-import { connectLive, DEFAULT_DB, DEFAULT_HOST } from './data/spacetime.ts';
+import { connectLive, DEFAULT_DB, DEFAULT_HOST, type LiveState } from './data/spacetime.ts';
 import { GardenWorld } from './scene/world.ts';
 import { initShed, renderShed, tickFreshness } from './ui/shed.ts';
 import { initPlan, renderPlan } from './ui/plan.ts';
@@ -13,12 +13,32 @@ const app = document.getElementById('app')!;
 const shed = document.getElementById('shed')!;
 const plan = document.getElementById('plan')!;
 const status = document.getElementById('status')!;
-let source = q.get('source') === 'fake' ? 'fake' : 'live';
+const emptyState = document.getElementById('empty')!;
+const toasts = document.getElementById('toasts')!;
+let source: 'live' | 'fake' = q.get('source') === 'fake' ? 'fake' : 'live';
 let layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
 let fake: FakeController | undefined;
+const errors: string[] = [];
+let lastToast = 0;
+function toast(msg: string) {
+  const now = Date.now();
+  if (now - lastToast < 4000) return; // one at a time, never a flood
+  lastToast = now;
+  const el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); el.textContent = msg;
+  toasts.appendChild(el); setTimeout(() => el.remove(), 6000);
+}
+function reportError(e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  errors.push(`${new Date().toISOString()} ${msg}`); if (errors.length > 50) errors.shift();
+  console.error('[garden]', e);
+  toast('Something glitched, but the garden is still running.');
+}
+addEventListener('error', (e) => reportError(e.error ?? e.message));
+addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
 const world = new GardenWorld(app, store);
 world.onLayout = (l) => { layout = l; };
+world.onError = reportError;
 
 // Remember the shed's open/closed state (storage can be blocked: never depend on it).
 const KEY = 'sprout.shed.collapsed';
@@ -33,27 +53,67 @@ function setCollapsed(v: boolean) {
   world.refit();
 }
 
-async function start() {
-  const bench = Number(q.get('bench'));
-  if (bench > 0) { source = 'fake'; startBench(store, Math.min(bench, 5000)); return; }
-  if (source === 'live') {
-    try {
-      await connectLive(store, q.get('host') ?? import.meta.env?.VITE_STDB_HOST ?? DEFAULT_HOST, q.get('db') ?? import.meta.env?.VITE_STDB_DB ?? DEFAULT_DB);
-      return;
-    } catch (e) {
-      console.warn('live source failed, falling back to demo data:', e);
-      source = 'fake';
-    }
+// ---- connection state ----
+type Conn = { state: 'connecting' | 'live' | 'reconnecting' | 'demo'; attempt: number };
+let conn: Conn = { state: source === 'live' ? 'connecting' : 'demo', attempt: 0 };
+let stopLive: (() => void) | undefined;
+const banner = document.getElementById('banner')!;
+
+function setConn(c: Conn) {
+  conn = c;
+  source = c.state === 'demo' ? 'fake' : 'live';
+  document.body.classList.toggle('stale', c.state === 'reconnecting'); // last known state, dimmed
+  renderBanner();
+  refresh();
+}
+function renderBanner() {
+  if (conn.state === 'live') { banner.hidden = true; return; }
+  banner.hidden = false;
+  const msg = conn.state === 'connecting' ? '<span class="spin" aria-hidden="true"></span> Connecting to the garden…'
+    : conn.state === 'reconnecting' ? `<span class="spin" aria-hidden="true"></span> Connection lost: showing the last known garden. Reconnecting (attempt ${conn.attempt})…`
+    : `Showing demo data${q.get('source') === 'fake' || q.get('bench') ? '' : ': couldn\'t reach the live garden'}. <button data-retry>Retry live</button>`;
+  banner.innerHTML = msg;
+}
+banner.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('[data-retry]')) void retryLive(); });
+
+const liveHost = () => q.get('host') ?? import.meta.env?.VITE_STDB_HOST ?? DEFAULT_HOST;
+const liveDb = () => q.get('db') ?? import.meta.env?.VITE_STDB_DB ?? DEFAULT_DB;
+async function goLive(): Promise<boolean> {
+  setConn({ state: 'connecting', attempt: 0 });
+  try {
+    stopLive = await connectLive(store, liveHost(), liveDb(), 10_000, (st: LiveState) =>
+      setConn(st.state === 'live' ? { state: 'live', attempt: 0 } : { state: 'reconnecting', attempt: st.attempt }));
+    setConn({ state: 'live', attempt: 0 });
+    return true;
+  } catch (e) {
+    console.warn('live source failed, falling back to demo data:', e);
+    return false;
   }
+}
+function goDemo() {
+  fake?.stop();
   const stepParam = q.get('step');
   fake = startFake(store, {
     speed: Number(q.get('speed') ?? 1) || 1,
     step: stepParam !== null && stepParam !== '' ? Number(stepParam) : undefined,
     paused: q.get('paused') === '1',
   });
+  setConn({ state: 'demo', attempt: 0 });
+}
+async function retryLive() {
+  fake?.stop(); fake = undefined; stopLive?.();
+  if (!(await goLive())) goDemo();
+}
+
+async function start() {
+  const bench = Number(q.get('bench'));
+  if (bench > 0) { startBench(store, Math.min(bench, 5000)); setConn({ state: 'demo', attempt: 0 }); return; }
+  if (source === 'live' && (await goLive())) return;
+  goDemo();
 }
 
 let planOn = false;
+let calm = false;
 function setPlan(on: boolean) {
   planOn = on; plan.hidden = !on;
   document.body.classList.toggle('plan-open', on);
@@ -72,8 +132,9 @@ initPlan(plan, {
 
 function refresh() {
   const s = store.snapshot;
-  const connection = source === 'fake' ? 'demo data' : 'live';
+  const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
   renderShed(shed, s, { source, connection, collapsed });
+  emptyState.hidden = s.plants.length > 0 || conn.state === 'connecting';
   status.textContent = `${connection}${world.director ? ' · director' : ''}${world.follow ? ` · following ${world.follow}` : ''}${world.expandAll ? ' · all plants' : ''}`;
   if (planOn) renderPlan(s, layout);
 }
@@ -90,12 +151,29 @@ addEventListener('keydown', (e) => {
   else if (k === 'd') { world.director = !world.director; if (world.director) world.follow = null; refresh(); }
   else if (k === 'h') document.body.classList.toggle('hide-ui');
   else if (k === 'b') { world.toggleExpand(); refresh(); }
+  else if (k === 'm') { calm = !calm; world.setCalm(calm); toast(calm ? 'Calm mode on: gentler motion' : 'Calm mode off'); }
+  else if (k === 'k') { document.body.classList.toggle('hc'); }
+  else if (k === 'l') { world.setPlantLabels(!world.showPlantLabels); }
   else if (k === ' ' && fake) { e.preventDefault(); fake.toggle(); }
   else if (k === 'arrowright' && fake && !planOn) fake.next();
   else if (k === 'arrowleft' && fake && !planOn) fake.prev();
   else if (k === 'f') { world.follow = null; world.director = false; world.frameGarden(); refresh(); }
 });
 plan.hidden = true;
+if (!world.available) {
+  // No WebGL: the plan view is a complete way to see the garden.
+  document.body.classList.add('no-gl');
+  toast('3D is unavailable on this device, so here is the garden plan.');
+  setPlan(true);
+}
+// A weak machine: if frames arrive but slowly for a while, offer the plan view instead of a slideshow.
+// (A hidden tab delivers almost no frames, which is not "slow", so it is ignored.)
+let slowFor = 0;
+setInterval(() => {
+  if (!world.available || q.get('autofallback') === '0' || document.hidden || planOn) { slowFor = 0; return; }
+  slowFor = world.fps >= 8 && world.fps < 20 ? slowFor + 1 : 0;
+  if (slowFor === 6) toast('This machine is struggling with 3D. Press P for the garden plan, or add ?quality=low.');
+}, 1000);
 if (q.get('debug') === '1') {
   const el = document.getElementById('fps')!; el.hidden = false;
   setInterval(() => { el.textContent = `${world.fps} fps`; }, 500);
@@ -106,6 +184,7 @@ if (q.get('debug') === '1') {
     advance: (sec: number) => world.advance(sec),
     bench: (frames = 120) => world.benchFrames(frames),
     snapshot: () => store.snapshot,
+    errors,
     get fps() { return world.fps; },
     get step() { return fake?.step; },
   };

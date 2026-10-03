@@ -62,6 +62,14 @@
       .small { font-size:.42px; fill:#3b3a30; } .stage { font-size:.4px; fill:#3b3a30; } .stage.b { font-weight:800; fill:#a02c6a; }
       .plant { stroke:#3b3a30; stroke-width:.06; } .plant.seed { fill:#8b6a45; } .plant.sprout { fill:#a8d88a; } .plant.growing { fill:#5fa04a; }
       .plant.bud { fill:#c9d86b; } .plant.bloom { fill:#f48fb1; } .plant.dormant { fill:#bdb9a4; }
+      #banner { position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:9; background:#fff7d6; border:1px solid #d9b94a; border-radius:999px; padding:6px 16px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.15); max-width:min(90vw,640px); text-align:center; } #banner[hidden] { display:none; }
+      #banner button { font:inherit; margin-left:8px; padding:2px 10px; border-radius:999px; border:1px solid var(--ink); background:var(--ink); color:#fff; cursor:pointer; }
+      .spin { display:inline-block; width:11px; height:11px; border:2px solid #b8962e; border-top-color:transparent; border-radius:50%; animation:spin .9s linear infinite; vertical-align:-1px; } @keyframes spin { to { transform:rotate(360deg); } }
+      #empty { position:fixed; left:50%; top:46%; transform:translate(-50%,-50%); background:var(--card); border:1px dashed var(--ink); border-radius:14px; padding:16px 24px; text-align:center; font-size:15px; max-width:80vw; } #empty[hidden] { display:none; }
+      #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); display:flex; flex-direction:column; gap:6px; z-index:10; } .toast { background:var(--ink); color:#fff; padding:8px 16px; border-radius:10px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.3); }
+      body.stale #app canvas { filter:saturate(.65) brightness(.93); }
+      .label.plant { font-weight:500; font-size:11px; background:rgba(255,252,243,.88); }
+      body.hc .label, body.hc .bubble, body.hc .edgearrow { outline:2px solid #111; background:#fff; color:#000; border-color:#000; } body.hc aside#shed, body.hc #keys, body.hc #status { border:2px solid #000; background:#fff; } body.hc .sub { opacity:1; }
       body.present #keys { display:none; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
       @media print { body > *:not(#plan) { display:none !important; } #plan { position:static; background:#fff; } .plan-bar button, .plan-bar input { display:none; } #plan svg { border:0; height:90vh; } }
       body.plan-open #shed, body.plan-open #status, body.plan-open #keys { display:none; }
@@ -72,9 +80,12 @@
   <body>
     <h1 style="position:absolute;left:-9999px">Sprout garden</h1>
     <div id="app"></div>
-    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · arrows pan · <b>Q</b>/<b>E</b> turn · <b>+</b>/<b>-</b> zoom · <b>1</b>-<b>3</b> views · <b>P</b> plan · <b>S</b> shed · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI</div>
+    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · arrows pan · <b>Q</b>/<b>E</b> turn · <b>+</b>/<b>-</b> zoom · <b>1</b>-<b>3</b> views · <b>P</b> plan · <b>S</b> shed · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI · <b>L</b> labels · <b>M</b> calm · <b>K</b> contrast</div>
     <aside id="shed" aria-label="Garden shed noticeboard"></aside>
     <div id="plan" hidden></div>
+    <div id="banner" role="status" hidden></div>
+    <div id="empty" hidden><b>No files planted yet</b><br/>Run <code>sprout join</code> in your repo and the garden fills in.</div>
+    <div id="toasts" aria-live="polite"></div>
     <div id="status" role="status"></div>
     <div id="fps" hidden></div>
     <script type="module" src="/src/main.ts"></script>

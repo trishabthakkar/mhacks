@@ -35,5 +35,6 @@ export function sentence(a: ActivityView): string {
     case 'handoff_accepted': return `${who} accepted a handoff`;
     case 'certify_bloom': return `the botanist certified ${f}: bloom!`;
     case 'certify_refused': return `the botanist refused ${f}`;
+    default: return `${who}: ${String(a.kind).slice(0, 40)}`; // a kind this version doesn't know yet
   }
 }

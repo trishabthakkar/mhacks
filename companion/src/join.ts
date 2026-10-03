@@ -168,7 +168,7 @@ async function restartDaemon(cfg: SproutConfig): Promise<void> {
   await call(daemonPort(cfg), 'POST', '/shutdown', undefined, 500).catch(() => {});
   await new Promise((r) => setTimeout(r, 300));
   try { unlinkSync(files.starting()); } catch { /* none */ }
-  ensureDaemon();
+  await ensureDaemon();
 }
 
 export function mcpAddCommand(mcpUrl: string, handle: string): string {

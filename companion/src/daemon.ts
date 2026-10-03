@@ -347,8 +347,9 @@ export class Daemon {
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const json = (code: number, body: unknown) => {
-      res.writeHead(code, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(body));
+      const buf = Buffer.from(JSON.stringify(body));
+      res.writeHead(code, { 'content-type': 'application/json', 'content-length': buf.length });
+      res.end(buf);
     };
     // Browsers can reach 127.0.0.1: refuse anything a web page could send cross-origin with credentials-free CORS.
     if (req.headers.origin) return json(403, { error: 'no browsers' });

@@ -1,6 +1,5 @@
 // `sprout hook <Event>`: reads the Claude Code payload on stdin, talks to the daemon with a
 // 0.5s timeout, prints a decision when there is one, and ALWAYS exits 0 quickly (fail open).
-import { spawn } from 'node:child_process';
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { daemonPort, files, loadConfig, sproutHome } from './config.ts';
@@ -31,13 +30,14 @@ export function binPath(): string {
 }
 
 /** Start the daemon detached unless it's already starting (debounced via a stamp file). */
-export function ensureDaemon(): void {
+export async function ensureDaemon(): Promise<void> {
   try {
     mkdirSync(sproutHome(), { recursive: true, mode: 0o700 });
     try {
       if (Date.now() - statSync(files.starting()).mtimeMs < 10_000) return;
     } catch { /* no stamp */ }
     writeFileSync(files.starting(), String(Date.now()));
+    const { spawn } = await import('node:child_process');
     const out = openSync(files.log(), 'a');
     const child = spawn(process.execPath, [binPath(), 'daemon'], { detached: true, stdio: ['ignore', out, out], env: process.env });
     child.unref();
@@ -93,7 +93,7 @@ export async function runHook(eventName: string, stdin: string): Promise<string 
       if (msgs.length) await call(port, 'POST', '/delivered', { ids: msgs.map((m) => m.id) }).catch(() => {});
     }
     await post;
-    if (down) ensureDaemon();
+    if (down) await ensureDaemon();
     return output;
   } catch {
     return undefined;
@@ -112,8 +112,8 @@ export async function runPostCommit(cwd = process.cwd()): Promise<void> {
     if (!repo) return;
     const { sha, paths } = await commitInfo(root);
     const ev: DaemonEvent = { type: 'diff', repo: repo.name, paths: paths.slice(0, 200), commit: sha };
-    await call(daemonPort(cfg), 'POST', '/event', [ev], 1000).catch((e) => {
-      if (isDown(e)) { spool([ev]); ensureDaemon(); }
+    await call(daemonPort(cfg), 'POST', '/event', [ev], 1000).catch(async (e) => {
+      if (isDown(e)) { spool([ev]); await ensureDaemon(); }
     });
   } catch { /* fail open */ }
 }

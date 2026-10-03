@@ -29,7 +29,7 @@ export class StdbDb implements SproutDb {
   private backoffMs = 1000;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
-  constructor(private uri: string, private dbName: string, private log: Log) {}
+  constructor(private uri: string, private dbName: string, private log: Log, private connectTimeoutMs = 10_000) {}
 
   onState(cb: (c: boolean) => void): void { this.listeners.push(cb); }
   isConnected(): boolean { return this.connected && !!this.conn; }
@@ -55,6 +55,13 @@ export class StdbDb implements SproutDb {
 
   private open(done?: (err?: Error) => void): void {
     if (this.closed) return;
+    // The SDK fires no callback at all when the server is unreachable: watchdog it.
+    const watchdog = setTimeout(() => {
+      if (this.connected) return;
+      this.log(`[stdb] connect error: no connection to ${this.uri} after ${this.connectTimeoutMs}ms`);
+      done?.(new Error(`could not connect to ${this.uri}`));
+      this.scheduleReconnect();
+    }, this.connectTimeoutMs);
     let token: string | undefined;
     try { if (existsSync(files.token())) token = readFileSync(files.token(), 'utf8').trim() || undefined; } catch { /* fresh identity */ }
     const conn = DbConnection.builder()
@@ -66,6 +73,7 @@ export class StdbDb implements SproutDb {
         this.log(`[stdb] connected to ${this.uri} db=${this.dbName}`);
         c.subscriptionBuilder()
           .onApplied(() => {
+            clearTimeout(watchdog);
             this.backoffMs = 1000;
             this.setConnected(true);
             done?.();

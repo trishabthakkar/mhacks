@@ -1,6 +1,6 @@
 import { Store } from './data/store.ts';
 import { startFake } from './data/fake.ts';
-import { connectLive } from './data/spacetime.ts';
+import { connectLive, DEFAULT_DB, DEFAULT_HOST } from './data/spacetime.ts';
 import { GardenWorld } from './scene/world.ts';
 import { renderShed } from './ui/shed.ts';
 import { renderPlan } from './ui/plan.ts';
@@ -21,7 +21,7 @@ world.onLayout = (l) => { layout = l; };
 async function start() {
   if (source === 'live') {
     try {
-      await connectLive(store, q.get('host') ?? import.meta.env?.VITE_STDB_HOST ?? '', q.get('db') ?? import.meta.env?.VITE_STDB_DB ?? 'sprout');
+      await connectLive(store, q.get('host') ?? import.meta.env?.VITE_STDB_HOST ?? DEFAULT_HOST, q.get('db') ?? import.meta.env?.VITE_STDB_DB ?? DEFAULT_DB);
       return;
     } catch (e) {
       console.warn('live source failed, falling back to demo data:', e);

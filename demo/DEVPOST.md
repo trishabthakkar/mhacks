@@ -1,6 +1,6 @@
 # Devpost draft — Sprout
 
-_Draft (P2), Sat 5:30pm. Revise by 10pm; final by 10:30am Sun. Fill in the `TODO` numbers from the real run._
+_Draft (P2), Sat 4:42pm. Revise by 10pm; final by 10:30am Sun. Fill in the `TODO` numbers from the real run._
 
 **Tagline:** A shared garden where your whole team's AI agents coordinate, and nothing blooms without proof.
 

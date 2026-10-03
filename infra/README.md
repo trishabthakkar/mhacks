@@ -1,6 +1,15 @@
 # Infra runbook
 
-One Ubuntu VM runs the MCP server (and SpacetimeDB only if Maincloud fails), with Caddy giving automatic HTTPS.
+One Ubuntu VM on **Google Cloud (Compute Engine)** runs the MCP server (and SpacetimeDB only if Maincloud fails), with Caddy giving automatic HTTPS.
+
+## Create the VM (Google Cloud console)
+
+1. Pick a project with billing on (apply student credits under Billing → Credits).
+2. Compute Engine → VM instances → Create instance: name `sprout`, region `us-east4` or `us-central1`, machine type `e2-small`, boot disk Ubuntu 24.04 LTS (20 GB), and tick **Allow HTTP traffic** and **Allow HTTPS traffic**.
+3. Copy the External IP. It changes on stop/start; pin it in VPC network → IP addresses → promote to Static.
+4. SSH: the **SSH** button on the VM row (browser terminal), or `gcloud compute ssh sprout --zone=<zone>`, or add your public key under Compute Engine → Metadata → SSH Keys.
+
+Both Google's firewall (the HTTP/HTTPS checkboxes) and the VM's `ufw` must allow 80 and 443, or Caddy can't get its certificate.
 
 | Thing | Where |
 |---|---|
@@ -29,8 +38,11 @@ It prints the public hostname (`<ip-with-dashes>.sslip.io` until we have a domai
 ## Deploy (from your laptop)
 
 ```bash
-infra/deploy.sh ubuntu@<vm-ip>
+infra/deploy.sh <user>@<vm-ip>                 # plain SSH
+GCE_INSTANCE=sprout GCE_ZONE=<zone> infra/deploy.sh gce   # via gcloud compute ssh
 ```
+
+No SSH from your laptop? In the browser terminal run `sudo systemctl restart sprout-mcp`.
 
 Restarting the service pulls `main`, runs `npm ci` and the build, then starts. The script waits for `/health`.
 

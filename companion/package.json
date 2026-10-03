@@ -3,16 +3,20 @@
   "private": true,
   "type": "module",
   "version": "0.0.0",
-  "bin": { "sprout": "bin/sprout.js" },
+  "bin": {
+    "sprout": "bin/sprout.js"
+  },
   "scripts": {
     "dev": "tsx src/cli.ts --help",
     "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
+    "spacetimedb": "^2.10.2",
     "tsx": "^4.19.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.6.0"
   }
 }

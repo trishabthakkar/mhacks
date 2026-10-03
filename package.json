@@ -1,0 +1,10 @@
+{
+  "name": "sprout",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --experimental-strip-types --test shared/*.test.ts",
+    "gen": "echo 'P1 only: spacetime generate --lang typescript into garden/companion/mcp src/module_bindings (set up once the module exists)'"
+  }
+}

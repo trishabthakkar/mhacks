@@ -14,6 +14,20 @@ Read PROJECT_CONTEXT.md for background. [CONTRACT.md](CONTRACT.md) holds the exa
 
 `shared/**`, `CONTRACT.md`, `CLAUDE.md` and root files change only after the whole team agrees.
 
+## Team and live services
+
+| Person | Role | Handle |
+|---|---|---|
+| Seno | P1 | `seno` |
+| Manahil | P2 | `manahil` |
+| Shriya | P3 | `shriya` |
+| Trisha | P4 | `trisha` |
+
+- Hosted db: `wss://maincloud.spacetimedb.com`, database `sprout-mhacks` (all four handles are members). `sprout-demo` is the throwaway database for demo rehearsals.
+- MCP: `https://35-225-24-109.sslip.io/mcp`. Connect once:
+  `claude mcp add --transport http sprout https://35-225-24-109.sslip.io/mcp --header "X-Sprout-Member: <handle>"`
+- Use the same handle everywhere (MCP header, `sprout join --handle`).
+
 ## Working rules
 
 - TypeScript everywhere, Node 22, ESM. Zero LLM calls on our side.

@@ -140,7 +140,8 @@ export class Actors {
       return { obj: m.obj, m, label, kneel: 0 };
     }, this.scene, (g) => this.labels.remove(g.label));
 
-    const claudes = snap.agents.filter((a) => a.kind === 'claude');
+    // Ended sessions leave dormant rows behind; don't draw a bot for each one.
+    const claudes = snap.agents.filter((a) => a.kind === 'claude' && a.status !== 'dormant');
     reconcile(this.bots, claudes.map((a) => a.sessionId), (id) => {
       const a = claudes.find((x) => x.sessionId === id)!;
       const b = makeBot(this.memberColor(a.handle));
@@ -164,7 +165,9 @@ export class Actors {
     }
 
     // Butterflies live until acked; acking bursts the pollen where they landed.
-    const msgs = snap.messages.filter((m) => m.status !== 'acked');
+    // Very old unacked messages would circle forever; keep the garden readable.
+    const msgs = snap.messages.filter((m) => m.status !== 'acked' &&
+      snap.at - (m.status === 'sent' ? m.sentAt : (m.deliveredAt ?? m.sentAt)) < (m.status === 'sent' ? 30 : 10) * 60_000);
     const seen = new Set(msgs.map((m) => String(m.id)));
     for (const [k, f] of this.flies) if (!seen.has(k)) {
       this.fx.burst(f.obj.position.clone(), 0xffd34d, 30, 1.6, 2.5);

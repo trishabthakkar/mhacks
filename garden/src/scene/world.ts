@@ -39,6 +39,7 @@ export class GardenWorld implements WorldLookup {
   private fenceKey = '';
   private snap!: GardenSnapshot;
   private plantXZ = new Map<string, THREE.Vector3>();
+  private bedLabels: HTMLElement[] = [];
   private clock = new THREE.Clock();
   extent = 10;
   director = false;
@@ -126,6 +127,8 @@ export class GardenWorld implements WorldLookup {
     if (key !== this.layoutKey) {
       this.layoutKey = key;
       this.bedGroup.clear();
+      for (const el of this.bedLabels) this.labels.remove(el);
+      this.bedLabels = [];
       for (const b of this.layout.beds) {
         const soil = mesh(geo.box, mat('#7a5a3a'), b.w, 0.3, b.d, b.x, 0.05, b.z); soil.castShadow = false; soil.receiveShadow = true;
         const top = mesh(geo.box, mat('#5b4129'), b.w - 0.5, 0.05, b.d - 0.5, b.x, 0.22, b.z); top.castShadow = false; top.receiveShadow = true;
@@ -134,7 +137,7 @@ export class GardenWorld implements WorldLookup {
           const glass = mesh(geo.box, mat('#bfe8f5', { opacity: 0.22 }), b.w, 2.4, b.d, b.x, 1.3, b.z); glass.castShadow = false;
           this.bedGroup.add(glass);
         }
-        this.labels.add(b.greenhouse ? `${b.name} (greenhouse)` : b.name, () => new THREE.Vector3(b.x, 0.35, b.z + b.d / 2 + 0.2), 'label bed');
+        this.bedLabels.push(this.labels.add(b.greenhouse ? `${b.name} (greenhouse)` : b.name, () => new THREE.Vector3(b.x, 0.35, b.z + b.d / 2 + 0.2), 'label bed'));
       }
       this.fenceKey = '';
     }

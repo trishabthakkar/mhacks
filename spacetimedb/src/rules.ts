@@ -41,10 +41,15 @@ export const claimsOverlap = (a: string, b: string) => claimMatches(a, b) || cla
 
 export const toMs = (ts: Timestamp) => Number(ts.microsSinceUnixEpoch / 1000n);
 
-/** "20:40 UTC (in 23 min)" */
+// The module has no local timezone. MHacks is in Ann Arbor (EDT, UTC-4, until Nov 1), so times are shown in EDT,
+// matching the companion's local 12h format ("2:40am").
+const EDT_OFFSET_MS = -4 * 60 * 60_000;
+
+/** "4:40pm (in 23 min)" */
 export function fmtUntil(until: Timestamp, now: Timestamp): string {
-  const d = new Date(toMs(until));
-  const hhmm = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+  const d = new Date(toMs(until) + EDT_OFFSET_MS);
+  const h24 = d.getUTCHours();
+  const hhmm = `${h24 % 12 || 12}:${String(d.getUTCMinutes()).padStart(2, '0')}${h24 >= 12 ? 'pm' : 'am'}`;
   const mins = Math.max(0, Math.ceil((toMs(until) - toMs(now)) / 60_000));
-  return `${hhmm} UTC (in ${mins} min)`;
+  return `${hhmm} (in ${mins} min)`;
 }

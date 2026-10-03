@@ -100,9 +100,9 @@ async function main() {
     say('fern blocked by the fence');
     await sleep(1);
 
-    // 5. A bee: fern asks ivy, the message is delivered on ivy's next prompt, then acked.
+    // 5. A butterfly: fern asks ivy, the message is delivered on ivy's next prompt, then acked.
     await r.postMessage({ fromHandle: 'fern', fromSession: S('fern'), toHandle: 'ivy', kind: 'request', body: 'Can you export verifyToken from auth.ts? I need it for the tests.' });
-    say('bee: fern → ivy');
+    say('butterfly: fern → ivy');
     await act('fern', 'waiting', undefined, { detail: 'waiting for ivy' });
     await sleep(2);
     const msg = [...conn.db.message.iter()].filter((m) => m.toHandle === 'ivy' && m.status === 'sent').at(-1);

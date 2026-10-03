@@ -155,7 +155,7 @@ eq  "claim inserted"           "SELECT handle FROM claim WHERE path = 'src/api/'
 has "claim activity"           "SELECT detail FROM activity WHERE kind = 'claim'" "claimed src/api/ for 30 min"
 reject "file under dir claim"  "fenced by alex"  claim_files '"sam"' '["src/api/routes.ts"]' "$NONE"
 reject "parent dir overlaps"   "fenced by alex"  claim_files '"sam"' '["src/"]' "$NONE"
-reject "error says until when" "UTC (in 30 min)" claim_files '"sam"' '["src/api/auth.ts"]' "$NONE"
+reject "error says until when" "m (in 30 min)" claim_files '"sam"' '["src/api/auth.ts"]' "$NONE"
 call claim_files '"sam"' '["src/db.ts"]' "$(some 5)" && ok "non-overlapping claim ok"
 call claim_files '"alex"' '["src/api/"]' "$(some 45)"
 eq  "re-claim refreshes, no dup" "SELECT COUNT(*) AS n FROM claim WHERE path = 'src/api/'" 1

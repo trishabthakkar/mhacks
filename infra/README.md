@@ -46,6 +46,19 @@ No SSH from your laptop? In the browser terminal run `sudo systemctl restart spr
 
 Restarting the service pulls `main`, runs `npm ci` and the build, then starts. The script waits for `/health`.
 
+## Garden (the 3D page)
+
+The garden is a static site served by Caddy at `https://<host>/garden/` (files in `/var/www/garden`). **Not yet run on the VM**: the scripts are written and syntax-checked only.
+
+```bash
+# once: re-run setup so Caddy gets the /garden route (safe to re-run)
+sudo REPO_URL=https://github.com/trishabthakkar/mhacks.git bash setup-vm.sh
+# every time the garden changes (from your laptop):
+infra/deploy-garden.sh <user>@<vm-ip>            # or: GCE_INSTANCE=sprout GCE_ZONE=<zone> infra/deploy-garden.sh gce
+```
+
+It builds with `VITE_STDB_HOST`/`VITE_STDB_DB` (defaults: Maincloud, `sprout-mhacks`) and the page still accepts `?db=` and `?host=` overrides. Then use `https://<host>/garden/?db=sprout-demo&present=1` on the projector.
+
 ## Logs / restart / status
 
 ```bash

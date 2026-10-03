@@ -109,6 +109,11 @@ stdb.$HOST {
 }"
 fi
 
+echo "==> garden static files dir"
+mkdir -p /var/www/garden
+[ -f /var/www/garden/index.html ] || echo "<!doctype html><title>garden</title><p>Garden not deployed yet. Run infra/deploy-garden.sh.</p>" > /var/www/garden/index.html
+chown -R "${SUDO_USER:-root}":"${SUDO_USER:-root}" /var/www/garden
+
 echo "==> Caddy config"
 cat > /etc/caddy/Caddyfile <<CADDY
 $HOST {
@@ -118,6 +123,13 @@ $HOST {
 	}
 	handle /mcp* {
 		reverse_proxy 127.0.0.1:8080
+	}
+	redir /garden /garden/ permanent
+	handle /garden/* {
+		uri strip_prefix /garden
+		root * /var/www/garden
+		try_files {path} /index.html
+		file_server
 	}
 	handle {
 		respond "sprout" 200

@@ -5,7 +5,8 @@ The 3D garden, the shed noticeboard and the flat garden plan. Reads everything l
 ```bash
 cd garden && npm ci && npm run dev      # http://localhost:5173
 npm test                                 # tsc + unit tests
-npm run build && npm run preview         # production bundle
+npm run build && npm run preview         # production bundle (≈ 270 KB gzip in 3 chunks)
+# hosting on the VM: see ../infra/README.md → "Garden" (infra/deploy-garden.sh)
 ```
 
 ## URLs (the garden dev server at `http://localhost:5173`)

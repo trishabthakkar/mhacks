@@ -53,7 +53,7 @@ if [ ! -f "$ENV_FILE" ]; then
   cat > "$ENV_FILE" <<ENV
 PORT=8080
 SPROUT_STDB_URI=wss://maincloud.spacetimedb.com
-SPROUT_DB=sprout
+SPROUT_DB=sprout-mhacks
 ENV
 fi
 chmod 640 "$ENV_FILE"; chown root:sprout "$ENV_FILE"

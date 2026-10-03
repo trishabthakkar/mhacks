@@ -47,3 +47,7 @@ export interface GardenSnapshot {
   certifications: CertificationView[];
   activity: ActivityView[];
 }
+
+export interface HandoffView {
+  id: number; fromHandle: string; toHandle: string; task: string; notes: string; status: HandoffStatus; createdAt: number;
+}

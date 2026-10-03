@@ -9,7 +9,9 @@ export type MessageStatus = (typeof MESSAGE_STATUSES)[number];
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
-// View-model types for the garden. Times are ms since epoch. TODO(contract): align with generated bindings.
+// View-model types for the garden. Field names match the generated client rows exactly (camelCase).
+// Converting a generated row: u64 ids are bigint → Number(id); Timestamp → ts.toDate().getTime() (ms);
+// option columns are already `T | undefined`. Table accessors: conn.db.member … conn.db.testRun.
 export interface MemberView { handle: string; color: string; online: boolean; paused: boolean; lastSeen: number }
 export interface AgentView {
   sessionId: string; handle: string; kind: 'claude' | 'subagent'; parentSessionId?: string;

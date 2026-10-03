@@ -2,5 +2,19 @@
   "name": "sprout-spacetimedb",
   "private": true,
   "type": "module",
-  "version": "0.0.0"
+  "version": "0.0.0",
+  "scripts": {
+    "build": "spacetime build",
+    "publish:local": "spacetime publish sprout --server local -p . -y",
+    "sim": "tsx scripts/sim.ts",
+    "smoke": "bash scripts/smoke.sh"
+  },
+  "dependencies": {
+    "spacetimedb": "2.10.*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.2"
+  }
 }

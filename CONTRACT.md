@@ -113,3 +113,32 @@ Added once per teammate: `claude mcp add --transport http sprout <url>/mcp --hea
 ## `team code` (for `sprout join`)
 
 base64url JSON `{stdbUri, db, mcpUrl, color?}`.
+
+## Generated casing
+
+From `spacetime generate --lang typescript` (SpacetimeDB 2.10.2). Consumers need `npm i spacetimedb@2.10.*`.
+
+| Where | Tables | Fields | Reducers |
+|---|---|---|---|
+| Generated TS client | camelCase: `conn.db.testRun`, `tables.testRun` | camelCase: `row.lastSeen`, `row.exitCode` | camelCase, one object arg: `conn.reducers.claimFiles({ handle, paths, ttlMinutes })` |
+| Server / CLI / SQL | snake_case: `test_run` | snake_case: `last_seen` (SQL also accepts camel) | snake_case only: `spacetime call sprout claim_files ...` |
+
+Types: u64 ids are `bigint`; times are `Timestamp` (`.toDate()`); `t.option` columns/args are `T | undefined`. Reducer calls return a Promise that rejects with `SenderError` on a rule violation.
+
+Reducer arguments (`?` = option, pass `undefined`):
+
+- `joinMember({ handle, color })` (`color: ''` picks a free one)
+- `setPaused({ handle, paused })`, `heartbeat({ handle })`
+- `seedRepo({ files: { path, lines }[] })`
+- `ingestActivity({ handle, sessionId?, kind, path?, lines?, detail?, parentSessionId? })` (`parentSessionId` only for `subagent_start`)
+- `reportStatus({ handle, sessionId?, status })` (no sessionId: all of that member's live agents)
+- `recordTestRun({ handle, repo, command, exitCode })`
+- `recordDiff({ handle, paths, commit? })`
+- `claimFiles({ handle, paths, ttlMinutes? })`, `releaseFiles({ handle, paths })` (empty `paths`: release all mine)
+- `postMessage({ fromHandle, fromSession?, toHandle, kind, body })`
+- `markDelivered({ handle, id })`, `ackMessage({ handle, id })`
+- `offerHandoff({ fromHandle, toHandle, task, notes })`, `respondHandoff({ handle, id, accept })`
+- `submitEvidence({ handle, path, task })` (result lands in `certification`)
+- `submitReview({ handle, path, ok })` (named `review` in the list above; renamed because it clashed with the `review` table's generated type)
+- `setConfig({ key, value })`
+- Scheduled `sweep` and `expireClaims` (every 60s) are not in the bindings.

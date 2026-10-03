@@ -11,11 +11,14 @@
       #app { position:fixed; inset:0; }
       #app canvas { display:block; }
       .labels { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+      .edgearrow { position:absolute; left:0; top:0; background:var(--card); border:2px solid var(--line); border-radius:999px; padding:1px 10px; font-size:12px; font-weight:700; white-space:nowrap; opacity:.9; }
+      .label, .bubble { transition:opacity .18s; transform-origin:50% 100%; }
       .label, .bubble { position:absolute; left:0; top:0; white-space:nowrap; font-size:12px; will-change:transform; }
       .label { background:var(--card); border:2px solid var(--line); border-radius:999px; padding:1px 8px; font-weight:600; }
       .label.bed { background:rgba(255,252,243,.7); font-weight:500; font-size:11px; border-style:dashed; }
       .label.botanist { border-color:#6a4c93; }
       .bubble { background:#fff; border:2px solid var(--ink); border-radius:12px; padding:6px 10px; max-width:300px; white-space:normal; font-size:13px; box-shadow:0 3px 10px rgba(0,0,0,.2); }
+      .bubble::after { content:''; position:absolute; left:50%; bottom:-9px; width:12px; height:12px; background:inherit; border-right:2px solid; border-bottom:2px solid; border-color:inherit; transform:translateX(-50%) rotate(45deg); }
       .bubble.refused { border-color:#c0392b; } .bubble.bloom { border-color:#2e8b57; }
       .bubble.big { font-size:18px; max-width:380px; padding:10px 16px; border-width:3px; box-shadow:0 8px 28px rgba(0,0,0,.3); }
       .bubble.big strong { display:block; font-size:19px; margin-bottom:2px; } .bubble.big.refused strong { color:#b3261e; } .bubble.big.bloom strong { color:#1f7a4a; }

@@ -68,6 +68,8 @@ export class CameraRig {
     }
   }
 
+  get reservedRight() { return this.reserved; }
+
   get keyboardActive() { return this.keys.size > 0; }
 
   /** Ease in to a close shot of `point`, keeping the current viewing direction. Remembers the old view for release(). */

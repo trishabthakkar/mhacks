@@ -328,7 +328,7 @@ export class GardenWorld implements WorldLookup {
     }
     this.rig.update(dt);
     this.controls.update();
-    this.labels.update(this.host.clientWidth, this.host.clientHeight);
+    this.labels.update(this.host.clientWidth, this.host.clientHeight, this.rig.reservedRight);
     if (render) this.renderer.render(this.scene, this.camera);
     this.frames++; this.fpsT += dt;
     if (this.fpsT >= 0.5) { this.fps = Math.round(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }

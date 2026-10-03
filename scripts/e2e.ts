@@ -13,7 +13,9 @@ const MCP = process.env.E2E_MCP ?? 'http://127.0.0.1:18081';
 if (DB === 'sprout-mhacks' && !process.env.E2E_ALLOW_REAL) { console.error('refusing to run against the real team database (sprout-mhacks)'); process.exit(2); }
 
 const SPROUT = join(import.meta.dirname, '../companion/bin/sprout.js');
-const A = 'e2e-a', B = 'e2e-b';
+// Unique per run so leftovers from earlier runs never confuse the assertions.
+const RUN = Math.random().toString(36).slice(2, 7);
+const A = `e2e-a-${RUN}`, B = `e2e-b-${RUN}`;
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'sprout-e2e-')));
 const envOf = (h: string, port: number) => ({ ...process.env, SPROUT_HOME: join(root, `home-${h}`), SPROUT_PORT: String(port) });
 const ENV = { [A]: envOf(A, 4811), [B]: envOf(B, 4812) } as Record<string, NodeJS.ProcessEnv>;
@@ -78,7 +80,7 @@ function makeRepo(h: string) {
   const sh = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
   sh('init', '-q'); sh('config', 'user.email', 'e2e@example.com'); sh('config', 'user.name', 'e2e');
   sh('remote', 'add', 'origin', 'git@github.com:sprout-e2e/garden-demo.git');
-  writeFileSync(join(dir, 'src/api/routes.js'), 'export const a = 1;\n');
+  writeFileSync(join(dir, 'src/api', FILE), 'export const a = 1;\n');
   writeFileSync(join(dir, 'src/api/users.js'), 'export const u = 1;\n');
   writeFileSync(join(dir, 'tests/users.test.js'), "import test from 'node:test';\ntest('ok', () => {});\n");
   writeFileSync(join(dir, 'package.json'), '{"name":"e2e","scripts":{"test":"node --test"}}\n');
@@ -86,10 +88,15 @@ function makeRepo(h: string) {
 }
 
 console.log(`Sprout e2e rehearsal → ${HOST}/${DB}   (temp dir ${root})\n`);
-const PATH = 'src/api/routes.js';
+const FILE = `r${RUN}.js`;
+const PATH = `src/api/${FILE}`;
 const TEAM = Buffer.from(JSON.stringify({ stdbUri: HOST, db: DB, mcpUrl: MCP })).toString('base64url');
 
 await step('1. database reachable', async () => { await connectDb(); return `${[...conn.db.member.iter()].length} members` });
+// Self-heal: drop fences and members left behind by an earlier (failed) run.
+for (const c of [...conn.db.claim.iter()]) if (c.handle.startsWith('e2e-')) conn.reducers.releaseFiles({ handle: c.handle, paths: [] });
+for (const m of [...conn.db.member.iter()]) if (m.handle.startsWith('e2e-')) { try { conn.reducers.removeMember({ handle: m.handle }); } catch { /* old module */ } }
+await sleep(1200);
 await step('2. MCP /health connected', async () => {
   const h = (await (await fetch(`${MCP}/health`)).json()) as { db: string; impl?: string };
   eq(h.db, 'connected', 'mcp db'); return `impl ${h.impl}`;
@@ -177,7 +184,7 @@ await step('13. A: tests pass (hook) → botanist BLOOMS the plant', async () =>
   await until('test_pass', () => acts('test_pass', A).length > 0);
   const r = await tool(A, 'submit_evidence', { path: PATH, task: 'routes refactor' });
   has(r.text, 'Bloom certified', 'verdict');
-  eq(plant(PATH)?.stage, 'bloom', 'plant stage');
+  await until('plant row to bloom', () => plant(PATH)?.stage === 'bloom');
 });
 
 await step('14. A commits → commit activity, fence auto-released', async () => {
@@ -198,6 +205,9 @@ await step('16. restore claimMode=warn', async () => {
   await until('config', () => [...conn.db.config.iter()].find((c) => c.key === 'claimMode')?.value === 'warn');
 });
 
+// Remove the throwaway members (their plants stay; demo-reset or a sprout-demo wipe clears those).
+for (const h of [A, B]) { try { conn.reducers.removeMember({ handle: h }); } catch { /* old module */ } }
+await sleep(800);
 for (const h of [A, B]) { try { sprout(h, ['pause']); const pid = Number(execFileSync('cat', [join(root, `home-${h}`, 'daemon.pid')], { encoding: 'utf8' })); process.kill(pid); } catch { /* already gone */ } }
 console.log(`\n${fail === 0 ? 'ALL GOOD' : 'FAILURES'}: ${pass} passed, ${fail} failed, ${skip} skipped`);
 process.exit(fail === 0 ? 0 : 1);

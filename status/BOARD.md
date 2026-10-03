@@ -21,3 +21,10 @@ _Maintained by the integrator at each checkpoint. Status of every must/should/ni
 - Fixed: macOS symlink path bug in companion (`relPath`/`repoFor`), Caddyfile `handle` blocks in `infra/setup-vm.sh`, garden duplicate bed labels / dormant-bot pile-up / stale butterflies.
 - Test data left in `sprout-demo`: `ivy moss fern reed p3check e2e-a e2e-b` and their plants. Run `demo/demo-reset.ts` before the stage run.
 - Known, not fixed: plants never go `dormant` (sweep only covers members/agents); `reqPath` rejects any path containing `..` even inside a filename; MCP has no auth (anyone can send `X-Sprout-Member: <teammate>`); edits repeated within seconds are deduped by the daemon.
+
+### 6:35pm re-check (integrator)
+
+- Seno published the `recordDiff` fix, `removeMember`, and plant dormancy to `sprout-mhacks` + `sprout-demo`. `bash scripts/e2e.sh` is now **17/17 PASS, 0 skip** (twice in a row): a commit no longer un-blooms or moves the evidence clock.
+- e2e now uses unique handles per run, self-heals stale `e2e-*` fences/members, and removes its members at the end via `removeMember`.
+- All package tests pass: shared 8, mcp 38 (+2 live skipped), companion 37, garden 6, stages 3.
+- Open: P3 nit from P1 (a Claude Bash command logs `bash` twice: Pre + Post); a human rehearsal with real Claude Code sessions; second-laptop check of the db; CI workflow still needs adding via GitHub web editor (`infra/ci.yml.pending`).

@@ -234,13 +234,23 @@ eq  "certification bloom"      "SELECT COUNT(*) AS n FROM certification WHERE pa
 eq  "certify_bloom activity"   "SELECT COUNT(*) AS n FROM activity WHERE kind = 'certify_bloom'" 1
 call submit_evidence '"alex"' "\"$P\"" '"again"'
 eq  "no new diff → refused"    "SELECT COUNT(*) AS n FROM certification WHERE path = '$P' AND result = 'refused'" 3
-call record_diff '"alex"' "[\"$P\",\"src/db.ts\",\"README.md\"]" '{"some":"abc1234def"}'
+call record_diff '"alex"' "[\"$P\"]" "$NONE"
 eq  "bloom + diff → bud"       "SELECT stage FROM plant WHERE path = '$P'" bud
+call record_diff '"alex"' "[\"$P\",\"src/db.ts\",\"README.md\"]" '{"some":"abc1234def"}'
+eq  "commit on pending diff keeps bud" "SELECT stage FROM plant WHERE path = '$P'" bud
 # (SQL can't filter option columns, so match on detail; path holds the bed)
 eq  "commit rains per bed (src)"    "SELECT COUNT(*) AS n FROM activity WHERE kind = 'commit' AND detail = 'abc1234: 2 files in src'" 1
 eq  "commit rains per bed (root)"   "SELECT COUNT(*) AS n FROM activity WHERE kind = 'commit' AND detail = 'abc1234: 1 file in (root)'" 1
 eq  "commit auto-releases claims"   "SELECT COUNT(*) AS n FROM claim WHERE handle = 'alex'" 0
 has "auto-release activity"         "SELECT detail FROM activity WHERE kind = 'release'" "committed abc1234"
+# A commit after passing tests must not move the evidence clock (edit → test → commit → submit).
+call record_diff '"alex"' '["src/db.ts"]' "$NONE"
+call record_test_run '"alex"' '"mhacks"' '"npm test"' 0
+call record_diff '"alex"' '["src/db.ts"]' '{"some":"fff1111aaa"}'
+call submit_evidence '"alex"' '"src/db.ts"' '"commit after tests"'
+eq  "commit after tests → bloom"      "SELECT stage FROM plant WHERE path = 'src/db.ts'" bloom
+call record_diff '"alex"' '["src/db.ts"]' '{"some":"eee2222bbb"}'
+eq  "committing certified work keeps bloom" "SELECT stage FROM plant WHERE path = 'src/db.ts'" bloom
 call set_config '"requireReview"' '"true"'
 call record_test_run '"alex"' '"mhacks"' '"npm test"' 0
 call submit_evidence '"alex"' "\"$P\"" '"with review"'

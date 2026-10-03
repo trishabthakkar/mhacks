@@ -296,8 +296,16 @@ export const recordDiff = spacetimedb.reducer(
       ctx.db.diff.insert({ id: 0n, handle, path, at: ctx.timestamp, commit });
       const p = ctx.db.plant.path.find(path);
       // Real diff = a bud waiting for the botanist. A bloomed plant goes back to bud.
+      // Exception: a commit only records work earlier diffs already covered (the companion reports edits as they
+      // happen). Letting it move lastDiffAt would demand a fresh test run after every commit and un-bloom
+      // certified work. So a commit does not reset the evidence clock when a diff is already pending or the
+      // plant is already certified.
       if (p) {
-        ctx.db.plant.path.update({ ...p, stage: 'bud', lastActivity: ctx.timestamp, lastTouchedBy: handle, lastDiffAt: ctx.timestamp });
+        const diffPending = !!p.lastDiffAt && (!p.lastBloomAt || p.lastDiffAt.microsSinceUnixEpoch > p.lastBloomAt.microsSinceUnixEpoch);
+        const certified = p.stage === 'bloom' && !diffPending;
+        if (commit && certified) continue; // committing certified work: nothing changes
+        if (commit && diffPending) ctx.db.plant.path.update({ ...p, lastActivity: ctx.timestamp, lastTouchedBy: handle });
+        else ctx.db.plant.path.update({ ...p, stage: 'bud', lastActivity: ctx.timestamp, lastTouchedBy: handle, lastDiffAt: ctx.timestamp });
       } else {
         ctx.db.plant.insert({
           path, bed: bedOf(path), lines: 0, stage: 'bud', bugs: 0, lastActivity: ctx.timestamp,

@@ -9,7 +9,7 @@ import { flowerColor, geo, mat, mesh } from './materials.ts';
 import { buildPlant } from './plantMesh.ts';
 import { CameraRig } from './camera.ts';
 
-interface PlantNode { group: THREE.Group; holder: THREE.Group; stage: PlantStage; size: number; bugs: number; bugGroup: THREE.Group; born: number; phase: number; x: number; z: number; path: string }
+interface PlantNode { group: THREE.Group; holder: THREE.Group; stage: PlantStage; size: number; bugs: number; bugGroup: THREE.Group; born: number; phase: number; x: number; z: number; path: string; openAt?: number; wobbleUntil?: number }
 
 // Hour-of-day sky: night is kept readable for the projector.
 const SKY: Array<[number, string]> = [[0, '#26335c'], [5, '#e8a07e'], [8, '#bfe3f5'], [16, '#cfe6ee'], [18.5, '#f6b073'], [20.5, '#3a3f74'], [24, '#26335c']];
@@ -43,7 +43,17 @@ export class GardenWorld implements WorldLookup {
   private snap!: GardenSnapshot;
   private plantXZ = new Map<string, THREE.Vector3>();
   private bedLabels: HTMLElement[] = [];
+  /** Blooms held back until the botanist reaches the plant (path -> deadline in performance.now ms). */
+  private pendingBloom = new Map<string, number>();
+  // A cheap "spotlight": a soft additive light shaft (a real SpotLight costs per-pixel lighting on every material).
+  private shaft = new THREE.Mesh(new THREE.ConeGeometry(1.7, 7, 28, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff1c4, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+  private spotRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 40), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0, depthWrite: false }));
+  private lockMesh = new THREE.Group();
+  private baseHemi = 1.1; private baseSun = 2.2;
+  private dim = 1;
   private clock = new THREE.Clock();
+  /** Scene time in seconds; advances with real frames or with advance() (deterministic, for tests and hidden panes). */
+  private time = 0;
   extent = 10;
   director = false;
   follow: string | null = null;
@@ -67,6 +77,11 @@ export class GardenWorld implements WorldLookup {
 
     this.scene.fog = new THREE.Fog('#cfe6ee', 40, 120);
     this.scene.add(this.hemi, this.sun, this.ground, this.bedGroup, this.fenceGroup);
+    this.shaft.position.y = 3.6; this.scene.add(this.shaft);
+    this.spotRing.rotation.x = -Math.PI / 2; this.spotRing.position.y = 0.32; this.scene.add(this.spotRing);
+    this.lockMesh.add(mesh(geo.box, mat('#c9a227'), 0.28, 0.22, 0.12, 0, 0, 0));
+    const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI), mat('#8d8d8d')); shackle.position.y = 0.11;
+    this.lockMesh.add(shackle); this.lockMesh.scale.setScalar(0.6); this.lockMesh.visible = false; this.scene.add(this.lockMesh);
     this.sun.position.set(18, 26, 12); this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = sc.bottom = -35; sc.right = sc.top = 35; sc.far = 90;
@@ -110,6 +125,8 @@ export class GardenWorld implements WorldLookup {
     this.snap = u.snapshot;
     if (u.reset) { this.actors.clearTransient(); this.fx.clear(); }
     this.syncLayout();
+    // The bloom is shown when the botanist gets there, not when the data lands.
+    for (const a of u.newActivity) if (a.kind === 'certify_bloom' && a.path) this.pendingBloom.set(a.path, performance.now() + 15000);
     this.syncPlants(u.reset);
     this.syncFences();
     this.actors.sync(u.snapshot);
@@ -120,7 +137,7 @@ export class GardenWorld implements WorldLookup {
     (this.scene.background as THREE.Color | null) ? (this.scene.background as THREE.Color).copy(c) : (this.scene.background = c.clone());
     (this.scene.fog as THREE.Fog).color.copy(c);
     const night = hour < 5 || hour > 20.5;
-    this.hemi.intensity = night ? 0.9 : 1.1; this.sun.intensity = night ? 0.8 : hour > 17.5 ? 1.8 : 2.2;
+    this.baseHemi = night ? 0.9 : 1.1; this.baseSun = night ? 0.8 : hour > 17.5 ? 1.8 : 2.2;
     this.sun.color.set(hour > 17.5 && hour < 20.5 ? '#ffc58a' : '#fff0d0');
   }
 
@@ -153,14 +170,16 @@ export class GardenWorld implements WorldLookup {
   }
 
   private syncPlants(reset: boolean) {
-    const now = this.clock.elapsedTime;
+    const now = this.time;
     const want = new Set(this.layout.plants.map((p) => p.path));
     for (const [path, n] of this.nodes) if (!want.has(path)) { this.scene.remove(n.group); this.nodes.delete(path); }
     const byPath = new Map(this.snap.plants.map((p) => [p.path, p]));
     for (const lp of this.layout.plants) {
       const pv = byPath.get(lp.path)!;
       let n = this.nodes.get(lp.path);
-      const stage = pv.stage;
+      let stage = pv.stage;
+      const hold = this.pendingBloom.get(lp.path);
+      if (stage === 'bloom' && hold !== undefined) { if (performance.now() < hold) stage = 'bud'; else this.pendingBloom.delete(lp.path); }
       if (!n || n.stage !== stage || Math.abs(n.size - lp.size) > 0.05) {
         const wasStage = n?.stage;
         if (n) n.holder.clear(); else {
@@ -170,7 +189,8 @@ export class GardenWorld implements WorldLookup {
           this.nodes.set(lp.path, n);
         }
         n.holder.add(buildPlant(stage, lp.path, lp.size));
-        n.stage = stage; n.size = lp.size; n.born = reset ? now - 5 : now;
+        n.stage = stage; n.size = lp.size; n.born = reset || (wasStage === 'bud' && stage === 'bloom') ? now - 5 : now;
+        if (stage === 'bloom' && wasStage === 'bud') n.openAt = now; // petals open one by one
         if (stage === 'bloom' && wasStage && wasStage !== 'bloom') {
           this.fx.burst(new THREE.Vector3(lp.x, 1, lp.z), flowerColor(lp.path).getHex(), 50, 2.6, 3);
         }
@@ -183,6 +203,19 @@ export class GardenWorld implements WorldLookup {
         n.bugs = pv.bugs;
       }
     }
+  }
+
+  // ---- botanist hooks (WorldLookup) ----
+  /** The botanist arrived: let the held-back bloom open now. */
+  releaseBloom(path: string) {
+    if (!this.pendingBloom.delete(path)) return;
+    if (this.snap) this.syncPlants(false);
+  }
+  wobblePlant(path: string, seconds: number) { const n = this.nodes.get(path); if (n) n.wobbleUntil = this.time + seconds; }
+  showLock(path: string | null) {
+    const n = path ? this.nodes.get(path) : undefined;
+    this.lockMesh.visible = !!n;
+    if (n) this.lockMesh.position.set(n.x + 0.45, 1.35 * n.size + 0.2, n.z);
   }
 
   private syncFences() {
@@ -236,21 +269,58 @@ export class GardenWorld implements WorldLookup {
     if (!this.rig.userMoved) this.rig.fit(this.fitBox(), undefined, true);
   }
 
-  private frame() {
-    const dt = Math.min(this.clock.getDelta(), 0.1), t = this.clock.elapsedTime, mo = this.reducedMotion ? 0.25 : 1;
+  /** Run the simulation for `seconds` of scene time in 1/30 s steps, rendering only the last frame. Debug/test use. */
+  advance(seconds: number) {
+    const steps = Math.max(1, Math.round(seconds * 30));
+    for (let i = 0; i < steps; i++) this.frame(1 / 30, i === steps - 1);
+  }
+
+  private frame(dtOverride?: number, render = true) {
+    const dt = dtOverride ?? Math.min(this.clock.getDelta(), 0.1);
+    this.time += dt;
+    const t = this.time, mo = this.reducedMotion ? 0.25 : 1;
     this.actors.tick(dt); this.fx.update(dt);
+    // Botanist shot: dim the scene a little, light the plant, push the camera in.
+    const shot = this.actors.shot;
+    this.dim += ((shot ? 0.72 : 1) - this.dim) * Math.min(1, dt * 3);
+    this.hemi.intensity = this.baseHemi * this.dim; this.sun.intensity = this.baseSun * this.dim;
+    const sm = this.shaft.material as THREE.MeshBasicMaterial, rm = this.spotRing.material as THREE.MeshBasicMaterial;
+    sm.opacity += ((shot ? 0.16 : 0) - sm.opacity) * Math.min(1, dt * 4);
+    rm.opacity += ((shot ? 0.55 : 0) - rm.opacity) * Math.min(1, dt * 4);
+    this.shaft.visible = sm.opacity > 0.004;
+    if (shot) {
+      this.shaft.position.set(shot.point.x, 3.6, shot.point.z);
+      this.spotRing.position.set(shot.point.x, 0.32, shot.point.z); this.spotRing.scale.setScalar(1 + Math.sin(t * 3) * 0.06 * mo);
+      if (!this.rig.userMoved) this.rig.pushIn(shot.point, 6.6);
+    } else if (this.rig.cinema) this.rig.release();
     for (const n of this.nodes.values()) {
       const age = Math.min(1, (t - n.born) / 0.7), pop = 0.15 + 0.85 * (1 - Math.pow(1 - age, 3));
       n.holder.scale.setScalar(pop);
       n.group.rotation.z = Math.sin(t * 1.3 + n.phase) * 0.035 * mo;
       n.holder.rotation.x = n.bugs * 0.07;
+      n.holder.rotation.z = n.wobbleUntil && n.wobbleUntil > t ? Math.sin(t * 22) * 0.1 * Math.min(1, n.wobbleUntil - t) * mo : 0;
+      if (n.openAt !== undefined) {
+        const g = n.holder.children[n.holder.children.length - 1] as THREE.Object3D | undefined;
+        const petals = g?.userData.petals as THREE.Object3D[] | undefined;
+        const el = t - n.openAt;
+        if (petals) {
+          petals.forEach((pt, i) => {
+            const k = Math.min(1, Math.max(0, (el - i * 0.09) / 0.55)), e = 1 - Math.pow(1 - k, 3);
+            pt.scale.copy(pt.userData.base as THREE.Vector3).multiplyScalar(e);
+          });
+          const c = g?.userData.center as THREE.Object3D | undefined;
+          if (c) c.scale.copy(c.userData.base as THREE.Vector3).multiplyScalar(Math.min(1, Math.max(0, el / 0.4)));
+        }
+        if (el > 1.6) n.openAt = undefined;
+      }
       n.bugGroup.children.forEach((b, i) => {
         const a = t * 1.5 + i * 2.1 + n.phase; b.position.set(Math.cos(a) * 0.3 * n.size, 0.3 * n.size + (i % 3) * 0.2 * n.size, Math.sin(a) * 0.3 * n.size);
       });
     }
     // Camera: follow a member, or director mode follows the latest action.
     let focus: THREE.Vector3 | undefined;
-    if (this.follow) focus = this.actors.gardenerPos(this.follow);
+    if (shot) focus = undefined; // the cinematic shot owns the camera
+    else if (this.follow) focus = this.actors.gardenerPos(this.follow);
     else if (this.director) focus = this.actors.focus;
     if (focus) {
       const d = focus.clone().sub(this.controls.target).multiplyScalar(Math.min(1, dt * 1.6));
@@ -259,7 +329,7 @@ export class GardenWorld implements WorldLookup {
     this.rig.update(dt);
     this.controls.update();
     this.labels.update(this.host.clientWidth, this.host.clientHeight);
-    this.renderer.render(this.scene, this.camera);
+    if (render) this.renderer.render(this.scene, this.camera);
     this.frames++; this.fpsT += dt;
     if (this.fpsT >= 0.5) { this.fps = Math.round(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }
   }

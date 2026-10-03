@@ -10,6 +10,9 @@ export interface WorldLookup {
   fenceGate(path: string): THREE.Vector3 | undefined;
   extent: number;
   homeFrame: { halfW: number; frontZ: number };
+  releaseBloom(path: string): void;
+  wobblePlant(path: string, seconds: number): void;
+  showLock(path: string | null): void;
 }
 
 class Mover {
@@ -91,7 +94,7 @@ function reconcile<T extends { obj: THREE.Object3D }>(
   for (const k of keys) if (!map.has(k)) { const v = create(k); map.set(k, v); scene.add(v.obj); }
 }
 
-interface BotanistJob { path: string; result: 'bloom' | 'refused'; reason: string }
+interface BotanistJob { path: string; result: 'bloom' | 'refused'; reason: string; task: string }
 type Fly = { obj: THREE.Object3D; m: Mover; msg: MessageView; seed: number };
 
 export class Actors {
@@ -103,10 +106,16 @@ export class Actors {
   private meet = new Map<string, { pos: THREE.Vector3; until: number }>();
   private botanist = makeBotanist();
   private job: { j: BotanistJob; phase: 'walk' | 'hold' | 'home'; t: number; bubble?: HTMLElement } | null = null;
+  private shotPoint = new THREE.Vector3();
+  /** Set while the botanist is delivering a verdict: the world dims the scene and pushes the camera in. */
+  shot: { point: THREE.Vector3 } | null = null;
   private queue: BotanistJob[] = [];
   private clock = 0;
   private homes = new Map<string, THREE.Vector3>();
   private botHome = new THREE.Vector3();
+  private tmp = new THREE.Vector3();
+  private off = new THREE.Vector3(1.3, 0, 0.9);
+  private bubblePos = new THREE.Vector3();
   motion = 1;
   /** Latest place something happened, for director mode. */
   focus: THREE.Vector3 | undefined;
@@ -139,7 +148,7 @@ export class Actors {
   private claudeAgent(handle: string) { return this.snap.agents.find((a) => a.handle === handle && a.kind === 'claude'); }
 
   clearTransient() {
-    this.meet.clear(); this.queue = [];
+    this.meet.clear(); this.queue = []; this.shot = null; this.world.showLock(null);
     if (this.job?.bubble) this.labels.remove(this.job.bubble);
     this.job = null;
   }
@@ -225,10 +234,13 @@ export class Actors {
     }
     if (a.kind === 'certify_bloom' || a.kind === 'certify_refused') {
       const cert = [...this.snap.certifications].reverse().find((c) => c.path === a.path);
+      const bloom = a.kind === 'certify_bloom';
       this.queue.push({
-        path: a.path ?? '', result: a.kind === 'certify_bloom' ? 'bloom' : 'refused',
-        reason: cert?.reason ?? (a.kind === 'certify_bloom' ? 'diff + passing tests seen' : a.detail),
+        path: a.path ?? '', result: bloom ? 'bloom' : 'refused', task: cert?.task ?? '',
+        reason: bloom ? (cert?.task ? cert.task : 'diff and passing tests seen') : (cert?.reason ?? a.detail),
       });
+      // A burst of verdicts: only animate the newest two; the shed still lists them all.
+      while (this.queue.length > 2) { const dropped = this.queue.shift()!; this.world.releaseBloom(dropped.path); }
     }
   }
 
@@ -295,33 +307,40 @@ export class Actors {
     this.tickBotanist(dt, now, t);
   }
 
-  private tickBotanist(dt: number, now: number, t: number) {
+  private tickBotanist(dt: number, _now: number, t: number) {
     const b = this.botanist;
     const homePos = this.botHome;
     if (!this.job && this.queue.length) this.job = { j: this.queue.shift()!, phase: 'walk', t: 0 };
     const job = this.job;
-    if (!job) { b.target.copy(homePos); b.step(dt); b.obj.rotation.x = 0; return; }
+    if (!job) { b.target.copy(homePos); b.step(dt); b.obj.rotation.x = 0; this.shot = null; return; }
     const p = this.world.plantPos(job.j.path);
     if (job.phase === 'walk') {
-      b.target.copy((p ?? homePos).clone().add(new THREE.Vector3(1.1, 0, 0.7)));
+      if (p) { this.tmp.copy(p).add(this.off); b.target.copy(this.tmp); } else b.target.copy(homePos);
       b.step(dt);
-      if (!b.moving) {
+      job.t += dt;
+      if (!b.moving || job.t > 8) { // arrived (or took too long: show the verdict anyway)
         job.phase = 'hold'; job.t = 0;
         const refused = job.j.result === 'refused';
-        job.bubble = this.labels.add(refused ? `Refused: ${job.j.reason}` : `Bloom certified: ${job.j.reason}`,
-          () => b.obj.position.clone().setY(2.1), refused ? 'bubble refused' : 'bubble bloom');
-        if (!refused && p) this.fx.burst(p.clone().setY(1), 0xffe27a, 60, 3, 3);
+        if (p) { this.shotPoint.copy(p); this.shot = { point: this.shotPoint }; }
+        const lines = refused ? job.j.reason.split(/;\s*/).filter(Boolean) : job.j.task ? [job.j.task] : [];
+        job.bubble = this.labels.add(refused ? 'Botanist refused' : 'Bloom certified', () => this.bubblePos.copy(b.obj.position).setY(2.3),
+          refused ? 'bubble big refused' : 'bubble big bloom', Infinity, lines);
+        if (refused) { this.world.wobblePlant(job.j.path, 1.4); this.world.showLock(job.j.path); }
+        else this.world.releaseBloom(job.j.path);
       }
     } else if (job.phase === 'hold') {
       job.t += dt;
       b.obj.lookAt(p ?? b.obj.position);
       if (job.j.result === 'refused') b.obj.rotation.y += Math.sin(t * 14) * 0.25 * Math.max(0.2, this.motion); // head shake
       else b.obj.rotation.x = Math.sin(t * 8) * 0.12 * this.motion; // nod
-      if (job.t > 3.2) { if (job.bubble) this.labels.remove(job.bubble); b.obj.rotation.x = 0; job.phase = 'home'; }
+      const hold = job.j.result === 'refused' ? 4.8 : 4.2;
+      if (job.t > hold) {
+        if (job.bubble) this.labels.remove(job.bubble);
+        b.obj.rotation.x = 0; job.phase = 'home'; this.shot = null; this.world.showLock(null);
+      }
     } else {
       b.target.copy(homePos); b.step(dt);
       if (!b.moving) this.job = null;
     }
-    void now;
   }
 }

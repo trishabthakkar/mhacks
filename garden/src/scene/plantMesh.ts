@@ -26,13 +26,19 @@ export function buildPlant(stage: PlantStage, path: string, size: number): THREE
   if (stage === 'bud') g.add(mesh(geo.sphere, mat(dormant ? '#a39f86' : '#9ac26b'), 0.17 * size, 0.24 * size, 0.17 * size, 0, h + 0.1 * size, 0));
   if (stage === 'bloom') {
     const pm = mat(`#${flowerColor(path).getHexString()}`);
+    const petals: THREE.Object3D[] = [];
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2;
       const petal = mesh(geo.sphere, pm, 0.17 * size, 0.05 * size, 0.1 * size, Math.cos(a) * 0.2 * size, h + 0.05 * size, Math.sin(a) * 0.2 * size);
       petal.rotation.y = -a;
+      petal.userData.base = petal.scale.clone();
+      petals.push(petal);
       g.add(petal);
     }
-    g.add(mesh(geo.sphere, mat('#f2c230', { emissive: 0x3a2a00 }), 0.12 * size, 0.1 * size, 0.12 * size, 0, h + 0.07 * size, 0));
+    const center = mesh(geo.sphere, mat('#f2c230', { emissive: 0x3a2a00 }), 0.12 * size, 0.1 * size, 0.12 * size, 0, h + 0.07 * size, 0);
+    center.userData.base = center.scale.clone();
+    g.add(center);
+    g.userData.petals = petals; g.userData.center = center;
   }
   return g;
 }

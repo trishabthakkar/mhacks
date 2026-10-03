@@ -5,9 +5,16 @@ export class Labels {
   private items = new Set<{ el: HTMLElement; pos: () => THREE.Vector3 | undefined; until: number }>();
   constructor(private host: HTMLElement, private camera: THREE.Camera) {}
 
-  add(text: string, pos: () => THREE.Vector3 | undefined, cls = 'label', ttlMs = Infinity): HTMLElement {
+  /** `lines` makes a titled list (title = text); used by the botanist's verdict. */
+  add(text: string, pos: () => THREE.Vector3 | undefined, cls = 'label', ttlMs = Infinity, lines?: string[]): HTMLElement {
     const el = document.createElement('div');
-    el.className = cls; el.textContent = text;
+    el.className = cls;
+    if (lines && lines.length) {
+      const t = document.createElement('strong'); t.textContent = text; el.appendChild(t);
+      const ul = document.createElement('ul');
+      for (const l of lines) { const li = document.createElement('li'); li.textContent = l; ul.appendChild(li); }
+      el.appendChild(ul);
+    } else el.textContent = text;
     this.host.appendChild(el);
     this.items.add({ el, pos, until: ttlMs === Infinity ? Infinity : performance.now() + ttlMs });
     return el;

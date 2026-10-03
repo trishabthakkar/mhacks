@@ -62,6 +62,8 @@ if (q.get('debug') === '1') {
   (window as unknown as Record<string, unknown>).__garden = {
     store, world,
     setStep: (n: number) => fake?.setStep(n),
+    next: () => fake?.next(),
+    advance: (sec: number) => world.advance(sec),
     snapshot: () => store.snapshot,
     get fps() { return world.fps; },
     get step() { return fake?.step; },

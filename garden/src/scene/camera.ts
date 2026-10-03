@@ -29,8 +29,10 @@ export class CameraRig {
   private right = new THREE.Vector3();
   private off = new THREE.Vector3();
   private up = new THREE.Vector3(0, 1, 0);
-  /** Set by the host: called when a key asks for something the rig doesn't own. */
   calm = false;
+  /** True while a cinematic push-in (botanist) owns the camera. */
+  cinema = false;
+  private saved?: { pos: THREE.Vector3; target: THREE.Vector3 };
 
   constructor(private camera: THREE.PerspectiveCamera, private controls: OrbitControls, private host: HTMLElement) {
     controls.minDistance = MIN_DIST;
@@ -68,12 +70,34 @@ export class CameraRig {
 
   get keyboardActive() { return this.keys.size > 0; }
 
+  /** Ease in to a close shot of `point`, keeping the current viewing direction. Remembers the old view for release(). */
+  pushIn(point: THREE.Vector3, dist = 6) {
+    if (this.cinema) return;
+    this.saved = { pos: this.camera.position.clone(), target: this.controls.target.clone() };
+    this.cinema = true;
+    this.off.subVectors(this.camera.position, this.controls.target).setY(0);
+    if (this.off.lengthSq() < 1e-6) this.off.set(0, 0, 1);
+    this.off.normalize();
+    this.goalTarget.set(point.x, 0.7, point.z);
+    this.goalPos.set(point.x + this.off.x * dist, 3.0, point.z + this.off.z * dist);
+    this.hasGoal = true;
+  }
+
+  /** Return to the view from before pushIn(), unless the user took over in the meantime. */
+  release() {
+    if (!this.cinema) return;
+    this.cinema = false;
+    if (this.saved && !this.userMoved) { this.goalPos.copy(this.saved.pos); this.goalTarget.copy(this.saved.target); this.hasGoal = true; }
+    this.saved = undefined;
+  }
+
   /**
    * Fit the box into the usable area. `instant` jumps; otherwise the camera eases there.
    * Distance is set so the box fills the free width/height with a small margin.
    */
   fit(box: FitBox, preset: Preset = this.lastPreset, instant = false) {
     this.lastBox = box; this.lastPreset = preset;
+    if (this.cinema) return; // the box is remembered; release() restores the previous view
     const w = (this.host.clientWidth || innerWidth), h = (this.host.clientHeight || innerHeight);
     const freeAspect = Math.max(0.5, (w - this.reserved) / h);
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);

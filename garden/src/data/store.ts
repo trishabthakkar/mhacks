@@ -6,7 +6,7 @@ export interface StoreUpdate { snapshot: GardenSnapshot; events: StoreEvent[]; n
 
 const KEYS: Record<TableName, string> = {
   members: 'handle', agents: 'sessionId', plants: 'path', claims: 'id', messages: 'id',
-  testRuns: 'id', certifications: 'id', activity: 'id',
+  testRuns: 'id', certifications: 'id', activity: 'id', handoffs: 'id',
 };
 
 export const emptySnapshot = (): GardenSnapshot => ({
@@ -31,9 +31,9 @@ export class Store {
     if (!reset) {
       for (const table of Object.keys(KEYS) as TableName[]) {
         const key = KEYS[table];
-        const prev = new Map((this.snapshot[table] as unknown as Record<string, unknown>[]).map((r) => [String(r[key]), r]));
+        const prev = new Map(((this.snapshot[table] ?? []) as unknown as Record<string, unknown>[]).map((r) => [String(r[key]), r]));
         const seen = new Set<string>();
-        for (const row of next[table] as unknown as Record<string, unknown>[]) {
+        for (const row of (next[table] ?? []) as unknown as Record<string, unknown>[]) {
           const k = String(row[key]); seen.add(k);
           const old = prev.get(k);
           if (!old) events.push({ table, op: 'inserted', row });

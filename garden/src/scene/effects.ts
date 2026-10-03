@@ -70,9 +70,9 @@ export class Labels {
   }
 
   /** `reservedRight`: pixels at the right covered by the shed, which labels must stay out of. */
-  update(width: number, height: number, reservedRight = 0) {
+  update(width: number, height: number, reservedRight = 0, reservedBottom = 0) {
     const now = performance.now();
-    const ax0 = 8, ay0 = 44, ax1 = Math.max(ax0 + 100, width - reservedRight - 8), ay1 = height - 8;
+    const ax0 = 8, ay0 = 44, ax1 = Math.max(ax0 + 100, width - reservedRight - 8), ay1 = height - reservedBottom - 8;
     this.order.length = 0;
     for (const i of this.items) {
       const p = i.pos();

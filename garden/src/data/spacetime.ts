@@ -1,13 +1,13 @@
 import { DbConnection } from '../module_bindings/index.ts';
 import type {
-  ActivityKind, AgentView, GardenSnapshot, MessageView, PlantStage,
+  ActivityKind, AgentView, GardenSnapshot, HandoffStatus, MessageView, PlantStage,
 } from '../../../shared/types.ts';
 import type { Store } from './store.ts';
 
 export const DEFAULT_HOST = 'wss://maincloud.spacetimedb.com';
 export const DEFAULT_DB = 'sprout-mhacks';
 
-const TABLES = ['member', 'agent', 'plant', 'claim', 'message', 'test_run', 'certification', 'activity'];
+const TABLES = ['member', 'agent', 'plant', 'claim', 'message', 'test_run', 'certification', 'activity', 'handoff'];
 const ACTIVITY_WINDOW = 200;
 
 type Ts = { toDate(): Date };
@@ -26,6 +26,7 @@ type Row<K extends keyof Db> = Db[K] extends Tbl<infer R> ? R : never;
 export interface LiveTables {
   member: Tbl<Row<'member'>>; agent: Tbl<Row<'agent'>>; plant: Tbl<Row<'plant'>>; claim: Tbl<Row<'claim'>>;
   message: Tbl<Row<'message'>>; testRun: Tbl<Row<'testRun'>>; certification: Tbl<Row<'certification'>>; activity: Tbl<Row<'activity'>>;
+  handoff?: Tbl<Row<'handoff'>>;
 }
 
 /** Pure mapping from subscribed rows to the GardenSnapshot the scene renders. Optional fields stay absent. */
@@ -53,6 +54,10 @@ export function buildSnapshot(db: LiveTables, now: number): GardenSnapshot {
       id: Number(x.id), path: x.path, handle: x.handle, task: x.task, result: x.result as 'bloom' | 'refused', reason: x.reason, at: ms(x.at),
     })),
     activity,
+    ...(db.handoff ? { handoffs: [...db.handoff.iter()].map((h) => ({
+      id: Number(h.id), fromHandle: h.fromHandle, toHandle: h.toHandle, task: h.task, notes: h.notes,
+      status: h.status as HandoffStatus, createdAt: ms(h.createdAt),
+    })) } : {}),
   };
 }
 
@@ -82,7 +87,7 @@ export function connectLive(store: Store, host: string, db: string, timeoutMs = 
         .withDatabaseName(db)
         .onConnect((cc) => {
           backoff = 1000;
-          for (const t of ['member', 'agent', 'plant', 'claim', 'message', 'testRun', 'certification', 'activity'] as const) {
+          for (const t of ['member', 'agent', 'plant', 'claim', 'message', 'testRun', 'certification', 'activity', 'handoff'] as const) {
             const tbl = cc.db[t];
             tbl.onInsert(() => push(cc)); tbl.onUpdate(() => push(cc)); tbl.onDelete(() => push(cc));
           }

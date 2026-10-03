@@ -52,6 +52,7 @@ export class GardenWorld implements WorldLookup {
   private shaft = new THREE.Mesh(new THREE.ConeGeometry(1.7, 7, 28, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff1c4, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
   private spotRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 40), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0, depthWrite: false }));
   private lockMesh = new THREE.Group();
+  private pulse = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 40), new THREE.MeshBasicMaterial({ color: 0xff7a59, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
   private baseHemi = 1.1; private baseSun = 2.2;
   private dim = 1;
   private clock = new THREE.Clock();
@@ -82,6 +83,7 @@ export class GardenWorld implements WorldLookup {
     this.scene.fog = new THREE.Fog('#cfe6ee', 40, 120);
     this.scene.add(this.hemi, this.sun, this.ground, this.bedGroup, this.fenceGroup);
     this.shaft.position.y = 3.6; this.scene.add(this.shaft);
+    this.pulse.rotation.x = -Math.PI / 2; this.pulse.visible = false; this.scene.add(this.pulse);
     this.spotRing.rotation.x = -Math.PI / 2; this.spotRing.position.y = 0.32; this.scene.add(this.spotRing);
     this.lockMesh.add(mesh(geo.box, mat('#c9a227'), 0.28, 0.22, 0.12, 0, 0, 0));
     const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI), mat('#8d8d8d')); shackle.position.y = 0.11;
@@ -240,6 +242,19 @@ export class GardenWorld implements WorldLookup {
     }
   }
 
+  /** Look at a plant/fence/member and ring it briefly so the eye finds it. */
+  focus(kind: 'member' | 'plant' | 'fence', key: string) {
+    let p: THREE.Vector3 | undefined;
+    if (kind === 'member') { this.focusOnMember(this.follow === key ? null : key); p = this.actors.gardenerPos(key); }
+    else if (kind === 'plant') p = this.plantXZ.get(key);
+    else { const hit = this.layout.plants.find((q) => q.path === key || (key.endsWith('/') && q.path.startsWith(key))); p = hit ? this.plantXZ.get(hit.path) : undefined; }
+    if (!p) return;
+    if (kind !== 'member') { this.follow = null; this.director = false; this.rig.flyTo(p); }
+    this.pulseAt.copy(p); this.pulseT = 2.4;
+  }
+  private pulseAt = new THREE.Vector3();
+  private pulseT = 0;
+
   focusOnMember(handle: string | null) { this.follow = handle; if (handle) this.director = false; }
   /** Everything that should be on screen: beds, the gardeners' row in front, the botanist at the right. */
   private fitBox() {
@@ -250,12 +265,19 @@ export class GardenWorld implements WorldLookup {
     return { minX: minX - 1, maxX: maxX + 1, minZ: minZ - 1, maxZ };
   }
   reservedForShed() { return this.reservedPx(); }
-  private reservedPx() {
+  /** Space the shed takes: a column on the right on wide screens, a bottom sheet on narrow ones. */
+  private reservedPx(): number {
     const shed = document.getElementById('shed');
-    return shed && shed.offsetWidth > 0 && getComputedStyle(shed).display !== 'none' ? shed.offsetWidth + 24 : 0;
+    if (!shed || shed.offsetWidth === 0 || getComputedStyle(shed).display === 'none') { this.reservedBottom = 0; return 0; }
+    if (shed.classList.contains('collapsed')) { this.reservedBottom = 0; return 0; } // just a small pill
+    if (innerWidth < 900) { this.reservedBottom = shed.offsetHeight + 12; return 0; }
+    this.reservedBottom = 0;
+    return shed.offsetWidth + 24;
   }
+  private reservedBottom = 0;
   refit(instant = false) {
-    this.rig.setReserved(this.reservedPx());
+    const r = this.reservedPx();
+    this.rig.setReserved(r, this.reservedBottom);
     this.scaleToDistance(this.rig.fit(this.fitBox(), undefined, instant));
   }
   /** Big gardens need a farther camera, a deeper far plane and fog that starts later. */
@@ -271,7 +293,8 @@ export class GardenWorld implements WorldLookup {
   private resize() {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
     this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
-    this.rig.setReserved(this.reservedPx());
+    const r = this.reservedPx();
+    this.rig.setReserved(r, this.reservedBottom);
     if (!this.rig.userMoved) this.scaleToDistance(this.rig.fit(this.fitBox(), undefined, true));
   }
 
@@ -326,9 +349,15 @@ export class GardenWorld implements WorldLookup {
       const d = this.tmpV.copy(focus).sub(this.controls.target).multiplyScalar(Math.min(1, dt * 1.6));
       this.controls.target.add(d); this.camera.position.add(d);
     }
+    if (this.pulseT > 0) {
+      this.pulseT -= dt;
+      const k = Math.max(0, this.pulseT / 2.4), pm = this.pulse.material as THREE.MeshBasicMaterial;
+      this.pulse.visible = true; this.pulse.position.set(this.pulseAt.x, 0.34, this.pulseAt.z);
+      this.pulse.scale.setScalar(1 + (1 - k) * 2.2); pm.opacity = 0.75 * k;
+    } else this.pulse.visible = false;
     this.rig.update(dt);
     this.controls.update();
-    this.labels.update(this.host.clientWidth, this.host.clientHeight, this.rig.reservedRight);
+    this.labels.update(this.host.clientWidth, this.host.clientHeight, this.rig.reservedRight, this.rig.reservedBottom);
     if (render) this.renderer.render(this.scene, this.camera);
     this.frames++; this.fpsT += dt;
     if (this.fpsT >= 0.5) { this.fps = Math.round(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }

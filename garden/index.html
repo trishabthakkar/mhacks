@@ -23,23 +23,48 @@
       .bubble.big { font-size:18px; max-width:380px; padding:10px 16px; border-width:3px; box-shadow:0 8px 28px rgba(0,0,0,.3); }
       .bubble.big strong { display:block; font-size:19px; margin-bottom:2px; } .bubble.big.refused strong { color:#b3261e; } .bubble.big.bloom strong { color:#1f7a4a; }
       .bubble.big ul { margin:4px 0 0; padding-left:20px; } .bubble.big li { margin:2px 0; }
-      aside#shed { position:fixed; top:12px; right:12px; width:290px; max-height:calc(100% - 24px); overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; font-size:13px; backdrop-filter: blur(6px); }
-      aside h2 { margin:0 0 4px; font-size:16px; } aside h3 { margin:12px 0 4px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.65; }
+      aside#shed { position:fixed; top:12px; right:12px; width:300px; max-height:calc(100% - 24px); display:flex; flex-direction:column; background:var(--card); border:1px solid var(--line); border-radius:14px; font-size:13px; backdrop-filter: blur(6px); }
+      aside#shed.collapsed { width:auto; }
+      aside#shed.collapsed .shed-scroll { display:none; } aside#shed.collapsed h2 { font-size:14px; }
+      .shed-head { display:flex; align-items:center; gap:8px; padding:10px 12px 6px; } .shed-head h2 { margin:0; font-size:16px; flex:1; }
+      .shed-scroll { overflow:auto; padding:0 14px 12px; }
+      .conn { font-size:11px; border-radius:999px; padding:1px 8px; border:1px solid var(--line); background:#fff; } .conn.demo { background:#ffe9a8; border-color:#d9b94a; } .conn.live { background:#d8f3dc; border-color:#74c69d; }
+      aside h3 { margin:12px 0 4px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.65; }
       aside ul { list-style:none; margin:0; padding:0; } aside li { padding:3px 0; border-bottom:1px solid var(--line); }
       aside li:last-child { border:0; } .sub { opacity:.65; font-size:12px; } code { font-size:12px; background:rgba(0,0,0,.06); padding:0 4px; border-radius:4px; }
-      .who { all:unset; cursor:pointer; display:inline-flex; gap:6px; align-items:center; } .who:focus-visible { outline:2px solid #2a6df4; border-radius:4px; }
+      button.who, button.link { all:unset; cursor:pointer; display:inline-flex; gap:6px; align-items:center; } button.who:hover, button.link:hover { text-decoration:underline; }
+      button.who:focus-visible, button.link:focus-visible, button.icon:focus-visible, button.chip:focus-visible, .plan-bar button:focus-visible { outline:3px solid #2a6df4; outline-offset:1px; border-radius:6px; }
+      button.icon { all:unset; cursor:pointer; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; } button.icon:hover { background:rgba(0,0,0,.08); }
       .dot { width:10px; height:10px; border-radius:50%; border:2px solid; display:inline-block; }
-      .badge { display:inline-block; background:#ffe9a8; border:1px solid #d9b94a; border-radius:999px; padding:0 8px; font-size:11px; margin-bottom:4px; }
+      .chips { display:flex; gap:4px; flex-wrap:wrap; margin:2px 0 6px; } button.chip { all:unset; cursor:pointer; font-size:11px; padding:2px 9px; border-radius:999px; border:1px solid var(--line); background:#fff; } button.chip.on { background:var(--ink); color:#fff; }
+      .why { margin:2px 0 0 14px !important; list-style:disc !important; } .why li { border:0; padding:0; font-size:12px; }
+      .feed li.new { animation: slidein .4s ease-out; background:rgba(255,226,122,.35); } @keyframes slidein { from { opacity:0; transform:translateY(-6px);} to { opacity:1; transform:none; } }
+      @media (max-width: 899px) {
+        aside#shed { top:auto; right:0; left:0; bottom:0; width:auto; max-height:42vh; border-radius:14px 14px 0 0; }
+        aside#shed.collapsed { left:auto; right:8px; bottom:8px; border-radius:14px; }
+        #keys { display:none; }
+      }
       #status { position:fixed; left:12px; bottom:12px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:3px 12px; font-size:12px; }
       #keys { position:fixed; left:12px; top:12px; max-width:calc(100vw - 360px); line-height:1.5; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
       #fps { position:fixed; left:12px; bottom:44px; font:12px monospace; background:#000a; color:#0f0; padding:2px 6px; }
-      #plan { position:fixed; inset:0; background:#f6f1df; padding:16px; } #plan[hidden] { display:none; }
-      #plan svg { width:100%; height:calc(100% - 28px); } #plan .legend { font-size:13px; padding-top:6px; }
+      #plan { position:fixed; inset:0; background:#f6f1df; padding:12px 16px; display:flex; flex-direction:column; z-index:5; } #plan[hidden] { display:none; }
+      .plan-bar { display:flex; gap:8px; align-items:center; padding-bottom:8px; flex-wrap:wrap; } .plan-bar input { padding:5px 10px; border-radius:8px; border:1px solid var(--line); min-width:180px; font:inherit; }
+      .plan-bar button { font:inherit; padding:4px 10px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+      .plan-stage { position:relative; flex:1; min-height:0; } #plan svg { width:100%; height:100%; touch-action:none; cursor:grab; background:#fbf8ea; border-radius:12px; border:1px solid var(--line); }
+      #plan .legend { font-size:13px; padding-top:6px; } .legend .k { display:inline-block; padding:0 8px; border-radius:999px; border:1px solid #3b3a30; margin-right:6px; font-size:12px; }
+      .legend .seed { background:#8b6a45; color:#fff; } .legend .sprout { background:#a8d88a; } .legend .growing { background:#5fa04a; color:#fff; } .legend .bud { background:#c9d86b; } .legend .bloom { background:#f48fb1; } .legend .dormant { background:#bdb9a4; }
+      .plan-card { position:absolute; right:12px; top:12px; width:260px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,.15); } .plan-card[hidden] { display:none; }
+      .plan-card h4 { margin:0 0 6px; font-size:14px; word-break:break-all; } .plan-card dl { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; margin:0 0 8px; } .plan-card dt { opacity:.65; } .plan-card dd { margin:0; }
+      .plan-card .icon { position:absolute; right:6px; top:6px; }
+      #plan .plant.sel { stroke:#2a6df4; stroke-width:.16; } #plan .plant.hit { stroke:#ff7a59; stroke-width:.2; } #plan .blocked { font-size:.9px; fill:#c0392b; font-weight:800; }
+      #plan g[data-path] { cursor:pointer; } #plan g[data-path]:focus-visible .plant { stroke:#2a6df4; stroke-width:.2; outline:none; }
       .bed { fill:#e6d5b4; stroke:#8a6b44; stroke-width:.12; } .bed.gh { fill:#d8eef3; } .bedname { font-size:.62px; font-weight:700; fill:#5b4129; }
       .small { font-size:.42px; fill:#3b3a30; } .stage { font-size:.4px; fill:#3b3a30; } .stage.b { font-weight:800; fill:#a02c6a; }
       .plant { stroke:#3b3a30; stroke-width:.06; } .plant.seed { fill:#8b6a45; } .plant.sprout { fill:#a8d88a; } .plant.growing { fill:#5fa04a; }
       .plant.bud { fill:#c9d86b; } .plant.bloom { fill:#f48fb1; } .plant.dormant { fill:#bdb9a4; }
       body.present #keys { display:none; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
+      @media print { body > *:not(#plan) { display:none !important; } #plan { position:static; background:#fff; } .plan-bar button, .plan-bar input { display:none; } #plan svg { border:0; height:90vh; } }
+      body.plan-open #shed, body.plan-open #status, body.plan-open #keys { display:none; }
       body.hide-ui aside, body.hide-ui #status, body.hide-ui #keys, body.hide-ui .labels { display:none; }
       @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
     </style>
@@ -47,7 +72,7 @@
   <body>
     <h1 style="position:absolute;left:-9999px">Sprout garden</h1>
     <div id="app"></div>
-    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · arrows pan · <b>Q</b>/<b>E</b> turn · <b>+</b>/<b>-</b> zoom · <b>1</b>-<b>3</b> views · <b>P</b> plan · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI</div>
+    <div id="keys" aria-label="Keyboard shortcuts">Drag to orbit · arrows pan · <b>Q</b>/<b>E</b> turn · <b>+</b>/<b>-</b> zoom · <b>1</b>-<b>3</b> views · <b>P</b> plan · <b>S</b> shed · <b>D</b> director · <b>F</b> reframe · <b>H</b> hide UI</div>
     <aside id="shed" aria-label="Garden shed noticeboard"></aside>
     <div id="plan" hidden></div>
     <div id="status" role="status"></div>

@@ -23,6 +23,7 @@ export class CameraRig {
   private hasGoal = false;
   private keys = new Set<string>();
   private reserved = 0;
+  private reservedB = 0;
   private lastBox: FitBox = { minX: -10, maxX: 10, minZ: -6, maxZ: 8 };
   private lastPreset: Preset = 'overview';
   private fwd = new THREE.Vector3();
@@ -44,14 +45,15 @@ export class CameraRig {
   }
 
   /** Pixels on the right covered by the shed; the scene is centered in the remaining space. */
-  setReserved(px: number) {
+  setReserved(px: number, bottom = 0) {
     this.reserved = Math.max(0, px);
+    this.reservedB = Math.max(0, bottom);
     this.applyViewOffset();
   }
 
   applyViewOffset() {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
-    if (this.reserved > 0) this.camera.setViewOffset(w, h, this.reserved / 2, 0, w, h);
+    if (this.reserved > 0 || this.reservedB > 0) this.camera.setViewOffset(w, h, this.reserved / 2, this.reservedB / 2, w, h);
     else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
   }
@@ -69,6 +71,16 @@ export class CameraRig {
   }
 
   get reservedRight() { return this.reserved; }
+  get reservedBottom() { return this.reservedB; }
+
+  /** Glide to look at `point`, keeping the current distance and direction. */
+  flyTo(point: THREE.Vector3) {
+    if (this.cinema) return;
+    this.off.subVectors(this.camera.position, this.controls.target);
+    this.goalTarget.set(point.x, 0.4, point.z);
+    this.goalPos.copy(this.goalTarget).add(this.off);
+    this.hasGoal = true; this.userMoved = true;
+  }
 
   get keyboardActive() { return this.keys.size > 0; }
 
@@ -102,7 +114,7 @@ export class CameraRig {
     this.lastBox = box; this.lastPreset = preset;
     if (this.cinema) return this.camera.position.distanceTo(this.controls.target); // box remembered; release() restores the view
     const w = (this.host.clientWidth || innerWidth), h = (this.host.clientHeight || innerHeight);
-    const freeAspect = Math.max(0.5, (w - this.reserved) / h);
+    const freeAspect = Math.max(0.5, (w - this.reserved) / Math.max(120, h - this.reservedB));
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
     const hfov = 2 * Math.atan(Math.tan(vfov / 2) * freeAspect);
     const elev = ELEV[preset];

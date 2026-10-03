@@ -46,6 +46,8 @@ export interface GardenSnapshot {
   testRuns: TestRunView[];
   certifications: CertificationView[];
   activity: ActivityView[];
+  /** Optional: absent in older snapshots and in the fake timeline. */
+  handoffs?: HandoffView[];
 }
 
 export interface HandoffView {

@@ -9,7 +9,7 @@ const ELEV: Record<Preset, number> = {
   top: THREE.MathUtils.degToRad(76),
   low: THREE.MathUtils.degToRad(14),
 };
-const MIN_DIST = 4, MAX_DIST = 90, MIN_Y = 0.6;
+const MIN_DIST = 4, MIN_Y = 0.6;
 
 /**
  * Camera control on top of OrbitControls: fits the whole scene into the part of the screen the shed
@@ -36,7 +36,7 @@ export class CameraRig {
 
   constructor(private camera: THREE.PerspectiveCamera, private controls: OrbitControls, private host: HTMLElement) {
     controls.minDistance = MIN_DIST;
-    controls.maxDistance = MAX_DIST;
+    controls.maxDistance = 90;
     controls.addEventListener('start', () => { this.userMoved = true; this.hasGoal = false; });
     addEventListener('keydown', (e) => this.onKey(e, true));
     addEventListener('keyup', (e) => this.onKey(e, false));
@@ -97,9 +97,10 @@ export class CameraRig {
    * Fit the box into the usable area. `instant` jumps; otherwise the camera eases there.
    * Distance is set so the box fills the free width/height with a small margin.
    */
-  fit(box: FitBox, preset: Preset = this.lastPreset, instant = false) {
+  /** Returns the viewing distance the fit needs (the world scales fog and limits to it). */
+  fit(box: FitBox, preset: Preset = this.lastPreset, instant = false): number {
     this.lastBox = box; this.lastPreset = preset;
-    if (this.cinema) return; // the box is remembered; release() restores the previous view
+    if (this.cinema) return this.camera.position.distanceTo(this.controls.target); // box remembered; release() restores the view
     const w = (this.host.clientWidth || innerWidth), h = (this.host.clientHeight || innerHeight);
     const freeAspect = Math.max(0.5, (w - this.reserved) / h);
     const vfov = THREE.MathUtils.degToRad(this.camera.fov);
@@ -107,14 +108,17 @@ export class CameraRig {
     const elev = ELEV[preset];
     const halfW = (box.maxX - box.minX) / 2, halfD = (box.maxZ - box.minZ) / 2;
     const dH = (halfW * 1.03) / Math.tan(hfov / 2);
-    const dV = ((halfD * Math.sin(elev) + 1.6 * Math.cos(elev)) * 1.08) / Math.tan(vfov / 2);
-    const dist = THREE.MathUtils.clamp(Math.max(dH, dV), 9, MAX_DIST - 5);
+    // Near rows look bigger than far ones, so deeper gardens need extra room at the bottom.
+    const dV = ((halfD * Math.sin(elev) + 1.6 * Math.cos(elev)) * (1.08 + Math.min(0.4, halfD / 70))) / Math.tan(vfov / 2);
+    const dist = Math.max(9, Math.max(dH, dV));
+    this.controls.maxDistance = Math.max(90, dist * 1.5);
     this.goalTarget.set((box.minX + box.maxX) / 2, 0.4, (box.minZ + box.maxZ) / 2);
     this.goalPos.set(this.goalTarget.x, this.goalTarget.y + Math.sin(elev) * dist, this.goalTarget.z + Math.cos(elev) * dist);
     this.userMoved = false;
     if (instant) {
       this.camera.position.copy(this.goalPos); this.controls.target.copy(this.goalTarget); this.hasGoal = false; this.controls.update();
     } else this.hasGoal = true;
+    return dist;
   }
 
   /** Per-frame: ease toward the goal, apply held keys, keep the camera above ground. */
@@ -148,7 +152,7 @@ export class CameraRig {
       if (zoom) {
         this.off.subVectors(this.camera.position, this.controls.target);
         const k = THREE.MathUtils.clamp(Math.exp(-zoom * 1.0 * dt), 0.9, 1.1);
-        const len = THREE.MathUtils.clamp(this.off.length() * k, MIN_DIST, MAX_DIST);
+        const len = THREE.MathUtils.clamp(this.off.length() * k, MIN_DIST, this.controls.maxDistance);
         this.off.setLength(len);
         this.camera.position.copy(this.controls.target).add(this.off);
       }

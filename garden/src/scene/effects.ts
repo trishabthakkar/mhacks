@@ -150,64 +150,87 @@ export class Labels {
   }
 }
 
-interface Burst { pts: THREE.Points; vel: Float32Array; life: number; gravity: number }
+interface BurstSlot { pts: THREE.Points; pos: THREE.BufferAttribute; vel: Float32Array; life: number; gravity: number; count: number; active: boolean }
+interface RainSlot { pts: THREE.Points; pos: THREE.BufferAttribute; until: number; active: boolean }
 
-/** Pooled particle bursts (bloom, pollen, bug scatter) and rain showers. */
+const BURST_MAX = 64, BURST_SLOTS = 8, RAIN_N = 220, RAIN_SLOTS = 3;
+
+/** Pooled particle bursts (bloom, pollen, bug scatter) and rain showers. Nothing is created after construction. */
 export class Particles {
-  private bursts: Burst[] = [];
-  private rain: { pts: THREE.Points; until: number }[] = [];
+  private bursts: BurstSlot[] = [];
+  private rains: RainSlot[] = [];
   reducedMotion = false;
-  constructor(private scene: THREE.Scene) {}
+  private c = new THREE.Color();
+
+  constructor(private scene: THREE.Scene) {
+    for (let i = 0; i < BURST_SLOTS; i++) {
+      const pos = new THREE.BufferAttribute(new Float32Array(BURST_MAX * 3), 3);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', pos); g.setDrawRange(0, 0);
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.14, transparent: true, depthWrite: false }));
+      pts.visible = false; pts.frustumCulled = false; scene.add(pts);
+      this.bursts.push({ pts, pos, vel: new Float32Array(BURST_MAX * 3), life: 0, gravity: 4, count: 0, active: false });
+    }
+    for (let i = 0; i < RAIN_SLOTS; i++) {
+      const pos = new THREE.BufferAttribute(new Float32Array(RAIN_N * 3), 3);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', pos);
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9cc9ee, size: 0.09, transparent: true, opacity: 0.8, depthWrite: false }));
+      pts.visible = false; pts.frustumCulled = false; scene.add(pts);
+      this.rains.push({ pts, pos, until: 0, active: false });
+    }
+  }
 
   burst(at: THREE.Vector3, color: number, count = 36, speed = 2.2, gravity = 4) {
-    if (this.reducedMotion) count = Math.min(count, 8);
-    const pos = new Float32Array(count * 3), vel = new Float32Array(count * 3);
+    count = Math.min(this.reducedMotion ? 8 : count, BURST_MAX);
+    // Reuse a free slot, else steal the one closest to expiring.
+    let slot = this.bursts.find((b) => !b.active);
+    if (!slot) slot = this.bursts.reduce((m, b) => (b.life < m.life ? b : m));
+    const arr = slot.pos.array as Float32Array;
     for (let i = 0; i < count; i++) {
-      pos.set([at.x, at.y, at.z], i * 3);
+      arr[i * 3] = at.x; arr[i * 3 + 1] = at.y; arr[i * 3 + 2] = at.z;
       const a = (i * 2.399963) % (Math.PI * 2), up = 0.5 + ((i * 37) % 10) / 10;
-      vel.set([Math.cos(a) * speed * 0.5 * up, speed * up, Math.sin(a) * speed * 0.5 * up], i * 3);
+      slot.vel[i * 3] = Math.cos(a) * speed * 0.5 * up; slot.vel[i * 3 + 1] = speed * up; slot.vel[i * 3 + 2] = Math.sin(a) * speed * 0.5 * up;
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size: 0.14, transparent: true, depthWrite: false }));
-    this.scene.add(pts);
-    this.bursts.push({ pts, vel, life: 1.4, gravity });
+    slot.pos.needsUpdate = true;
+    slot.pts.geometry.setDrawRange(0, count);
+    (slot.pts.material as THREE.PointsMaterial).color.copy(this.c.set(color));
+    (slot.pts.material as THREE.PointsMaterial).opacity = 1;
+    slot.count = count; slot.life = 1.4; slot.gravity = gravity; slot.active = true; slot.pts.visible = true;
   }
 
   shower(center: THREE.Vector3, w: number, d: number, ms = 2800) {
     if (this.reducedMotion) return;
-    const n = 220, pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) pos.set([center.x + (Math.random() - 0.5) * w, Math.random() * 5, center.z + (Math.random() - 0.5) * d], i * 3);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9cc9ee, size: 0.09, transparent: true, opacity: 0.8, depthWrite: false }));
-    this.scene.add(pts);
-    this.rain.push({ pts, until: performance.now() + ms });
+    const slot = this.rains.find((r) => !r.active) ?? this.rains[0]!;
+    const arr = slot.pos.array as Float32Array;
+    for (let i = 0; i < RAIN_N; i++) { arr[i * 3] = center.x + (Math.random() - 0.5) * w; arr[i * 3 + 1] = Math.random() * 5; arr[i * 3 + 2] = center.z + (Math.random() - 0.5) * d; }
+    slot.pos.needsUpdate = true; slot.until = performance.now() + ms; slot.active = true; slot.pts.visible = true;
   }
 
   update(dt: number) {
-    for (const b of [...this.bursts]) {
+    for (const b of this.bursts) {
+      if (!b.active) continue;
       b.life -= dt;
-      const p = b.pts.geometry.getAttribute('position') as THREE.BufferAttribute;
-      for (let i = 0; i < p.count; i++) {
-        b.vel[i * 3 + 1]! -= b.gravity * dt;
-        p.setXYZ(i, p.getX(i) + b.vel[i * 3]! * dt, Math.max(0.02, p.getY(i) + b.vel[i * 3 + 1]! * dt), p.getZ(i) + b.vel[i * 3 + 2]! * dt);
+      const arr = b.pos.array as Float32Array;
+      for (let i = 0; i < b.count; i++) {
+        const vy = b.vel[i * 3 + 1]! - b.gravity * dt;
+        b.vel[i * 3 + 1] = vy;
+        arr[i * 3] = arr[i * 3]! + b.vel[i * 3]! * dt; arr[i * 3 + 1] = Math.max(0.02, arr[i * 3 + 1]! + vy * dt); arr[i * 3 + 2] = arr[i * 3 + 2]! + b.vel[i * 3 + 2]! * dt;
       }
-      p.needsUpdate = true;
+      b.pos.needsUpdate = true;
       (b.pts.material as THREE.PointsMaterial).opacity = Math.max(0, b.life / 1.4);
-      if (b.life <= 0) { this.scene.remove(b.pts); b.pts.geometry.dispose(); (b.pts.material as THREE.Material).dispose(); this.bursts.splice(this.bursts.indexOf(b), 1); }
+      if (b.life <= 0) { b.active = false; b.pts.visible = false; }
     }
     const now = performance.now();
-    for (const r of [...this.rain]) {
-      const p = r.pts.geometry.getAttribute('position') as THREE.BufferAttribute;
-      for (let i = 0; i < p.count; i++) { let y = p.getY(i) - 9 * dt; if (y < 0) y += 5; p.setY(i, y); }
-      p.needsUpdate = true;
-      if (now > r.until) { this.scene.remove(r.pts); r.pts.geometry.dispose(); (r.pts.material as THREE.Material).dispose(); this.rain.splice(this.rain.indexOf(r), 1); }
+    for (const r of this.rains) {
+      if (!r.active) continue;
+      const arr = r.pos.array as Float32Array;
+      for (let i = 0; i < RAIN_N; i++) { let y = arr[i * 3 + 1]! - 9 * dt; if (y < 0) y += 5; arr[i * 3 + 1] = y; }
+      r.pos.needsUpdate = true;
+      if (now > r.until) { r.active = false; r.pts.visible = false; }
     }
   }
+
   clear() {
-    for (const b of this.bursts) this.scene.remove(b.pts);
-    for (const r of this.rain) this.scene.remove(r.pts);
-    this.bursts = []; this.rain = [];
+    for (const b of this.bursts) { b.active = false; b.pts.visible = false; }
+    for (const r of this.rains) { r.active = false; r.pts.visible = false; }
   }
 }

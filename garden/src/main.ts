@@ -1,5 +1,6 @@
 import { Store } from './data/store.ts';
 import { startFake, type FakeController } from './data/fake.ts';
+import { startBench } from './data/bench.ts';
 import { connectLive, DEFAULT_DB, DEFAULT_HOST } from './data/spacetime.ts';
 import { GardenWorld } from './scene/world.ts';
 import { renderShed } from './ui/shed.ts';
@@ -20,6 +21,8 @@ const world = new GardenWorld(app, store);
 world.onLayout = (l) => { layout = l; };
 
 async function start() {
+  const bench = Number(q.get('bench'));
+  if (bench > 0) { source = 'fake'; startBench(store, Math.min(bench, 5000)); return; }
   if (source === 'live') {
     try {
       await connectLive(store, q.get('host') ?? import.meta.env?.VITE_STDB_HOST ?? DEFAULT_HOST, q.get('db') ?? import.meta.env?.VITE_STDB_DB ?? DEFAULT_DB);
@@ -52,6 +55,7 @@ addEventListener('keydown', (e) => {
   if (k === 'p') { planOn = !planOn; plan.hidden = !planOn; refresh(); }
   else if (k === 'd') { world.director = !world.director; if (world.director) world.follow = null; refresh(); }
   else if (k === 'h') document.body.classList.toggle('hide-ui');
+  else if (k === 'b') world.toggleExpand();
   else if (k === ' ' && fake) { e.preventDefault(); fake.toggle(); }
   else if (k === 'arrowright' && fake) fake.next();
   else if (k === 'arrowleft' && fake) fake.prev();
@@ -64,6 +68,7 @@ if (q.get('debug') === '1') {
     setStep: (n: number) => fake?.setStep(n),
     next: () => fake?.next(),
     advance: (sec: number) => world.advance(sec),
+    bench: (frames = 120) => world.benchFrames(frames),
     snapshot: () => store.snapshot,
     get fps() { return world.fps; },
     get step() { return fake?.step; },

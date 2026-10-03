@@ -6,10 +6,11 @@ import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
 import { flowerColor, geo, mat, mesh } from './materials.ts';
-import { buildPlant } from './plantMesh.ts';
+import { PlantField } from './plantField.ts';
 import { CameraRig } from './camera.ts';
 
-interface PlantNode { group: THREE.Group; holder: THREE.Group; stage: PlantStage; size: number; bugs: number; bugGroup: THREE.Group; born: number; phase: number; x: number; z: number; path: string; openAt?: number; wobbleUntil?: number }
+const LOD_LIMIT = 80; // above this many plants, quiet ones become ground cover
+const ACTIVE_MS = 30 * 60_000;
 
 // Hour-of-day sky: night is kept readable for the projector.
 const SKY: Array<[number, string]> = [[0, '#26335c'], [5, '#e8a07e'], [8, '#bfe3f5'], [16, '#cfe6ee'], [18.5, '#f6b073'], [20.5, '#3a3f74'], [24, '#26335c']];
@@ -35,7 +36,9 @@ export class GardenWorld implements WorldLookup {
   private ground = new THREE.Group();
   private bedGroup = new THREE.Group();
   private fenceGroup = new THREE.Group();
-  private nodes = new Map<string, PlantNode>();
+  private field: PlantField;
+  expandAll = false;
+  private tmpV = new THREE.Vector3();
   private layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
   private layoutKey = '';
   private layoutFirst = true;
@@ -70,6 +73,7 @@ export class GardenWorld implements WorldLookup {
     host.appendChild(this.renderer.domElement);
     const labelHost = document.createElement('div'); labelHost.className = 'labels'; host.appendChild(labelHost);
     this.labels = new Labels(labelHost, this.camera);
+    this.field = new PlantField(this.scene);
     this.fx = new Particles(this.scene);
     this.actors = new Actors(this.scene, this, this.labels, this.fx);
     this.actors.motion = this.reducedMotion ? 0.25 : 1;
@@ -103,10 +107,10 @@ export class GardenWorld implements WorldLookup {
   plantPos(path: string) { return this.plantXZ.get(path); }
   bedCenter(bed: string) { const b = this.layout.beds.find((x) => x.name === bed); return b ? new THREE.Vector3(b.x, 0, b.z) : undefined; }
   bedOfPath(path: string) { return this.layout.plants.find((p) => p.path === path)?.bed; }
+  private gates = new Map<string, THREE.Vector3>(); // claim path -> gate point, rebuilt with the fences
   fenceGate(path: string) {
     const claim = this.snap?.claims.find((c) => c.path === path || (c.path.endsWith('/') && path.startsWith(c.path)));
-    const r = claim && this.fenceRect(claim.path);
-    return r ? new THREE.Vector3((r.minX + r.maxX) / 2, 0, r.maxZ) : undefined;
+    return claim ? this.gates.get(claim.path) : undefined;
   }
   /** Front edge of the garden where gardeners wait, and half the garden's width. */
   get homeFrame() { return { halfW: Math.max(6, this.layout.width / 2), frontZ: Math.max(4, this.layout.depth / 2) + 2.4 }; }
@@ -169,39 +173,33 @@ export class GardenWorld implements WorldLookup {
     this.onLayout(this.layout);
   }
 
+  private isClaimed(path: string) {
+    for (const c of this.snap.claims) if (c.path === path || (c.path.endsWith('/') && path.startsWith(c.path))) return true;
+    return false;
+  }
+
+  /** Toggle between ground cover for quiet plants and showing every plant in full (key B). */
+  toggleExpand() { this.expandAll = !this.expandAll; if (this.snap) this.syncPlants(false); return this.expandAll; }
+
   private syncPlants(reset: boolean) {
-    const now = this.time;
-    const want = new Set(this.layout.plants.map((p) => p.path));
-    for (const [path, n] of this.nodes) if (!want.has(path)) { this.scene.remove(n.group); this.nodes.delete(path); }
+    const now = this.time, plants = this.layout.plants;
+    this.field.keep(new Set(plants.map((p) => p.path)));
     const byPath = new Map(this.snap.plants.map((p) => [p.path, p]));
-    for (const lp of this.layout.plants) {
+    const lod = !this.expandAll && plants.length > LOD_LIMIT;
+    const live = new Set<string>();
+    if (lod) for (const a of this.snap.agents) if (a.currentPath && a.status !== 'dormant') live.add(a.currentPath);
+    for (const lp of plants) {
       const pv = byPath.get(lp.path)!;
-      let n = this.nodes.get(lp.path);
       let stage = pv.stage;
       const hold = this.pendingBloom.get(lp.path);
       if (stage === 'bloom' && hold !== undefined) { if (performance.now() < hold) stage = 'bud'; else this.pendingBloom.delete(lp.path); }
-      if (!n || n.stage !== stage || Math.abs(n.size - lp.size) > 0.05) {
-        const wasStage = n?.stage;
-        if (n) n.holder.clear(); else {
-          const group = new THREE.Group(), holder = new THREE.Group(), bugGroup = new THREE.Group();
-          group.add(holder, bugGroup); this.scene.add(group);
-          n = { group, holder, stage, size: lp.size, bugs: 0, bugGroup, born: now, phase: Math.random() * 6, x: lp.x, z: lp.z, path: lp.path };
-          this.nodes.set(lp.path, n);
-        }
-        n.holder.add(buildPlant(stage, lp.path, lp.size));
-        n.stage = stage; n.size = lp.size; n.born = reset || (wasStage === 'bud' && stage === 'bloom') ? now - 5 : now;
-        if (stage === 'bloom' && wasStage === 'bud') n.openAt = now; // petals open one by one
-        if (stage === 'bloom' && wasStage && wasStage !== 'bloom') {
-          this.fx.burst(new THREE.Vector3(lp.x, 1, lp.z), flowerColor(lp.path).getHex(), 50, 2.6, 3);
-        }
+      // Large gardens: quiet plants shrink to ground cover; anything that matters stays full.
+      const full = !lod || stage === 'bud' || stage === 'bloom' || pv.bugs > 0 || this.snap.at - pv.lastActivity < ACTIVE_MS || live.has(lp.path) || this.isClaimed(lp.path);
+      const r = this.field.upsert(lp.path, lp.x, lp.z, lp.size, stage, pv.bugs, full, now, reset);
+      if (r.inst.stage === 'bloom' && r.wasStage !== undefined && r.wasStage !== 'bloom') {
+        this.fx.burst(this.tmpV.set(lp.x, 1, lp.z), flowerColor(lp.path).getHex(), 50, 2.6, 3);
       }
-      n.x = lp.x; n.z = lp.z; n.group.position.set(lp.x, 0.2, lp.z);
-      if (n.bugs !== pv.bugs) {
-        if (pv.bugs < n.bugs && n.bugs > 0) this.fx.burst(new THREE.Vector3(lp.x, 0.8, lp.z), 0x222222, 12, 1.2, 4);
-        n.bugGroup.clear();
-        for (let i = 0; i < pv.bugs; i++) n.bugGroup.add(mesh(geo.sphere, mat('#1c1c1c'), 0.06, 0.05, 0.08));
-        n.bugs = pv.bugs;
-      }
+      if (pv.bugs < r.bugsBefore && r.bugsBefore > 0) this.fx.burst(this.tmpV.set(lp.x, 0.8, lp.z), 0x222222, 12, 1.2, 4);
     }
   }
 
@@ -211,9 +209,9 @@ export class GardenWorld implements WorldLookup {
     if (!this.pendingBloom.delete(path)) return;
     if (this.snap) this.syncPlants(false);
   }
-  wobblePlant(path: string, seconds: number) { const n = this.nodes.get(path); if (n) n.wobbleUntil = this.time + seconds; }
+  wobblePlant(path: string, seconds: number) { const n = this.field.get(path); if (n) n.wobbleUntil = this.time + seconds; }
   showLock(path: string | null) {
-    const n = path ? this.nodes.get(path) : undefined;
+    const n = path ? this.field.get(path) : undefined;
     this.lockMesh.visible = !!n;
     if (n) this.lockMesh.position.set(n.x + 0.45, 1.35 * n.size + 0.2, n.z);
   }
@@ -222,9 +220,10 @@ export class GardenWorld implements WorldLookup {
     const color = (h: string) => this.snap.members.find((m) => m.handle === h)?.color ?? '#888';
     const key = JSON.stringify(this.snap.claims.map((c) => [c.id, c.path, c.handle])) + this.layoutKey + this.snap.plants.length;
     if (key === this.fenceKey) return;
-    this.fenceKey = key; this.fenceGroup.clear();
+    this.fenceKey = key; this.fenceGroup.clear(); this.gates.clear();
     for (const c of this.snap.claims) {
       const r = this.fenceRect(c.path); if (!r) continue;
+      this.gates.set(c.path, new THREE.Vector3((r.minX + r.maxX) / 2, 0, r.maxZ));
       const m = mat(color(c.handle), { emissive: 0x111111 });
       const side = (x0: number, z0: number, x1: number, z1: number) => {
         const len = Math.hypot(x1 - x0, z1 - z0), posts = Math.max(2, Math.round(len / 1.1) + 1);
@@ -257,7 +256,14 @@ export class GardenWorld implements WorldLookup {
   }
   refit(instant = false) {
     this.rig.setReserved(this.reservedPx());
-    this.rig.fit(this.fitBox(), undefined, instant);
+    this.scaleToDistance(this.rig.fit(this.fitBox(), undefined, instant));
+  }
+  /** Big gardens need a farther camera, a deeper far plane and fog that starts later. */
+  private scaleToDistance(dist: number) {
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = Math.max(40, dist * 0.9); fog.far = Math.max(120, dist * 3.2);
+    const far = Math.max(400, dist * 5);
+    if (this.camera.far !== far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
   }
   /** Reframe (F): clears manual moves and fits everything. */
   frameGarden(instant = false) { this.refit(instant); }
@@ -266,13 +272,30 @@ export class GardenWorld implements WorldLookup {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
     this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     this.rig.setReserved(this.reservedPx());
-    if (!this.rig.userMoved) this.rig.fit(this.fitBox(), undefined, true);
+    if (!this.rig.userMoved) this.scaleToDistance(this.rig.fit(this.fitBox(), undefined, true));
   }
 
   /** Run the simulation for `seconds` of scene time in 1/30 s steps, rendering only the last frame. Debug/test use. */
   advance(seconds: number) {
     const steps = Math.max(1, Math.round(seconds * 30));
     for (let i = 0; i < steps; i++) this.frame(1 / 30, i === steps - 1);
+  }
+
+  /** Render `frames` frames back to back, forcing the GPU to finish each, and report honest per-frame timings. */
+  benchFrames(frames = 120) {
+    const gl = this.renderer.getContext(), times: number[] = [];
+    for (let i = 0; i < frames; i++) {
+      const t0 = performance.now();
+      this.frame(1 / 60, true);
+      gl.finish();
+      times.push(performance.now() - t0);
+    }
+    times.sort((a, b) => a - b);
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    return {
+      frames, avgMs: +avg.toFixed(2), p95Ms: +times[Math.floor(times.length * 0.95)]!.toFixed(2), maxMs: +times[times.length - 1]!.toFixed(2),
+      fps: +(1000 / avg).toFixed(1), plants: this.field.stats(), drawCalls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles,
+    };
   }
 
   private frame(dtOverride?: number, render = true) {
@@ -293,37 +316,14 @@ export class GardenWorld implements WorldLookup {
       this.spotRing.position.set(shot.point.x, 0.32, shot.point.z); this.spotRing.scale.setScalar(1 + Math.sin(t * 3) * 0.06 * mo);
       if (!this.rig.userMoved) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
-    for (const n of this.nodes.values()) {
-      const age = Math.min(1, (t - n.born) / 0.7), pop = 0.15 + 0.85 * (1 - Math.pow(1 - age, 3));
-      n.holder.scale.setScalar(pop);
-      n.group.rotation.z = Math.sin(t * 1.3 + n.phase) * 0.035 * mo;
-      n.holder.rotation.x = n.bugs * 0.07;
-      n.holder.rotation.z = n.wobbleUntil && n.wobbleUntil > t ? Math.sin(t * 22) * 0.1 * Math.min(1, n.wobbleUntil - t) * mo : 0;
-      if (n.openAt !== undefined) {
-        const g = n.holder.children[n.holder.children.length - 1] as THREE.Object3D | undefined;
-        const petals = g?.userData.petals as THREE.Object3D[] | undefined;
-        const el = t - n.openAt;
-        if (petals) {
-          petals.forEach((pt, i) => {
-            const k = Math.min(1, Math.max(0, (el - i * 0.09) / 0.55)), e = 1 - Math.pow(1 - k, 3);
-            pt.scale.copy(pt.userData.base as THREE.Vector3).multiplyScalar(e);
-          });
-          const c = g?.userData.center as THREE.Object3D | undefined;
-          if (c) c.scale.copy(c.userData.base as THREE.Vector3).multiplyScalar(Math.min(1, Math.max(0, el / 0.4)));
-        }
-        if (el > 1.6) n.openAt = undefined;
-      }
-      n.bugGroup.children.forEach((b, i) => {
-        const a = t * 1.5 + i * 2.1 + n.phase; b.position.set(Math.cos(a) * 0.3 * n.size, 0.3 * n.size + (i % 3) * 0.2 * n.size, Math.sin(a) * 0.3 * n.size);
-      });
-    }
+    this.field.update(t, mo);
     // Camera: follow a member, or director mode follows the latest action.
     let focus: THREE.Vector3 | undefined;
     if (shot) focus = undefined; // the cinematic shot owns the camera
     else if (this.follow) focus = this.actors.gardenerPos(this.follow);
     else if (this.director) focus = this.actors.focus;
     if (focus) {
-      const d = focus.clone().sub(this.controls.target).multiplyScalar(Math.min(1, dt * 1.6));
+      const d = this.tmpV.copy(focus).sub(this.controls.target).multiplyScalar(Math.min(1, dt * 1.6));
       this.controls.target.add(d); this.camera.position.add(d);
     }
     this.rig.update(dt);

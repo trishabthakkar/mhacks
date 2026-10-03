@@ -114,6 +114,11 @@ export class Actors {
   private homes = new Map<string, THREE.Vector3>();
   private botHome = new THREE.Vector3();
   private tmp = new THREE.Vector3();
+  private tgt = new THREE.Vector3();
+  private static OFF_GARDENER = new THREE.Vector3(-0.75, 0, 0.55);
+  private static OFF_BOT_HOME = new THREE.Vector3(0.9, 0, 0.9);
+  private static OFF_BOT_WORK = new THREE.Vector3(0.6, 0, 0.45);
+  private static OFF_BOT_GATE = new THREE.Vector3(0, 0, 0.9);
   private off = new THREE.Vector3(1.3, 0, 0.9);
   private bubblePos = new THREE.Vector3();
   motion = 1;
@@ -125,7 +130,8 @@ export class Actors {
     this.botanist.obj.position.copy(this.botHome);
     this.botanist.target.copy(this.botHome);
     scene.add(this.botanist.obj);
-    labels.add('Botanist', () => this.botanist.obj.position.clone().setY(1.7), 'label botanist');
+    const bl = new THREE.Vector3();
+    labels.add('Botanist', () => bl.copy(this.botanist.obj.position).setY(1.7), 'label botanist');
   }
 
   private memberColor(h: string) { return this.snap.members.find((m) => m.handle === h)?.color ?? '#888888'; }
@@ -159,7 +165,8 @@ export class Actors {
     reconcile(this.gardeners, snap.members.filter((m) => m.online).map((m) => m.handle), (h) => {
       const m = makeGardener(this.memberColor(h));
       m.obj.position.copy(this.home(h)); m.target.copy(m.obj.position);
-      const label = this.labels.add(h, () => m.obj.position.clone().setY(1.6), 'label member');
+      const lp = new THREE.Vector3();
+      const label = this.labels.add(h, () => lp.copy(m.obj.position).setY(1.6), 'label member');
       label.style.borderColor = this.memberColor(h);
       return { obj: m.obj, m, label, kneel: 0 };
     }, this.scene, (g) => this.labels.remove(g.label));
@@ -220,8 +227,9 @@ export class Actors {
         if (owner) this.meet.set(owner, { pos: gate.clone().add(new THREE.Vector3(-0.5, 0, 0.3)), until });
         const bot = this.claudeAgent(a.handle);
         const target = bot && this.bots.get(bot.sessionId);
+        const bp = new THREE.Vector3();
         this.labels.add(owner ? `Fenced by ${owner}: asking instead of editing` : 'Fenced: asking instead of editing',
-          () => target?.obj.position.clone().setY(1.5) ?? gate.clone().setY(1.5), 'bubble', 5500);
+          () => (target ? bp.copy(target.obj.position) : bp.copy(gate)).setY(1.5), 'bubble', 5500);
       }
     }
     if (a.kind === 'commit' && a.path) {
@@ -252,11 +260,11 @@ export class Actors {
       const ov = this.meet.get(h);
       if (ov && now > ov.until) this.meet.delete(h);
       const agent = this.claudeAgent(h);
-      let target = this.home(h), kneel = false;
+      let target: THREE.Vector3 = this.home(h), kneel = false;
       if (ov && now <= ov.until) target = ov.pos;
       else if (agent?.currentPath && (agent.status === 'working' || agent.status === 'blocked')) {
         const p = this.world.plantPos(agent.currentPath);
-        if (p) { target = p.clone().add(new THREE.Vector3(-0.75, 0, 0.55)); kneel = agent.status === 'working'; }
+        if (p) { target = this.tgt.copy(p).add(Actors.OFF_GARDENER); kneel = agent.status === 'working'; }
       }
       g.m.target.copy(target); g.m.step(dt);
       g.kneel += ((kneel && !g.m.moving ? 1 : 0) - g.kneel) * Math.min(1, dt * 6);
@@ -267,10 +275,10 @@ export class Actors {
     for (const b of this.bots.values()) {
       const a = b.agent;
       const gp = this.gardenerPos(a.handle) ?? this.home(a.handle);
-      let target = gp.clone().add(new THREE.Vector3(0.9, 0, 0.9));
+      let target: THREE.Vector3 = this.tgt.copy(gp).add(Actors.OFF_BOT_HOME);
       if (a.currentPath && (a.status === 'working' || a.status === 'blocked' || a.status === 'waiting')) {
         const p = this.world.plantPos(a.currentPath);
-        if (p) target = a.status === 'blocked' ? (this.world.fenceGate(a.currentPath) ?? p).clone().add(new THREE.Vector3(0, 0, 0.9)) : p.clone().add(new THREE.Vector3(0.6, 0, 0.45));
+        if (p) target = a.status === 'blocked' ? this.tgt.copy(this.world.fenceGate(a.currentPath) ?? p).add(Actors.OFF_BOT_GATE) : this.tgt.copy(p).add(Actors.OFF_BOT_WORK);
       }
       b.m.target.copy(target); b.m.step(dt);
       b.alert.visible = a.status === 'waiting';

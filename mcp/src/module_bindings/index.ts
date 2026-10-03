@@ -45,6 +45,7 @@ import PostMessageReducer from "./post_message_reducer";
 import RecordDiffReducer from "./record_diff_reducer";
 import RecordTestRunReducer from "./record_test_run_reducer";
 import ReleaseFilesReducer from "./release_files_reducer";
+import RemoveMemberReducer from "./remove_member_reducer";
 import ReportStatusReducer from "./report_status_reducer";
 import RespondHandoffReducer from "./respond_handoff_reducer";
 import SeedRepoReducer from "./seed_repo_reducer";
@@ -220,6 +221,7 @@ const reducersSchema = __reducers(
   __reducerSchema("record_diff", RecordDiffReducer),
   __reducerSchema("record_test_run", RecordTestRunReducer),
   __reducerSchema("release_files", ReleaseFilesReducer),
+  __reducerSchema("remove_member", RemoveMemberReducer),
   __reducerSchema("report_status", ReportStatusReducer),
   __reducerSchema("respond_handoff", RespondHandoffReducer),
   __reducerSchema("seed_repo", SeedRepoReducer),

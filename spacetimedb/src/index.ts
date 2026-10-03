@@ -145,6 +145,27 @@ export const heartbeat = spacetimedb.reducer({ handle: t.string() }, (ctx, args)
   ctx.db.member.handle.update({ ...m, online: true, lastSeen: ctx.timestamp });
 });
 
+/**
+ * Removes a member and everything live they own: agents, fences, messages to/from them, open handoffs.
+ * History (activity, diffs, test runs, reviews, certifications) stays for the timelapse; plants stay but forget them.
+ * Idempotent. Any later event from that handle auto-joins them again, so stop their companion/sim first.
+ */
+export const removeMember = spacetimedb.reducer({ handle: t.string() }, (ctx, args) => {
+  const handle = reqHandle(args.handle);
+  ctx.db.member.handle.delete(handle);
+  for (const a of [...ctx.db.agent.iter()]) if (a.handle === handle) ctx.db.agent.sessionId.delete(a.sessionId);
+  for (const c of [...ctx.db.claim.iter()]) if (c.handle === handle) ctx.db.claim.id.delete(c.id);
+  for (const m of [...ctx.db.message.iter()]) {
+    if (m.fromHandle === handle || m.toHandle === handle) ctx.db.message.id.delete(m.id);
+  }
+  for (const h of [...ctx.db.handoff.iter()]) {
+    if ((h.fromHandle === handle || h.toHandle === handle) && h.status === 'offered') ctx.db.handoff.id.delete(h.id);
+  }
+  for (const p of [...ctx.db.plant.iter()]) {
+    if (p.lastTouchedBy === handle) ctx.db.plant.path.update({ ...p, lastTouchedBy: undefined });
+  }
+});
+
 // ---------------- repo + activity ----------------
 
 export const seedRepo = spacetimedb.reducer({ files: t.array(SeedFile) }, (ctx, { files }) => {

@@ -142,6 +142,7 @@ call ingest_activity '"jo"' "$(some '"s-jo"')" '"edit"' "$(some '"src/db.ts"')" 
 eq "paused member dropped"    "SELECT COUNT(*) AS n FROM activity" "$N"
 reject "server-only kind rejected" "server-only"     ingest_activity '"alex"' "$NONE" '"certify_bloom"' "$NONE" "$NONE" "$NONE" "$NONE"
 reject "'..' path rejected"        'must not contain' ingest_activity '"alex"' "$NONE" '"edit"' "$(some '"src/../x"')" "$NONE" "$NONE" "$NONE"
+call ingest_activity '"alex"' "$NONE" '"read"' "$(some '"docs/notes..md"')" "$NONE" "$NONE" "$NONE" && ok "'..' inside a filename allowed"
 reject "absolute path rejected"    'relative'         ingest_activity '"alex"' "$NONE" '"edit"' "$(some '"/etc/passwd"')" "$NONE" "$NONE" "$NONE"
 call report_status '"alex"' "$NONE" '"needs_review"'
 eq "reportStatus (all live agents)" "SELECT status FROM agent WHERE session_id = 's-alex'" needs_review
@@ -264,6 +265,26 @@ call submit_evidence '"alex"' "\"$P\"" '"reviewed"'
 eq  "teammate review → bloom"  "SELECT result FROM certification WHERE path = '$P' AND task = 'reviewed'" bloom
 call set_config '"requireReview"' '"false"'
 reject "evidence for unknown plant" "no plant" submit_evidence '"alex"' '"nope.ts"' '"x"'
+
+echo "-- removeMember"
+call join_member '"ghost"' '""'
+call ingest_activity '"ghost"' "$(some '"s-ghost"')" '"edit"' "$(some '"src/ghost.ts"')" "$(some 3)" "$NONE" "$NONE"
+call claim_files '"ghost"' '["src/ghost.ts"]' "$NONE"
+call post_message '"ghost"' "$NONE" '"sam"' '"finding"' '"boo"'
+call post_message '"sam"' "$NONE" '"ghost"' '"finding"' '"hi ghost"'
+call offer_handoff '"sam"' '"ghost"' '"haunt"' '""'
+N=$(count activity)
+call remove_member '"ghost"'
+eq "member gone"           "SELECT COUNT(*) AS n FROM member WHERE handle = 'ghost'" 0
+eq "agents gone"           "SELECT COUNT(*) AS n FROM agent WHERE handle = 'ghost'" 0
+eq "claims gone"           "SELECT COUNT(*) AS n FROM claim WHERE handle = 'ghost'" 0
+eq "messages from gone"    "SELECT COUNT(*) AS n FROM message WHERE from_handle = 'ghost'" 0
+eq "messages to gone"      "SELECT COUNT(*) AS n FROM message WHERE to_handle = 'ghost'" 0
+eq "open handoffs gone"    "SELECT COUNT(*) AS n FROM handoff WHERE to_handle = 'ghost'" 0
+eq "plant kept"            "SELECT COUNT(*) AS n FROM plant WHERE path = 'src/ghost.ts'" 1
+eq "plant forgets member"  "SELECT last_touched_by FROM plant WHERE path = 'src/ghost.ts'" '(none = ())'
+eq "history kept"          "SELECT COUNT(*) AS n FROM activity" "$N"
+call remove_member '"ghost"' && ok "removeMember is idempotent"
 
 if [ "$SLOW" = 1 ]; then
   echo "-- slow: expiry + sweep (~3.5 min)"

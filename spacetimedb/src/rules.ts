@@ -25,7 +25,7 @@ export function reqHandle(raw: string): string {
 export function reqPath(raw: string): string {
   const p = reqText(raw, 'path', LIM.path);
   if (p.startsWith('/')) throw new SenderError(`path "${p}" must be relative to the repo root`);
-  if (p.includes('..')) throw new SenderError(`path "${p}" must not contain ".."`);
+  if (p.split('/').includes('..')) throw new SenderError(`path "${p}" must not contain a ".." segment`);
   return p;
 }
 

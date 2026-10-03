@@ -7,16 +7,29 @@
     "sprout": "bin/sprout.js"
   },
   "scripts": {
-    "dev": "tsx src/cli.ts --help",
-    "test": "tsx --test src/*.test.ts"
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --splitting --outdir=dist --log-level=warning --banner:js=\"import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);\"",
+    "prepare": "npm run build",
+    "dev": "SPROUT_DEV=1 node bin/sprout.js --help",
+    "test": "npm run build && tsx --test src/*.test.ts",
+    "typecheck": "tsc -p .",
+    "bench": "node test/bench-hook.mjs"
   },
   "dependencies": {
-    "spacetimedb": "^2.10.2",
-    "tsx": "^4.19.0"
+    "spacetimedb": "2.10.*",
+    "tsx": "^4.19.0",
+    "esbuild": "^0.28.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "esbuild": "^0.28.2",
     "typescript": "^5.6.0"
-  }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src",
+    "README.md"
+  ]
 }

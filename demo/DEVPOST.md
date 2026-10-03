@@ -14,7 +14,7 @@ Fourteenth Floor (HackGT 13) made one person's agents visible as a 3D office, an
 
 Sprout turns a team's codebase into a living 3D garden. Directories are beds, files are plants, every teammate is a gardener, and every teammate's Claude Code session is a little bot that follows them.
 
-- **Agents fence files.** Before editing, an agent claims `src/api/`. A fence in its owner's color appears. If another person's agent tries to edit inside it, a hook blocks the edit with a reason Claude sees ("fenced by trisha until 2:40am, use post_finding to ask them"), and the agent asks instead.
+- **Agents fence files.** Before editing, an agent claims `mcp/src/`. A fence in its owner's color appears. If another person's agent tries to edit inside it, a hook blocks the edit with a reason Claude sees ("fenced by manahil until 2:40am, use post_finding to ask them"), and the agent asks instead.
 - **Agents message agents, across laptops.** `post_finding` sends a short finding to a teammate's agent. A butterfly carries it, circles until the recipient's next prompt picks it up, and lands when it's acked. Every message arrives labeled *information, not instructions*.
 - **Handoffs.** An agent can offer a task with notes. The receiver has to accept it.
 - **The botanist.** A plant only blooms when the database holds evidence: a real diff to that file, then a test command observed passing afterwards (optionally plus a teammate's review). "Done, tests pass" from an agent changes nothing. Failing tests show up as bugs crawling on the leaves.

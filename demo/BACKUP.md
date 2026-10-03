@@ -6,7 +6,7 @@
 
 | Time | What |
 |---|---|
-| 5:30am | Deployed stack green: `curl <MCP_URL>/health` → `db: connected`; both laptops `claude mcp list` ✔; garden live on `sprout-demo` |
+| 5:30am | Deployed stack green: `curl <MCP_URL>/health` → `db: connected`; both laptops `claude mcp list` ✔; garden live on `sprout-mhacks` (http://localhost:5173/) |
 | 5:45am | Rehearsal 1 (untimed, fix whatever breaks; note fixes in status/P2.md) |
 | 6:15am | Rehearsal 2 (timed, ≤3:00) |
 | 6:45am | **Record** take 1, then take 2 if anything went wrong |
@@ -18,7 +18,7 @@
 - **Projector laptop (N):** record the garden full-screen with QuickTime (File → New Screen Recording) or OBS at 1080p/30fps. Director mode on, UI visible, `?debug=1` off.
 - **Laptops A and B:** record each terminal too (QuickTime). Terminal font 20pt, dark theme, window 1280×800. Close notifications (Focus mode on).
 - **Audio:** one narrator voice recorded on N's laptop mic in a quiet corner, or added as voice-over afterwards.
-- Run demo-reset (DEMO_SCRIPT.md) before **every** take.
+- Run demo-reset (DEMO_SCRIPT.md) before **every** take, and `demo-reset --after` plus `git checkout mcp/src/time.ts` on laptop 1 after it.
 - **Edit:** garden full-frame as the base track. Cut to A's or B's terminal (picture-in-picture, bottom-right, ~35%) whenever they type, so viewers can read the prompt and the tool result.
 
 ## Shot list
@@ -28,10 +28,10 @@
 | 1 | Title card "Sprout: your team's agents, in one garden" | edit | 3s | — |
 | 2 | Idle garden, slow orbit, beds labeled | N | 12s | beds `src`, `tests`, 4 gardeners, bots |
 | 3 | Shed noticeboard close-up | N | 5s | who's online, fences (empty) |
-| 4 | A types the pagination prompt | A terminal (PiP) | 6s | prompt text, `Fenced src/api/ until …` |
+| 4 | A types the untilText prompt | A terminal (PiP) | 6s | prompt text, `Fenced mcp/src/ until …` |
 | 5 | Fence rises in A's color; bot tends plants; seedlings grow | N | 10s | fence color = A's avatar |
 | 6 | Subagent prompt → bee flies out and back | A PiP + N | 12s | bee leaves and returns |
-| 7 | B types "sort users by name" → hook denial text | B terminal | 8s | `fenced by trisha until …` |
+| 7 | B types "change clock() format" → hook denial text | B terminal | 8s | `fenced by manahil until …` |
 | 8 | B's bot stops at the gate; gardeners meet on the path | N | 8s | both avatars on the path |
 | 9 | B's agent sends post_finding; butterfly to A's bed | B PiP + N | 7s | butterfly |
 | 10 | A's finding → butterfly circles B's bed | A PiP + N | 8s | circling = not delivered |

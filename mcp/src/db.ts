@@ -6,18 +6,12 @@
 // Writes call reducers; a reducer error rejects with an Error whose message is shown
 // to the agent. The module owns every rule — the MCP server only pre-checks to write
 // friendlier messages.
-import type { AgentStatus, HandoffStatus } from '../../shared/types.ts';
+import type { AgentStatus } from '../../shared/types.ts';
 import type {
-  AgentView, CertificationView, ClaimView, MemberView, MessageView,
+  AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView,
 } from '../../shared/types.ts';
 
-export type { AgentView, CertificationView, ClaimView, MemberView, MessageView };
-
-// TODO(contract): shared/types.ts has no HandoffView; fields mirror CONTRACT.md `handoff`.
-export interface HandoffView {
-  id: number; fromHandle: string; toHandle: string; task: string; notes: string;
-  status: HandoffStatus; createdAt: number;
-}
+export type { AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView };
 
 export type ReportableStatus = Extract<AgentStatus, 'working' | 'blocked' | 'needs_review'>;
 

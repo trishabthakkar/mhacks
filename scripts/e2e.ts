@@ -75,21 +75,22 @@ const msgs = () => [...conn.db.message.iter()].filter((m) => m.fromHandle === B 
 
 function makeRepo(h: string) {
   const dir = REPO[h]!;
-  mkdirSync(join(dir, 'src/api'), { recursive: true });
+  mkdirSync(join(dir, DIR), { recursive: true });
   mkdirSync(join(dir, 'tests'), { recursive: true });
   const sh = (...a: string[]) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
   sh('init', '-q'); sh('config', 'user.email', 'e2e@example.com'); sh('config', 'user.name', 'e2e');
   sh('remote', 'add', 'origin', 'git@github.com:sprout-e2e/garden-demo.git');
-  writeFileSync(join(dir, 'src/api', FILE), 'export const a = 1;\n');
-  writeFileSync(join(dir, 'src/api/users.js'), 'export const u = 1;\n');
+  writeFileSync(join(dir, DIR, FILE), 'export const a = 1;\n');
+  writeFileSync(join(dir, DIR, 'users.js'), 'export const u = 1;\n');
   writeFileSync(join(dir, 'tests/users.test.js'), "import test from 'node:test';\ntest('ok', () => {});\n");
   writeFileSync(join(dir, 'package.json'), '{"name":"e2e","scripts":{"test":"node --test"}}\n');
   sh('add', '-A'); sh('commit', '-qm', 'init');
 }
 
 console.log(`Sprout e2e rehearsal → ${HOST}/${DB}   (temp dir ${root})\n`);
-const FILE = `r${RUN}.js`;
-const PATH = `src/api/${FILE}`;
+const DIR = `src/e2e${RUN}`; // own folder per run, so it never collides with fences from the sim or real work
+const FILE = `routes.js`;
+const PATH = `${DIR}/${FILE}`;
 const TEAM = Buffer.from(JSON.stringify({ stdbUri: HOST, db: DB, mcpUrl: MCP })).toString('base64url');
 
 await step('1. database reachable', async () => { await connectDb(); return `${[...conn.db.member.iter()].length} members` });
@@ -125,8 +126,8 @@ await step('5. A: session + prompt → agent + activity rows', async () => {
   return 'prompt text not stored';
 });
 
-await step('6. A claims src/api/ via MCP', async () => {
-  const r = await tool(A, 'claim_files', { paths: ['src/api/'] });
+await step('6. A claims its folder via MCP', async () => {
+  const r = await tool(A, 'claim_files', { paths: [`${DIR}/`] });
   if (r.isError) throw new Error(r.text);
   has(r.text, 'Fenced', 'claim text');
   await until('claim row', () => [...conn.db.claim.iter()].find((c) => c.handle === A));
@@ -143,12 +144,12 @@ await step('7. B: edit inside the fence is BLOCKED by the hook', async () => {
 });
 
 await step('8. B: claim_files on the same folder is refused with the owner named', async () => {
-  const r = await tool(B, 'claim_files', { paths: ['src/api/'] });
+  const r = await tool(B, 'claim_files', { paths: [`${DIR}/`] });
   eq(r.isError, true, 'isError'); has(r.text, A, 'owner named'); has(r.text, 'post_finding', 'next step');
 });
 
 await step('9. B: post_finding → message sent', async () => {
-  const r = await tool(B, 'post_finding', { to: A, message: 'Can I touch src/api/users.js while you finish routes.js?' });
+  const r = await tool(B, 'post_finding', { to: A, message: 'Can I touch users.js while you finish routes.js?' });
   if (r.isError) throw new Error(r.text);
   const m = await until('message row', () => msgs()[0]);
   eq(m.status, 'sent', 'status');

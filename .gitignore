@@ -6,3 +6,5 @@ dist/
 *.log
 .claude/settings.local.json
 .sprout/
+*.tsbuildinfo
+# ~/.sprout lives in the home dir, never in the repo

@@ -53,13 +53,28 @@ export class GitPoller {
     this.hookEdits.set(`${repoName}\0${path}`, Date.now());
   }
 
+  private soon = new Map<string, NodeJS.Timeout>();
+
+  /** Poll one repo shortly (debounced): a Claude edit just landed, record its diff without waiting for the 5s tick. */
+  pollSoon(repo: JoinedRepo, delayMs = 300): void {
+    if (this.soon.has(repo.root)) return;
+    const t = setTimeout(() => { this.soon.delete(repo.root); void this.pollRepo(repo).catch(() => {}); }, delayMs);
+    t.unref?.();
+    this.soon.set(repo.root, t);
+  }
+
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => void this.pollAll(), this.intervalMs);
     this.timer.unref?.();
     void this.pollAll();
   }
-  stop(): void { if (this.timer) clearInterval(this.timer); this.timer = null; }
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    for (const t of this.soon.values()) clearTimeout(t);
+    this.soon.clear();
+  }
 
   async pollAll(): Promise<void> {
     if (this.running) return;

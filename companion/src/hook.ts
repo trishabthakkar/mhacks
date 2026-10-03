@@ -34,7 +34,7 @@ export async function ensureDaemon(): Promise<void> {
   try {
     mkdirSync(sproutHome(), { recursive: true, mode: 0o700 });
     try {
-      if (Date.now() - statSync(files.starting()).mtimeMs < 10_000) return;
+      if (Date.now() - statSync(files.starting()).mtimeMs < 5_000) return;
     } catch { /* no stamp */ }
     writeFileSync(files.starting(), String(Date.now()));
     const { spawn } = await import('node:child_process');

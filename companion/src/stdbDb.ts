@@ -17,8 +17,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   });
 }
 
-const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
-
 export class StdbDb implements SproutDb {
   readonly impl = 'spacetimedb' as const;
   private conn: DbConnection | null = null;
@@ -86,7 +84,8 @@ export class StdbDb implements SproutDb {
           .subscribe([
             'SELECT * FROM claim',
             'SELECT * FROM config',
-            `SELECT * FROM message WHERE to_handle = ${sqlStr(this.handle)}`,
+            // Whole table, filtered client-side in undelivered(): WHERE filters are unverified on Maincloud.
+            'SELECT * FROM message',
           ]);
       })
       .onConnectError((_ctx, err) => {

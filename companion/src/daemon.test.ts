@@ -79,13 +79,13 @@ test('shell events: tests → recordTestRun (redacted), others → shell_cmd (bi
   d.stop();
 });
 
-test('commit diff → recordDiff with sha + commit activity', async () => {
+test('commit diff → recordDiff with sha (the module logs the commit activity)', async () => {
   const { d, db } = await daemon();
   const n = db.calls.length;
   d.handleEvent({ type: 'diff', repo: 'team/proj', paths: ['a.ts', '/abs/b.ts'], commit: 'abcdef1234567' });
   await tick();
   assert.deepEqual(db.calls[n], { name: 'recordDiff', args: { handle: 'trisha', paths: ['a.ts'], commit: 'abcdef1234567' } });
-  assert.equal((db.calls[n + 1]!.args as { kind: string }).kind, 'commit');
+  assert.equal(db.calls.length, n + 1);
   d.stop();
 });
 
@@ -162,5 +162,24 @@ test('pause: nothing is reported; setPaused sent', async () => {
   d.handleEvent({ type: 'shell', cmd: 'npm test', exitCode: 0, cwd: '/Users/t/proj' });
   await tick();
   assert.deepEqual(db.calls.slice(n - 1).map((c) => c.name), ['setPaused']);
+  d.stop();
+});
+
+test('botanist ordering: an unreported edit is recorded as a diff BEFORE the test run', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const root = mkdtempSync(join(tmpdir(), 'sprout-order-'));
+  const g = (...a: string[]) => execFileSync('git', a, { cwd: root, stdio: 'ignore' });
+  g('init', '-q'); g('config', 'user.email', 't@e.com'); g('config', 'user.name', 't');
+  writeFileSync(join(root, 'users.js'), 'a\n'); g('add', '-A'); g('commit', '-qm', 'init');
+  const db = new FakeDb();
+  const d = new Daemon({ ...cfg(), repos: [{ root, name: 'team/demo' }] }, quiet);
+  await d.start({ db, listen: false, poll: true });
+  await d.poller.pollAll();
+  writeFileSync(join(root, 'users.js'), 'a\nb\n'); // edited, not yet polled (5s tick)
+  d.handleEvent({ type: 'test_run', repo: 'team/demo', command: 'npm test', exitCode: 0 });
+  await new Promise((r) => setTimeout(r, 300));
+  const names = db.calls.map((c) => c.name).filter((n) => n === 'recordDiff' || n === 'recordTestRun');
+  assert.deepEqual(names, ['recordDiff', 'recordTestRun']);
+  assert.deepEqual((db.calls.find((c) => c.name === 'recordDiff')!.args as { paths: string[] }).paths, ['users.js']);
   d.stop();
 });

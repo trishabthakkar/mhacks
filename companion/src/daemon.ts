@@ -50,6 +50,7 @@ export class Daemon {
   server: Server | null = null;
   poller: GitPoller;
   private timers: NodeJS.Timeout[] = [];
+  private polling = false;
   private flushing = false;
   private persistTimer: NodeJS.Timeout | null = null;
 
@@ -79,7 +80,7 @@ export class Daemon {
     const cfgWatch = setInterval(() => this.reloadConfig(), 5000);
     this.timers.push(hb, spool, cfgWatch);
     for (const t of this.timers) t.unref?.();
-    if (opts.poll !== false) this.poller.start();
+    if (opts.poll !== false) { this.polling = true; this.poller.start(); }
   }
 
   stop(): void {
@@ -229,7 +230,10 @@ export class Daemon {
       lines: typeof e.lines === 'number' && e.lines >= 0 && e.lines < 4_294_967_295 ? Math.floor(e.lines) : undefined,
       detail: cleanDetail(e.detail),
     };
-    if ((args.kind === 'edit' || args.kind === 'create') && args.path && repo) this.poller.noteHookEdit(repo.name, args.path);
+    if ((args.kind === 'edit' || args.kind === 'create') && args.path && repo) {
+      this.poller.noteHookEdit(repo.name, args.path);
+      if (this.polling) this.poller.pollSoon(repo);
+    }
     this.enqueueOrSend({ op: 'ingestActivity', args }, `${args.kind}${args.path ? ` ${args.path}` : ''}${args.detail ? ` (${args.detail})` : ''}`);
   }
 
@@ -247,8 +251,7 @@ export class Daemon {
         const command = redactCommand(String(ev.command ?? ''));
         if (!command) return;
         const exitCode = Number.isInteger(ev.exitCode) ? ev.exitCode : 1;
-        this.enqueueOrSend({ op: 'recordTestRun', args: { handle: this.cfg.handle, repo: repo.name, command, exitCode } },
-          `test ${exitCode === 0 ? 'pass' : 'fail'}: ${command}`);
+        this.testRun(repo, command, exitCode, `test ${exitCode === 0 ? 'pass' : 'fail'}: ${command}`);
         return;
       }
       case 'diff': {
@@ -258,7 +261,7 @@ export class Daemon {
         const commit = typeof ev.commit === 'string' && /^[0-9a-f]{7,64}$/.test(ev.commit) ? ev.commit : undefined;
         if (!paths.length && !commit) return;
         this.enqueueOrSend({ op: 'recordDiff', args: { handle: this.cfg.handle, paths, commit } }, `diff${commit ? ` ${commit.slice(0, 7)}` : ''}: ${paths.length} path(s)`);
-        if (commit) this.activity({ kind: 'commit', detail: `${commit.slice(0, 7)} · ${paths.length} file(s)` }, repo);
+        // The module writes the `commit` activity (and auto-releases claims) itself.
         return;
       }
       case 'shell': {
@@ -271,14 +274,23 @@ export class Daemon {
         const command = redactCommand(raw);
         if (!command) return;
         if (isTestCommand(raw)) {
-          this.enqueueOrSend({ op: 'recordTestRun', args: { handle: this.cfg.handle, repo: repo.name, command, exitCode } },
-            `shell test ${exitCode === 0 ? 'pass' : 'fail'}: ${command}`);
+          this.testRun(repo, command, exitCode, `shell test ${exitCode === 0 ? 'pass' : 'fail'}: ${command}`);
         } else {
           this.activity({ kind: 'shell_cmd', detail: exitCode === 0 ? command : `${command} (exit ${exitCode})` }, repo);
         }
         return;
       }
     }
+  }
+
+  /**
+   * The botanist needs diff → passing test, in that order. Edits the git poll hasn't reported
+   * yet (≤5s lag) would otherwise land after the test run, so poll the repo first.
+   */
+  private testRun(repo: JoinedRepo, command: string, exitCode: number, label: string): void {
+    const send = () => this.enqueueOrSend({ op: 'recordTestRun', args: { handle: this.cfg.handle, repo: repo.name, command, exitCode } }, label);
+    if (!this.polling) return send();
+    void this.poller.pollRepo(repo).catch(() => {}).finally(send);
   }
 
   // ---------- queries ----------
@@ -428,6 +440,7 @@ export async function runDaemon(): Promise<number> {
   try {
     await d.start();
   } catch (e) {
+    try { unlinkSync(files.starting()); } catch { /* ignore */ }
     if ((e as NodeJS.ErrnoException).code === 'EADDRINUSE') { console.error(`sprout daemon: port ${daemonPort(cfg)} in use (already running?)`); return 0; }
     throw e;
   }

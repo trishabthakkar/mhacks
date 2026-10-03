@@ -144,6 +144,7 @@ export class StdbDb implements SproutDb {
   // Not part of SproutDb: used by integration tests and demo seeding.
   async joinMember(handle: string, color = '') { await this.call(this.c.reducers.joinMember({ handle, color })); }
   async seedRepo(files: Array<{ path: string; lines: number }>) { await this.call(this.c.reducers.seedRepo({ files })); }
+  async setConfig(key: string, value: string) { await this.call(this.c.reducers.setConfig({ key, value })); }
   async claimFiles(handle: string, paths: string[], ttlMinutes: number) {
     await this.call(this.c.reducers.claimFiles({ handle, paths, ttlMinutes }));
   }

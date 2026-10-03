@@ -1,0 +1,27 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: root tests
+        run: npm test
+      - name: package tests
+        run: |
+          for p in spacetimedb mcp companion garden; do
+            if [ -f "$p/package-lock.json" ] && grep -q '"test"' "$p/package.json"; then
+              echo "::group::$p"
+              (cd "$p" && npm ci --no-audit --no-fund && npm test)
+              echo "::endgroup::"
+            else
+              echo "skip $p (no lockfile or test script yet)"
+            fi
+          done

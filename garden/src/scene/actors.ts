@@ -34,15 +34,70 @@ class Mover {
 }
 
 const SKIN = '#e8b98f';
-function makeGardener(color: string): Mover {
-  const m = new Mover(3.2);
-  m.obj.add(mesh(geo.cyl, mat(color), 0.22, 0.6, 0.22, 0, 0.5, 0));
-  m.obj.add(mesh(geo.sphere, mat(SKIN), 0.17, 0.17, 0.17, 0, 0.95, 0));
-  m.obj.add(mesh(geo.cyl, mat('#e9c46a'), 0.3, 0.03, 0.3, 0, 1.08, 0));
-  m.obj.add(mesh(geo.cone, mat('#e9c46a'), 0.16, 0.18, 0.16, 0, 1.18, 0));
+
+interface GardenerRig { armL: THREE.Object3D; armR: THREE.Object3D; legL: THREE.Object3D; legR: THREE.Object3D; tools: Record<string, THREE.Object3D>; tool: string }
+function makeTools(): Record<string, THREE.Object3D> {
+  const can = new THREE.Group(); // watering can
+  can.add(mesh(geo.box, mat('#4a90c2'), 0.2, 0.16, 0.14, 0, 0, 0), mesh(geo.cyl, mat('#4a90c2'), 0.02, 0.2, 0.02, 0.16, 0.06, 0));
+  (can.children[1] as THREE.Object3D).rotation.z = -0.9; can.add(mesh(geo.box, mat('#2f6a94'), 0.03, 0.14, 0.03, -0.08, 0.1, 0));
+  const glass = new THREE.Group(); // magnifier
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.015, 6, 14), mat('#8d6e4c')); ring.position.y = 0.13;
+  glass.add(ring, mesh(geo.cyl, mat('#8d6e4c'), 0.015, 0.12, 0.015, 0, 0.03, 0), mesh(geo.sphere, mat('#bfe8f5', { opacity: 0.5 }), 0.065, 0.065, 0.01, 0, 0.13, 0));
+  const clip = new THREE.Group(); // clipboard
+  clip.add(mesh(geo.box, mat('#8d6e4c'), 0.2, 0.26, 0.02, 0, 0.05, 0), mesh(geo.box, mat('#fffdf2'), 0.17, 0.22, 0.025, 0, 0.05, 0.005), mesh(geo.box, mat('#9aa0a6'), 0.07, 0.03, 0.03, 0, 0.17, 0.01));
+  const hammer = new THREE.Group(); // hammer
+  hammer.add(mesh(geo.cyl, mat('#8d6e4c'), 0.02, 0.26, 0.02, 0, 0.05, 0), mesh(geo.box, mat('#6b7078'), 0.14, 0.06, 0.06, 0, 0.19, 0));
+  const all: Record<string, THREE.Object3D> = { can, glass, clip, hammer };
+  for (const t of Object.values(all)) t.visible = false;
+  return all;
+}
+
+const limb = (color: string, len: number, r: number) => {
+  const g = new THREE.Group();
+  g.add(mesh(geo.cyl, mat(color), r, len, r, 0, -len / 2, 0));
+  return g;
+};
+
+function makeGardener(color: string): Mover & { rig: GardenerRig } {
+  const m = new Mover(3.2) as Mover & { rig: GardenerRig };
+  // Feet ring in the member colour with a dark outline: stays readable on any ground.
+  const outline = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.46, 24), new THREE.MeshBasicMaterial({ color: 0x1d1d1d, side: THREE.DoubleSide, transparent: true, opacity: 0.55 }));
+  const ringM = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.34, 24), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+  outline.rotation.x = ringM.rotation.x = -Math.PI / 2; outline.position.y = 0.025; ringM.position.y = 0.03;
+  m.obj.add(outline, ringM);
+  m.obj.add(mesh(geo.cyl, mat(color), 0.22, 0.5, 0.22, 0, 0.55, 0));
+  m.obj.add(mesh(geo.sphere, mat(SKIN), 0.17, 0.17, 0.17, 0, 0.98, 0));
+  m.obj.add(mesh(geo.cyl, mat('#e9c46a'), 0.3, 0.03, 0.3, 0, 1.11, 0));
+  m.obj.add(mesh(geo.cone, mat('#e9c46a'), 0.16, 0.18, 0.16, 0, 1.21, 0));
+  const legL = limb('#4b4f5c', 0.3, 0.07), legR = limb('#4b4f5c', 0.3, 0.07);
+  legL.position.set(-0.1, 0.32, 0); legR.position.set(0.1, 0.32, 0);
+  const armL = limb(color, 0.4, 0.055), armR = limb(color, 0.4, 0.055);
+  armL.position.set(-0.27, 0.78, 0); armR.position.set(0.27, 0.78, 0);
+  armL.add(mesh(geo.sphere, mat(SKIN), 0.06, 0.06, 0.06, 0, -0.42, 0)); armR.add(mesh(geo.sphere, mat(SKIN), 0.06, 0.06, 0.06, 0, -0.42, 0));
+  const tools = makeTools();
+  for (const t of Object.values(tools)) { t.position.set(0, -0.44, 0.08); armR.add(t); }
+  m.obj.add(legL, legR, armL, armR);
+  m.rig = { armL, armR, legL, legR, tools, tool: '' };
   return m;
 }
-function makeBot(color: string): { m: Mover; alert: THREE.Object3D; body: THREE.Object3D } {
+
+// Little status icons floating over a bot (shared canvas textures).
+const iconCache = new Map<string, THREE.SpriteMaterial>();
+function iconMat(glyph: string): THREE.SpriteMaterial {
+  let m = iconCache.get(glyph);
+  if (!m) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    g.font = '44px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(glyph, 32, 36);
+    m = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false });
+    iconCache.set(glyph, m);
+  }
+  return m;
+}
+const ICON: Record<string, string> = { idle: '💤', working: '⚙️', blocked: '✋', dormant: '', needs_review: '👀', waiting: '' };
+
+interface BotRig { wheelL: THREE.Object3D; wheelR: THREE.Object3D; tip: THREE.Mesh; icon: THREE.Sprite; iconFor: string }
+function makeBot(color: string): { m: Mover; alert: THREE.Object3D; body: THREE.Object3D; rig: BotRig } {
   const m = new Mover(3.6);
   const body = mesh(geo.box, mat('#cfd6dc'), 0.34, 0.3, 0.34, 0, 0.32, 0);
   m.obj.add(body);
@@ -51,12 +106,18 @@ function makeBot(color: string): { m: Mover; alert: THREE.Object3D; body: THREE.
   m.obj.add(mesh(geo.sphere, mat('#222', {}), 0.03, 0.03, 0.03, 0.05, 0.64, 0.11));
   m.obj.add(mesh(geo.sphere, mat('#222', {}), 0.03, 0.03, 0.03, -0.05, 0.64, 0.11));
   m.obj.add(mesh(geo.cyl, mat('#888'), 0.012, 0.18, 0.012, 0, 0.8, 0));
+  const tip = new THREE.Mesh(geo.sphere, new THREE.MeshStandardMaterial({ color: 0xff5a5a, emissive: 0xff2a2a, emissiveIntensity: 0.2 }));
+  tip.scale.setScalar(0.035); tip.position.y = 0.9; m.obj.add(tip);
+  const wheelL = mesh(geo.cyl, mat('#3a3d44'), 0.07, 0.05, 0.07, -0.2, 0.09, 0), wheelR = mesh(geo.cyl, mat('#3a3d44'), 0.07, 0.05, 0.07, 0.2, 0.09, 0);
+  for (const w of [wheelL, wheelR]) w.add(mesh(geo.box, mat('#c9cdd3'), 1.6, 1.3, 0.22, 0, 0, 0));
+  wheelL.rotation.z = wheelR.rotation.z = Math.PI / 2; m.obj.add(wheelL, wheelR);
+  const icon = new THREE.Sprite(iconMat('💤')); icon.scale.setScalar(0.42); icon.position.y = 1.2; icon.visible = false; m.obj.add(icon);
   const alert = new THREE.Group();
   alert.add(mesh(geo.box, mat('#ffd23f', { emissive: 0x553d00 }), 0.05, 0.16, 0.05, 0, 1.05, 0));
   alert.add(mesh(geo.box, mat('#ffd23f', { emissive: 0x553d00 }), 0.05, 0.05, 0.05, 0, 0.9, 0));
   alert.visible = false;
   m.obj.add(alert);
-  return { m, alert, body };
+  return { m, alert, body, rig: { wheelL, wheelR, tip, icon, iconFor: '' } };
 }
 function makeBee(): Mover {
   const m = new Mover(5);
@@ -99,8 +160,8 @@ type Fly = { obj: THREE.Object3D; m: Mover; msg: MessageView; seed: number };
 
 export class Actors {
   private snap: GardenSnapshot = { at: 0, members: [], agents: [], plants: [], claims: [], messages: [], testRuns: [], certifications: [], activity: [] };
-  private gardeners = new Map<string, { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number }>();
-  private bots = new Map<string, { obj: THREE.Object3D; m: Mover; alert: THREE.Object3D; body: THREE.Object3D; agent: AgentView }>();
+  private gardeners = new Map<string, { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig }>();
+  private bots = new Map<string, { obj: THREE.Object3D; m: Mover; alert: THREE.Object3D; body: THREE.Object3D; agent: AgentView; rig: BotRig }>();
   private bees = new Map<string, { obj: THREE.Object3D; m: Mover; seed: number }>();
   private flies = new Map<string, Fly>();
   private meet = new Map<string, { pos: THREE.Vector3; until: number }>();
@@ -169,7 +230,7 @@ export class Actors {
       const lp = new THREE.Vector3();
       const label = this.labels.add(h, () => lp.copy(m.obj.position).setY(1.6), 'label member');
       label.style.borderColor = this.memberColor(h);
-      return { obj: m.obj, m, label, kneel: 0 };
+      return { obj: m.obj, m, label, kneel: 0, rig: m.rig };
     }, this.scene, (g) => this.labels.remove(g.label));
 
     // Ended sessions leave dormant rows behind; don't draw a bot for each one.
@@ -179,7 +240,7 @@ export class Actors {
       const b = makeBot(this.memberColor(a.handle));
       b.m.obj.position.copy(this.home(a.handle)).add(new THREE.Vector3(0.8, 0, 0.8));
       b.m.target.copy(b.m.obj.position);
-      return { obj: b.m.obj, m: b.m, alert: b.alert, body: b.body, agent: a };
+      return { obj: b.m.obj, m: b.m, alert: b.alert, body: b.body, agent: a, rig: b.rig };
     }, this.scene);
     for (const a of claudes) { const b = this.bots.get(a.sessionId); if (b) b.agent = a; }
 
@@ -268,6 +329,14 @@ export class Actors {
         if (p) { target = this.tgt.copy(p).add(Actors.OFF_GARDENER); kneel = agent.status === 'working'; }
       }
       g.m.target.copy(target); g.m.step(dt);
+      // Tool in hand matches what the agent is doing; limbs swing while walking.
+      const act = agent && agent.status === 'working' ? agent.currentAction : '';
+      const tool = act === 'edit' || act === 'create' ? 'can' : act === 'read' ? 'glass' : act === 'search' ? 'clip' : act === 'bash' ? 'hammer' : '';
+      const rg = g.rig;
+      if (tool !== rg.tool) { const old = rg.tools[rg.tool]; if (old) old.visible = false; const nw = rg.tools[tool]; if (nw) nw.visible = true; rg.tool = tool; }
+      const swing = g.m.moving ? Math.sin(t * 9) * 0.7 * Math.max(0.3, mo) : 0;
+      rg.armL.rotation.x = swing; rg.legL.rotation.x = -swing * 0.8; rg.legR.rotation.x = swing * 0.8;
+      rg.armR.rotation.x = g.m.moving ? -swing : tool ? -1.0 + Math.sin(t * 7) * 0.3 * mo : 0;
       g.kneel += ((kneel && !g.m.moving ? 1 : 0) - g.kneel) * Math.min(1, dt * 6);
       g.obj.scale.y = 1 - 0.3 * g.kneel;
       g.obj.position.y = g.m.moving ? Math.abs(Math.sin(t * 9)) * 0.06 * mo : 0;
@@ -283,6 +352,15 @@ export class Actors {
       }
       b.m.target.copy(target); b.m.step(dt);
       b.alert.visible = a.status === 'waiting';
+      if (b.m.moving) { b.rig.wheelL.rotateY(dt * 10); b.rig.wheelR.rotateY(dt * 10); }
+      (b.rig.tip.material as THREE.MeshStandardMaterial).emissiveIntensity = a.status === 'working' ? 0.4 + 0.6 * Math.abs(Math.sin(t * 6)) : 0.12 + 0.1 * Math.sin(t * 2);
+      if (b.rig.iconFor !== a.status) {
+        b.rig.iconFor = a.status;
+        const glyph = ICON[a.status] ?? '';
+        b.rig.icon.visible = glyph !== '';
+        if (glyph) b.rig.icon.material = iconMat(glyph);
+      }
+      if (b.rig.icon.visible) b.rig.icon.position.y = 1.2 + Math.sin(t * 2.2) * 0.04 * mo;
       b.body.position.y = (a.status === 'idle' || a.status === 'dormant' ? 0.22 : 0.32) + (a.status === 'working' ? Math.sin(t * 8) * 0.025 * mo : 0);
       b.obj.scale.setScalar(a.status === 'dormant' ? 0.8 : 1);
     }

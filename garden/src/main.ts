@@ -43,6 +43,7 @@ addEventListener('unhandledrejection', (e) => reportError(e.reason));
 const world = new GardenWorld(app, store);
 world.onLayout = (l) => { layout = l; };
 world.onError = reportError;
+world.onShedClick = () => setCollapsed(!collapsed);
 
 // Remember the shed's open/closed state (storage can be blocked: never depend on it).
 const KEY = 'sprout.shed.collapsed';

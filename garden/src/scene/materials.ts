@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 export const geo = {
   sphere: new THREE.SphereGeometry(1, 12, 9),
@@ -39,4 +40,31 @@ export function mesh(g: THREE.BufferGeometry, m: THREE.Material, sx: number, sy:
   o.scale.set(sx, sy, sz); o.position.set(x, y, z);
   o.castShadow = true;
   return o;
+}
+
+/**
+ * Bake every static mesh under `root` into one mesh per material (fewer draw calls). Meshes flagged
+ * `userData.keep`, instanced meshes and anything `skip` rejects stay as they are. `root` must sit at the origin.
+ */
+export function mergeByMaterial(root: THREE.Object3D, skip: (o: THREE.Mesh) => boolean = () => false) {
+  root.updateMatrixWorld(true);
+  const groups = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const doomed: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || m.userData.keep || skip(m) || Array.isArray(m.material)) return;
+    const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld);
+    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
+    const list = groups.get(m.material); if (list) list.push(g); else groups.set(m.material, [g]);
+    doomed.push(m);
+  });
+  for (const m of doomed) m.parent?.remove(m);
+  for (const [material, list] of groups) {
+    const merged = mergeGeometries(list.map((g) => (g.index ? g.toNonIndexed() : g)), false);
+    for (const g of list) g.dispose();
+    if (!merged) continue;
+    const out = new THREE.Mesh(merged, material);
+    out.castShadow = true; out.receiveShadow = true;
+    root.add(out);
+  }
 }

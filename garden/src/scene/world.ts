@@ -5,22 +5,14 @@ import { layoutGarden, type GardenLayout } from '../layout.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
-import { flowerColor, geo, mat, mesh } from './materials.ts';
+import { flowerColor, geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField } from './plantField.ts';
 import { CameraRig } from './camera.ts';
+import { PALETTE } from './palette.ts';
+import { Props, type Quality } from './props.ts';
 
 const LOD_LIMIT = 80; // above this many plants, quiet ones become ground cover
 const ACTIVE_MS = 30 * 60_000;
-
-// Hour-of-day sky: night is kept readable for the projector.
-const SKY: Array<[number, string]> = [[0, '#26335c'], [5, '#e8a07e'], [8, '#bfe3f5'], [16, '#cfe6ee'], [18.5, '#f6b073'], [20.5, '#3a3f74'], [24, '#26335c']];
-function skyAt(hour: number): THREE.Color {
-  for (let i = 1; i < SKY.length; i++) {
-    const [h1, c1] = SKY[i]!, [h0, c0] = SKY[i - 1]!;
-    if (hour <= h1) return new THREE.Color(c0).lerp(new THREE.Color(c1), (hour - h0) / (h1 - h0));
-  }
-  return new THREE.Color(SKY[0]![1]);
-}
 
 export class GardenWorld implements WorldLookup {
   readonly renderer: THREE.WebGLRenderer;
@@ -33,7 +25,10 @@ export class GardenWorld implements WorldLookup {
   private actors: Actors;
   private sun = new THREE.DirectionalLight(0xfff0d0, 2.2);
   private hemi = new THREE.HemisphereLight(0xdff2ff, 0x6b8a4a, 1.1);
-  private ground = new THREE.Group();
+  private props!: Props;
+  readonly quality: Quality = new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high';
+  /** Called when the 3D shed is clicked (toggles the HTML shed panel). */
+  onShedClick: () => void = () => {};
   private bedGroup = new THREE.Group();
   private fenceGroup = new THREE.Group();
   private field: PlantField;
@@ -97,7 +92,9 @@ export class GardenWorld implements WorldLookup {
     this.fx.reducedMotion = this.reducedMotion;
 
     this.scene.fog = new THREE.Fog('#cfe6ee', 40, 120);
-    this.scene.add(this.hemi, this.sun, this.ground, this.bedGroup, this.fenceGroup);
+    this.props = new Props(this.scene, this.quality, () => this.onShedClick());
+    this.scene.add(this.hemi, this.sun, this.bedGroup, this.fenceGroup);
+    if (gl && this.quality === 'low') gl.shadowMap.enabled = false;
     this.shaft.position.y = 3.6; this.scene.add(this.shaft);
     this.pulse.rotation.x = -Math.PI / 2; this.pulse.visible = false; this.scene.add(this.pulse);
     this.spotRing.rotation.x = -Math.PI / 2; this.spotRing.position.y = 0.32; this.scene.add(this.spotRing);
@@ -107,14 +104,25 @@ export class GardenWorld implements WorldLookup {
     this.sun.position.set(18, 26, 12); this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = sc.bottom = -35; sc.right = sc.top = 35; sc.far = 90;
-    const disc = mesh(new THREE.CylinderGeometry(1, 1, 1, 48), mat('#8fc268'), 60, 0.2, 60, 0, -0.12, 0);
-    disc.castShadow = false; disc.receiveShadow = true;
-    this.ground.add(disc);
 
     this.camera.position.set(0, 18, 22);
     this.controls = new OrbitControls(this.camera, gl?.domElement ?? document.createElement('canvas'));
     this.controls.enableDamping = true; this.controls.maxPolarAngle = Math.PI * 0.48; this.controls.maxDistance = 90;
     this.rig = new CameraRig(this.camera, this.controls, host);
+    // A click (not a drag) on the 3D shed toggles the shed panel.
+    if (gl) {
+      let down: { x: number; y: number } | undefined;
+      const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+      gl.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+      gl.domElement.addEventListener('pointerup', (e) => {
+        if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) { down = undefined; return; }
+        down = undefined;
+        const r = gl.domElement.getBoundingClientRect();
+        ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        ray.setFromCamera(ndc, this.camera);
+        if (this.props.hitShed(ray)) this.props.shedClicked();
+      });
+    }
     this.resize(); addEventListener('resize', () => this.resize());
 
     store.subscribe((u) => this.onUpdate(u));
@@ -152,10 +160,16 @@ export class GardenWorld implements WorldLookup {
     this.syncPlants(u.reset);
     this.syncFences();
     this.actors.sync(u.snapshot);
+    const notes: Array<'fence' | 'request' | 'handoff' | 'bloom' | 'refused'> = [];
+    for (const _c of u.snapshot.claims) notes.push('fence');
+    for (const m of u.snapshot.messages) if (m.status !== 'acked') notes.push('request');
+    for (const h of u.snapshot.handoffs ?? []) if (h.status === 'offered') notes.push('handoff');
+    for (const c of u.snapshot.certifications.slice(-2)) notes.push(c.result === 'bloom' ? 'bloom' : 'refused');
+    this.props.setNotes(notes.slice(0, 8));
     for (const a of u.newActivity) this.actors.onActivity(a);
     const d = new Date(u.snapshot.at || Date.now());
     const hour = d.getHours() + d.getMinutes() / 60;
-    const c = skyAt(hour);
+    const c = this.props.setHour(hour);
     (this.scene.background as THREE.Color | null) ? (this.scene.background as THREE.Color).copy(c) : (this.scene.background = c.clone());
     (this.scene.fog as THREE.Fog).color.copy(c);
     const night = hour < 5 || hour > 20.5;
@@ -175,20 +189,45 @@ export class GardenWorld implements WorldLookup {
       for (const el of this.bedLabels) this.labels.remove(el);
       this.bedLabels = [];
       for (const b of this.layout.beds) {
-        const soil = mesh(geo.box, mat('#7a5a3a'), b.w, 0.3, b.d, b.x, 0.05, b.z); soil.castShadow = false; soil.receiveShadow = true;
-        const top = mesh(geo.box, mat('#5b4129'), b.w - 0.5, 0.05, b.d - 0.5, b.x, 0.22, b.z); top.castShadow = false; top.receiveShadow = true;
-        this.bedGroup.add(soil, top);
-        if (b.greenhouse) {
-          const glass = mesh(geo.box, mat('#bfe8f5', { opacity: 0.22 }), b.w, 2.4, b.d, b.x, 1.3, b.z); glass.castShadow = false;
-          this.bedGroup.add(glass);
-        }
-        this.bedLabels.push(this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => new THREE.Vector3(b.x, 0.35, b.z + b.d / 2 + 0.2), 'label bed'));
+        this.buildBed(b);
+        const lp = new THREE.Vector3(b.x, 0.5, b.z + b.d / 2 + 0.2);
+        this.bedLabels.push(this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => lp, 'label bed'));
       }
+      mergeByMaterial(this.bedGroup);
+      const hf = this.homeFrame;
+      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ);
       this.fenceKey = '';
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;
     }
     this.onLayout(this.layout);
+  }
+
+  /** A raised bed: wooden border and corner posts, tilled soil with furrows; the tests bed gets a glass greenhouse. */
+  private buildBed(b: { x: number; z: number; w: number; d: number; greenhouse: boolean }) {
+    const t = 0.28, h = 0.42, wood = mat(PALETTE.wood), post = mat(PALETTE.woodDark), g = this.bedGroup;
+    const sh = (o: THREE.Mesh, cast = true) => { o.castShadow = cast; o.receiveShadow = true; return o; };
+    g.add(sh(mesh(geo.box, mat(PALETTE.soil), b.w - t * 2, 0.34, b.d - t * 2, b.x, 0.17, b.z), false));
+    // furrows between plant rows (rows sit SPACING apart from BED_PAD)
+    const rows = Math.max(1, Math.round((b.d - 2) / 1.7));
+    for (let r = 0; r <= rows; r++) {
+      const z = b.z - b.d / 2 + 1 + r * 1.7 - 0.85;
+      if (z > b.z - b.d / 2 + t + 0.2 && z < b.z + b.d / 2 - t - 0.2) g.add(sh(mesh(geo.box, mat(PALETTE.furrow), b.w - t * 2 - 0.4, 0.05, 0.1, b.x, 0.35, z), false));
+    }
+    g.add(sh(mesh(geo.box, wood, b.w, h, t, b.x, h / 2, b.z - b.d / 2 + t / 2)), sh(mesh(geo.box, wood, b.w, h, t, b.x, h / 2, b.z + b.d / 2 - t / 2)));
+    g.add(sh(mesh(geo.box, wood, t, h, b.d - t * 2, b.x - b.w / 2 + t / 2, h / 2, b.z)), sh(mesh(geo.box, wood, t, h, b.d - t * 2, b.x + b.w / 2 - t / 2, h / 2, b.z)));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(sh(mesh(geo.box, post, 0.36, h + 0.14, 0.36, b.x + sx * (b.w / 2 - 0.12), (h + 0.14) / 2, b.z + sz * (b.d / 2 - 0.12))));
+    if (!b.greenhouse) return;
+    const frame = mat(PALETTE.frame), pane = mat(PALETTE.glass, { opacity: 0.2 }), H = 2.3;
+    const hw = b.w / 2, hd = b.d / 2;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(mesh(geo.box, frame, 0.1, H, 0.1, b.x + sx * hw, H / 2 + 0.2, b.z + sz * hd));
+    for (const sz of [-1, 1]) g.add(mesh(geo.box, frame, b.w, 0.08, 0.08, b.x, H + 0.2, b.z + sz * hd), mesh(geo.box, pane, b.w, H, 0.03, b.x, H / 2 + 0.2, b.z + sz * hd));
+    for (const sx of [-1, 1]) g.add(mesh(geo.box, frame, 0.08, 0.08, b.d, b.x + sx * hw, H + 0.2, b.z), mesh(geo.box, pane, 0.03, H, b.d, b.x + sx * hw, H / 2 + 0.2, b.z));
+    for (const sx of [-1, 1]) { // gabled glass roof
+      const roof = mesh(geo.box, pane, hw + 0.15, 0.04, b.d, b.x + sx * hw / 2, H + 0.2 + 0.45, b.z); roof.rotation.z = -sx * 0.5; g.add(roof);
+    }
+    g.add(mesh(geo.box, frame, b.w, 0.1, 0.1, b.x, H + 0.2 + 0.85, b.z)); // ridge beam
+    g.add(mesh(geo.box, post, 0.8, 1.7, 0.05, b.x, 1.05, b.z + hd + 0.02)); // door
   }
 
   private isClaimed(path: string) {
@@ -311,6 +350,7 @@ export class GardenWorld implements WorldLookup {
     const bs = this.layout.beds;
     const { halfW, frontZ } = this.homeFrame;
     let minX = -halfW, maxX = halfW + 3.5, minZ = -4, maxZ = frontZ + 1.4;
+    minZ = Math.min(minZ, -Math.max(4, this.layout.depth / 2) - 8); // the shed behind the beds
     for (const b of bs) { minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2); minZ = Math.min(minZ, b.z - b.d / 2); }
     return { minX: minX - 1, maxX: maxX + 1, minZ: minZ - 1, maxZ };
   }
@@ -399,6 +439,7 @@ export class GardenWorld implements WorldLookup {
       if (!this.rig.userMoved && !this.calm) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
     this.field.update(t, mo);
+    this.props.update(t, dt, 0, 0, mo);
     // Camera: follow a member, or director mode follows the latest action.
     let focus: THREE.Vector3 | undefined;
     if (shot) focus = undefined; // the cinematic shot owns the camera

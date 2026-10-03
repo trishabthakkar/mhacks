@@ -1,7 +1,8 @@
 // Everything that leaves the laptop passes through here (CLAUDE.md privacy rules).
 // Never prompt text or file contents; commands → binary + subcommand unless they are
 // test commands; secrets masked; paths repo-relative or dropped.
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { MAX_COMMAND, MAX_DETAIL, TEST_COMMAND_RE } from '../../shared/constants.ts';
 
 const MASK = '***';
@@ -73,13 +74,24 @@ export function redactCommand(raw: string): string {
   return clip(maskSecrets(bin + sub), MAX_COMMAND);
 }
 
-/** Repo-relative POSIX path, or undefined if outside the repo (never leaves the laptop then). */
+/** realpath that also works for files that don't exist yet (resolves the nearest existing ancestor). */
+export function realish(p: string): string {
+  try { return realpathSync(p); } catch { /* not there yet */ }
+  const parent = dirname(p);
+  if (parent === p) return p;
+  return resolve(realish(parent), basename(p));
+}
+
+/**
+ * Repo-relative POSIX path, or undefined if outside the repo (never leaves the laptop then).
+ * Both sides are resolved through symlinks: on macOS /var -> /private/var, and git reports the real path.
+ */
 export function relPath(root: string, p: string | undefined, cwd = root): string | undefined {
   if (!p || typeof p !== 'string') return undefined;
-  const abs = isAbsolute(p) ? resolve(p) : resolve(cwd, p);
-  const rel = relative(resolve(root), abs);
+  const abs = realish(isAbsolute(p) ? resolve(p) : resolve(cwd, p));
+  const rel = relative(realish(resolve(root)), abs);
   if (rel === '') return undefined;
-  if (rel.startsWith('..') || isAbsolute(rel)) return undefined;
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return undefined;
   return rel.split(sep).join('/');
 }
 

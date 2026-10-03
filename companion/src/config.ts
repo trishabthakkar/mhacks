@@ -2,6 +2,7 @@
 // SPROUT_HOME overrides the location (tests, running two members on one machine).
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { realish } from './redact.ts';
 import { join } from 'node:path';
 import { DAEMON_PORT } from '../../shared/constants.ts';
 
@@ -61,12 +62,16 @@ export function saveConfig(cfg: SproutConfig): void {
   renameSync(tmp, files.config());
 }
 
-/** The joined repo containing `absPath`, deepest root first. */
+/** The joined repo containing `absPath`, deepest root first. Matches through symlinks (macOS /var -> /private/var). */
 export function repoFor(cfg: Pick<SproutConfig, 'repos'>, absPath: string): JoinedRepo | undefined {
+  const paths = [absPath, realish(absPath)];
   let best: JoinedRepo | undefined;
   for (const r of cfg.repos) {
-    if (absPath === r.root || absPath.startsWith(r.root.endsWith('/') ? r.root : r.root + '/')) {
-      if (!best || r.root.length > best.root.length) best = r;
+    for (const root of new Set([r.root, realish(r.root)])) {
+      const prefix = root.endsWith('/') ? root : root + '/';
+      if (paths.some((p) => p === root || p.startsWith(prefix))) {
+        if (!best || r.root.length > best.root.length) best = r;
+      }
     }
   }
   return best;

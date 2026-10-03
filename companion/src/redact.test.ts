@@ -88,3 +88,22 @@ test('detail: masked, single line, ≤160', () => {
   assert.ok(detail('x'.repeat(500))!.length <= 160);
   assert.equal(detail(''), undefined);
 });
+
+test('relPath and repoFor see through symlinks (macOS /var -> /private/var)', async () => {
+  const { mkdtempSync, mkdirSync, symlinkSync, realpathSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { repoFor } = await import('./config.ts');
+  const real = realpathSync(mkdtempSync(join(tmpdir(), 'sprout-link-')));
+  mkdirSync(join(real, 'repo/src'), { recursive: true });
+  writeFileSync(join(real, 'repo/src/a.ts'), 'x');
+  symlinkSync(join(real, 'repo'), join(real, 'link'));
+  const viaLink = join(real, 'link/src/a.ts');
+  assert.equal(relPath(join(real, 'repo'), viaLink), 'src/a.ts');
+  assert.equal(relPath(join(real, 'link'), join(real, 'repo/src/a.ts')), 'src/a.ts');
+  assert.equal(relPath(join(real, 'repo'), join(real, 'link/src/new.ts')), 'src/new.ts'); // file not created yet
+  assert.equal(relPath(join(real, 'repo'), join(real, 'repo/..foo')), '..foo'); // not "outside"
+  assert.equal(relPath(join(real, 'repo'), join(real, 'elsewhere.ts')), undefined);
+  const cfg = { repos: [{ name: 'team/x', root: join(real, 'repo') }] } as never;
+  assert.equal(repoFor(cfg, viaLink)?.name, 'team/x');
+});

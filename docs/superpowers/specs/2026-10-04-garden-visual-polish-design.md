@@ -43,7 +43,7 @@ type Pick =
   | { kind: 'shed' };
 ```
 
-- **Hover:** a highlight on the picked object (emissive tint for meshes; a slightly scaled highlight copy for an instanced plant) and a small tooltip (name + one line, e.g. `routes.ts · growing · trisha 3m ago`). This replaces the task-only hover; a task pot still shows its full task card. The cursor becomes a pointer over anything pickable.
+- **Hover:** a soft highlight ring on the ground under the picked object (works the same for instanced plants, meshes and moving characters) and a small tooltip (name + one line, e.g. `routes.ts · growing · trisha 3m ago`). This replaces the task-only hover; a task pot still shows its full task card. The cursor becomes a pointer over anything pickable.
 - **Click** (pointer moved ≤ 5 px): sets `world.selected`. The camera eases toward it (`rig.flyTo`, no follow lock), a ground ring marks it, a plant does one bounce, and the shed opens on the inspector. Clicking the 3D shed keeps today's behaviour (toggle the panel).
 - **Clear:** Esc, a click on empty ground, or the inspector back arrow. If the selected object disappears from the snapshot (e.g. the file was deleted), the selection clears.
 - Hover picking is throttled to one raycast per animation frame.
@@ -105,7 +105,7 @@ The pure function is `repoName(params, snapshot, db)`.
 
 ## §4 Lighting and shading
 
-- **Shadows:** the shadow camera is fitted to the fence bounds (not a fixed ±35) and its radius softened.
+- **Shadows:** the shadow camera is fitted to the fence bounds (not a fixed ±35), so shadows are crisper; the sun sits a little lower for longer shadows.
 - **Contact shadows:** soft radial blob quads (one shared texture, instanced) under gardeners, bots, the botanist and task pots.
 - **Post-processing** (`scene/post.ts`): `EffectComposer` → `RenderPass` → AO (`GTAOPass`, or `SAOPass` if GTAO costs too much) → `UnrealBloomPass` (high threshold: blooms, the light shaft and fireflies glow) → `OutputPass`. It is off at `?quality=low`. If composer setup throws, it falls back to plain `renderer.render`. The extra bundle size is measured against today's ~270 KB gzip.
 - **Light:** the sun is slightly lower and warmer for longer shadows; the hemisphere ground colour is cooler in shadow.

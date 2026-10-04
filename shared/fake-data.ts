@@ -26,7 +26,10 @@ function initialState(): State {
   const plants: PlantView[] = FILES.map(([path, lines]) => ({
     path, bed: bedOf(path), lines, stage: 'seed', bugs: 0, lastActivity: FAKE_START,
   }));
-  return { members, agents: [], plants, claims: [], messages: [], testRuns: [], certifications: [], activity: [], nextId: 1 };
+  return {
+    members, agents: [], plants, claims: [], messages: [], testRuns: [], certifications: [], activity: [],
+    tasks: [], taskItems: [], nextId: 1,
+  };
 }
 
 function log(s: State, at: number, handle: string, kind: ActivityKind, detail: string, path?: string, sessionId?: string) {
@@ -38,6 +41,11 @@ function log(s: State, at: number, handle: string, kind: ActivityKind, detail: s
 const plant = (s: State, path: string) => s.plants.find((p) => p.path === path)!;
 const agent = (s: State, id: string) => s.agents.find((a) => a.sessionId === id)!;
 const member = (s: State, h: string) => s.members.find((m) => m.handle === h)!;
+const task = (s: State, h: string) => s.tasks!.find((t) => t.handle === h)!;
+const items = (s: State, h: string) => s.taskItems!.filter((i) => i.taskId === task(s, h).id).sort((a, b) => a.ord - b.ord);
+const setItem = (s: State, h: string, ord: number, state: 'pending' | 'in_progress' | 'completed', at: number) => {
+  items(s, h)[ord]!.state = state; task(s, h).updatedAt = at;
+};
 
 // Each step advances the state by one scripted event; step i happens at FAKE_START + (i+1) minutes * 10.
 const SCRIPT: Array<(s: State, at: number) => void> = [
@@ -54,6 +62,11 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
     const c: ClaimView = { id: s.nextId++, path: 'src/api/', handle: 'trisha', createdAt: at, expiresAt: at + 180 * MIN }; // outlives the whole fake timeline so the fence stays up until the commit releases it
     s.claims.push(c);
     log(s, at, 'trisha', 'claim', 'claimed src/api/', 'src/api/');
+    // her task appears with a 3-item checklist
+    const t = { id: s.nextId++, handle: 'trisha', title: 'Refactor the API routes', status: 'active' as const, bed: 'src', paths: ['src/api/'], createdAt: at, updatedAt: at };
+    s.tasks!.push(t);
+    ['Read routes.ts', 'Split the handlers', 'Run the tests'].forEach((text, ord) =>
+      s.taskItems!.push({ id: s.nextId++, taskId: t.id, ord, text, state: ord === 0 ? 'in_progress' : 'pending' }));
   },
   // 2: trisha's bot edits routes.ts
   (s, at) => {
@@ -61,6 +74,9 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
     p.stage = 'growing'; p.lines = 140; p.lastActivity = at; p.lastTouchedBy = 'trisha';
     Object.assign(agent(s, 's-trisha'), { status: 'working', currentPath: p.path, currentAction: 'edit', lastSeen: at });
     log(s, at, 'trisha', 'edit', 'edited routes.ts (+20 lines)', p.path, 's-trisha');
+    // first item done, second in progress, file joins the task
+    setItem(s, 'trisha', 0, 'completed', at); setItem(s, 'trisha', 1, 'in_progress', at);
+    task(s, 'trisha').paths.push('src/api/routes.ts');
   },
   // 3: subagent trip starts (bee flies to src/db.ts)
   (s, at) => {
@@ -81,6 +97,8 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
   (s, at) => {
     Object.assign(agent(s, 's-alex'), { status: 'blocked', currentPath: 'src/api/routes.ts', currentAction: 'blocked_edit', lastSeen: at });
     log(s, at, 'alex', 'blocked_edit', 'routes.ts is fenced by trisha', 'src/api/routes.ts', 's-alex');
+    // alex's task, blocked by the fence
+    s.tasks!.push({ id: s.nextId++, handle: 'alex', title: 'Add auth checks', status: 'blocked', bed: 'src', paths: ['src/api/auth.ts'], blockedReason: 'fenced by trisha until 3:00pm', createdAt: at, updatedAt: at });
   },
   // 6: alex messages trisha (sent)
   (s, at) => {
@@ -100,6 +118,8 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
   (s, at) => {
     const m = s.messages[0]!; m.status = 'acked'; m.ackedAt = at;
     log(s, at, 'trisha', 'message_acked', `#${m.id} from alex`, undefined, 's-trisha');
+    // alex works elsewhere, unblocked
+    { const a = task(s, 'alex'); a.status = 'active'; delete a.blockedReason; a.updatedAt = at; }
   },
   // 9: tests fail -> bugs
   (s, at) => {
@@ -115,12 +135,16 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
     });
     plant(s, 'src/api/routes.ts').stage = 'bud';
     log(s, at, 'trisha', 'certify_refused', 'botanist refused: no passing test run', 'src/api/routes.ts', 's-trisha');
+    // roadblock on trisha's task, tests step starts
+    { const t = task(s, 'trisha'); t.blockedReason = 'Botanist refused: no passing test run seen after your last edit'; }
+    setItem(s, 'trisha', 1, 'completed', at); setItem(s, 'trisha', 2, 'in_progress', at);
   },
   // 11: tests pass -> bugs clear
   (s, at) => {
     s.testRuns.push({ id: s.nextId++, handle: 'trisha', repo: FAKE_REPO, command: 'npm test', exitCode: 0, at });
     plant(s, 'src/api/routes.ts').bugs = 0;
     log(s, at, 'trisha', 'test_pass', 'npm test passed', undefined, 's-trisha');
+    setItem(s, 'trisha', 2, 'completed', at);
   },
   // 12: commit -> claim auto-released
   (s, at) => {
@@ -136,6 +160,8 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
     s.certifications.push({ id: s.nextId++, path: p.path, handle: 'trisha', task: 'routes refactor', result: 'bloom', reason: 'diff + passing tests after it', at });
     Object.assign(agent(s, 's-trisha'), { status: 'idle', currentAction: 'idle', lastSeen: at });
     log(s, at, 'trisha', 'certify_bloom', 'Bloom certified', p.path, 's-trisha');
+    // task done
+    { const t = task(s, 'trisha'); t.status = 'done'; t.doneAt = at; delete t.blockedReason; t.updatedAt = at; }
   },
 ];
 

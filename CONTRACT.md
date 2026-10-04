@@ -16,6 +16,8 @@ Mirrors PROJECT_CONTEXT.md §8–§11. The SpacetimeDB module is authoritative o
 | `diff` | id, handle, path, at, commit? |
 | `review` | id, path, handle, ok, at |
 | `certification` | id, path, handle, task, result (`bloom`/`refused`), reason, at |
+| `task` | id, handle, title (≤80), status (`active`/`blocked`/`needs_review`/`done`), bed, paths string[] (≤50), blockedReason?, createdAt, updatedAt, doneAt? |
+| `taskItem` | id, taskId, ord, text (≤80), state (`pending`/`in_progress`/`completed`) |
 | `activity` | id, at, handle, sessionId?, kind, path?, detail (≤160) — the live feed AND the timelapse log |
 | `config` | key (PK), value — keys `claimMode` (`warn`/`block`), `claimTtlMinutes`, `requireReview` |
 
@@ -49,7 +51,7 @@ TODO(contract): PROJECT_CONTEXT.md gives full arguments only for `seedRepo`, `in
 
 ## Activity kinds
 
-`session_start, session_end, prompt, read, search, edit, create, delete, bash, tool_error, subagent_start, subagent_stop, waiting, idle, blocked_edit, shell_cmd, test_pass, test_fail, commit, file_change, claim, release, message_sent, message_delivered, message_acked, handoff_offered, handoff_accepted, certify_bloom, certify_refused`
+`session_start, session_end, prompt, read, search, edit, create, delete, bash, tool_error, subagent_start, subagent_stop, waiting, idle, blocked_edit, shell_cmd, test_pass, test_fail, commit, file_change, claim, release, message_sent, message_delivered, message_acked, handoff_offered, handoff_accepted, certify_bloom, certify_refused, task_started, task_done`
 
 (Same list as `ACTIVITY_KINDS` in `shared/constants.ts`.)
 
@@ -74,6 +76,9 @@ A plant blooms only when the server holds:
 
 ### Tests and bugs
 A failing test run gives plants that member touched since their last bloom `bugs += 1` (cap 5). A passing run clears them.
+
+### Tasks
+A member's current task is their most recently updated task that isn't `done`. `startTask` reuses a not-done task with the same title (case-insensitive). Transitions the module makes: edit/create/file_change adds the path to the current task (and un-blocks a fence block); block-mode `blocked_edit` (detail starts `fenced by`) → `blocked`; `reportStatus` working/blocked/needs_review → active/blocked/needs_review; `submitEvidence` bloom on a task path (claim-style match, or the current task if none match) → `done`; a refusal sets `blockedReason` = `Botanist refused: …`. `blockedReason` clears when the status changes to active or done.
 
 ## Companion daemon (`http://127.0.0.1:4777`)
 
@@ -140,5 +145,7 @@ Reducer arguments (`?` = option, pass `undefined`):
 - `offerHandoff({ fromHandle, toHandle, task, notes })`, `respondHandoff({ handle, id, accept })`
 - `submitEvidence({ handle, path, task })` (result lands in `certification`)
 - `submitReview({ handle, path, ok })` (named `review` in the list above; renamed because it clashed with the `review` table's generated type)
+- `startTask({ handle, title, paths })`, `setTaskItems({ handle, items: { text, state }[] })`
+- `removeMember({ handle })` (drops the member, their agents, fences, messages to/from them, open handoffs and tasks; history stays)
 - `setConfig({ key, value })`
 - Scheduled `sweep` and `expireClaims` (every 60s) are not in the bindings.

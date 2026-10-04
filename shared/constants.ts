@@ -28,5 +28,11 @@ export const ACTIVITY_KINDS = [
   'bash', 'tool_error', 'subagent_start', 'subagent_stop', 'waiting', 'idle', 'blocked_edit',
   'shell_cmd', 'test_pass', 'test_fail', 'commit', 'file_change', 'claim', 'release',
   'message_sent', 'message_delivered', 'message_acked', 'handoff_offered', 'handoff_accepted',
-  'certify_bloom', 'certify_refused',
+  'certify_bloom', 'certify_refused', 'task_started', 'task_done',
 ] as const;
+
+export const TASK_STATUSES = ['active', 'blocked', 'needs_review', 'done'] as const;
+export const TASK_ITEM_STATES = ['pending', 'in_progress', 'completed'] as const;
+export const MAX_TASK_TITLE = 80;
+export const MAX_TASK_ITEMS = 20;
+export const MAX_TASK_PATHS = 50;

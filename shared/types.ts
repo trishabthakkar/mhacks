@@ -1,5 +1,6 @@
 import type {
   ACTIVITY_KINDS, AGENT_STATUSES, HANDOFF_STATUSES, MESSAGE_KINDS, MESSAGE_STATUSES, PLANT_STAGES,
+  TASK_ITEM_STATES, TASK_STATUSES,
 } from './constants.ts';
 
 export type PlantStage = (typeof PLANT_STAGES)[number];
@@ -8,6 +9,8 @@ export type MessageKind = (typeof MESSAGE_KINDS)[number];
 export type MessageStatus = (typeof MESSAGE_STATUSES)[number];
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+export type TaskItemState = (typeof TASK_ITEM_STATES)[number];
 
 // View-model types for the garden. Field names match the generated client rows exactly (camelCase).
 // Converting a generated row: u64 ids are bigint → Number(id); Timestamp → ts.toDate().getTime() (ms);
@@ -48,7 +51,17 @@ export interface GardenSnapshot {
   activity: ActivityView[];
   /** Optional: absent in older snapshots and in the fake timeline. */
   handoffs?: HandoffView[];
+  /** Optional: absent in snapshots from before tasks existed. */
+  tasks?: TaskView[];
+  taskItems?: TaskItemView[];
 }
+
+/** A task an agent named (claim_files) or started from its to-do list. Times in ms. */
+export interface TaskView {
+  id: number; handle: string; title: string; status: TaskStatus; bed: string; paths: string[];
+  blockedReason?: string; createdAt: number; updatedAt: number; doneAt?: number;
+}
+export interface TaskItemView { id: number; taskId: number; ord: number; text: string; state: TaskItemState }
 
 export interface HandoffView {
   id: number; fromHandle: string; toHandle: string; task: string; notes: string; status: HandoffStatus; createdAt: number;

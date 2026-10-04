@@ -11,6 +11,8 @@ import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField } from './plantField.ts';
+import { Pond } from './pond.ts';
+import { pondSpot } from '../pond.ts';
 import { Nav } from '../nav.ts';
 import { CameraRig } from './camera.ts';
 import { PALETTE } from './palette.ts';
@@ -33,6 +35,7 @@ export class GardenWorld implements WorldLookup {
   readonly rig: CameraRig;
   private labels: Labels;
   private fx: Particles;
+  private pond: Pond;
   private actors: Actors;
   private tasks!: TaskPlants;
   private hoverEl = document.createElement('div');
@@ -106,6 +109,7 @@ export class GardenWorld implements WorldLookup {
     this.labels = new Labels(labelHost, this.camera);
     this.field = new PlantField(this.scene);
     this.fx = new Particles(this.scene);
+    this.pond = new Pond(this.scene, this.labels);
     this.actors = new Actors(this.scene, this, this.labels, this.fx);
     this.actors.motion = this.reducedMotion ? 0.25 : 1;
     this.tasks = new TaskPlants(this.scene, this.labels); this.hoverEl.hidden = true; host.appendChild(this.hoverEl);
@@ -195,6 +199,7 @@ export class GardenWorld implements WorldLookup {
     for (const a of u.newActivity) if (a.kind === 'certify_bloom' && a.path) this.pendingBloom.set(a.path, performance.now() + 15000);
     this.syncPlants(u.reset);
     this.syncFences();
+    this.pond.sync(u.snapshot.activity, u.snapshot.at, u.snapshot.members);
     this.actors.sync(u.snapshot);
     const models = taskModels(u.snapshot);
     this.tasks.sync(models, layoutTaskPlants(this.layout, models), this.time);
@@ -238,6 +243,7 @@ export class GardenWorld implements WorldLookup {
       }
       for (const h of hedges) { const at = new THREE.Vector3(h.x, 0.75, h.z); this.bedLabels.push(this.labels.add('generated', () => at, 'label plant')); }
       mergeByMaterial(this.bedGroup);
+      const ps = pondSpot(this.layout); this.pond.place(ps.x, ps.z, ps.r);
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
       this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, layoutPaths(this.layout));
@@ -469,7 +475,7 @@ export class GardenWorld implements WorldLookup {
   private fitBox() {
     const bs = this.layout.beds;
     const { halfW, frontZ } = this.homeFrame;
-    let minX = -halfW, maxX = halfW + 3.5, minZ = -4, maxZ = frontZ + 1.4;
+    let minX = -halfW, maxX = Math.max(halfW + 3.5, this.pond.extentX), minZ = -4, maxZ = frontZ + 1.4;
     minZ = Math.min(minZ, -Math.max(4, this.layout.depth / 2) - 8); // the shed behind the beds
     for (const b of bs) { minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2); minZ = Math.min(minZ, b.z - b.d / 2); }
     return { minX: minX - 1, maxX: maxX + 1, minZ: minZ - 1, maxZ };
@@ -562,6 +568,7 @@ export class GardenWorld implements WorldLookup {
       if (!this.rig.userMoved && !this.calm) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
     this.field.update(t, mo);
+    this.pond.update(dt, mo);
     this.tasks.update(t, mo);
     this.tickFences(t, mo);
     this.props.update(t, dt, 0, 0, mo);

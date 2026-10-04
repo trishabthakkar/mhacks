@@ -278,7 +278,7 @@ export class Actors {
       const group = byColor.get(this.memberColor(handle).toLowerCase()) ?? [];
       const cur = currentTaskOf(this.snap, handle);
       const name = group.length > 1 ? `${SHAPES[group.indexOf(handle) % SHAPES.length]} ${handle}` : handle;
-      const text = cur ? `${name} · ${cur.title.length > 26 ? `${cur.title.slice(0, 25)}…` : cur.title}` : name;
+      const text = cur ? `${name} · ${cur.title.length > 18 ? `${cur.title.slice(0, 17)}…` : cur.title}` : name;
       if (g.label.dataset.text !== text) { g.label.dataset.text = text; this.labels.setText(g.label, text); }
     }
     const claudes = snap.agents.filter((a) => a.kind === 'claude' && a.status !== 'dormant');

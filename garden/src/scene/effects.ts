@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { labelRule } from './labelRules.ts';
 
 interface Item {
-  el: HTMLElement; pos: () => THREE.Vector3 | undefined; until: number; pri: number; edge: boolean;
+  el: HTMLElement; pos: () => THREE.Vector3 | undefined; until: number; pri: number; nudge: boolean; maxDist: number; edge: boolean;
   w: number; h: number; measured: boolean;
   x: number; y: number; vis: boolean; dist: number;
   lastX: number; lastY: number; lastS: number; lastO: number; lastDisplay: string;
@@ -10,8 +11,6 @@ interface Item {
 interface Rect { l: number; t: number; r: number; b: number }
 
 const MAX_BUBBLES = 3;
-const priorityOf = (cls: string) =>
-  cls.includes('big') ? 5 : cls.includes('bubble') ? 4 : cls.includes('member') ? 3 : cls.includes('botanist') ? 2 : 1;
 
 /**
  * HTML labels and speech bubbles pinned to world positions, with declutter:
@@ -39,10 +38,10 @@ export class Labels {
     } else el.textContent = text;
     el.style.opacity = '0';
     this.host.appendChild(el);
-    const pri = priorityOf(cls);
-    if (pri === 4) this.capBubbles();
+    const { pri, nudge, maxDist } = labelRule(cls);
+    if (pri === 5) this.capBubbles();
     this.items.add({
-      el, pos, until: ttlMs === Infinity ? Infinity : performance.now() + ttlMs, pri, edge: cls.includes('member'),
+      el, pos, until: ttlMs === Infinity ? Infinity : performance.now() + ttlMs, pri, nudge, maxDist, edge: cls.includes('member'),
       w: 0, h: 0, measured: false, x: 0, y: 0, vis: false, dist: 0,
       lastX: -1e9, lastY: -1e9, lastS: -1, lastO: -1, lastDisplay: '', arrowText: text,
     });
@@ -51,7 +50,7 @@ export class Labels {
 
   /** Change a label's text (its size is re-measured on the next frame). */
   setText(el: HTMLElement, text: string) {
-    for (const i of this.items) if (i.el === el) { el.textContent = text; i.arrowText = text; i.measured = false; }
+    for (const i of this.items) if (i.el === el) { el.textContent = text; i.arrowText = text.split(" · ")[0]!; i.measured = false; // arrows carry the name only }
   }
 
   remove(el: HTMLElement) {
@@ -60,7 +59,7 @@ export class Labels {
 
   /** Ordinary speech bubbles: keep the newest MAX_BUBBLES; older ones fade out. */
   private capBubbles() {
-    const b = [...this.items].filter((i) => i.pri === 4);
+    const b = [...this.items].filter((i) => i.pri === 5);
     while (b.length >= MAX_BUBBLES) {
       const old = b.shift()!;
       old.el.style.opacity = '0';
@@ -87,7 +86,7 @@ export class Labels {
       i.dist = this.camera.position.distanceTo(p);
       i.x = ((this.v.x + 1) / 2) * width; i.y = ((1 - this.v.y) / 2) * height;
       const behind = this.v.z > 1;
-      i.vis = !behind && i.x >= ax0 - 20 && i.x <= ax1 + 20 && i.y >= ay0 - 20 && i.y <= ay1 + 60;
+      i.vis = i.dist <= i.maxDist && !behind && i.x >= ax0 - 20 && i.x <= ax1 + 20 && i.y >= ay0 - 20 && i.y <= ay1 + 60;
       if (i.vis) this.order.push(i);
       else {
         this.hide(i);
@@ -101,13 +100,13 @@ export class Labels {
     for (const i of this.items) if (i.arrow && i.arrow.style.display !== 'none' && i.arrowRect) this.placed.push(i.arrowRect); // edge arrows are obstacles too
     for (const i of this.order) {
       if (!i.measured) { i.el.style.display = ''; i.w = i.el.offsetWidth; i.h = i.el.offsetHeight; i.measured = true; }
-      const s = i.pri >= 4 ? 1 : Math.min(1.08, Math.max(0.92, 1.25 - i.dist / 70));
+      const s = i.pri >= 5 ? 1 : Math.min(1.08, Math.max(0.92, 1.25 - i.dist / 70));
       const w = i.w * s, h = i.h * s;
       let x = Math.min(Math.max(i.x, ax0 + w / 2), ax1 - w / 2);
       let y = Math.min(Math.max(i.y, ay0 + h), ay1);
       const rect: Rect = { l: x - w / 2, r: x + w / 2, t: y - h, b: y };
       let tries = 0;
-      while (this.hit(rect) && tries < 6) {
+      while (i.nudge && this.hit(rect) && tries < 6) {
         const o = this.hit(rect)!;
         const dy = rect.b - o.t + 3; // lift above the label it collides with
         y -= dy; rect.t -= dy; rect.b -= dy; tries++;
@@ -115,10 +114,10 @@ export class Labels {
       }
       const stillHit = !!this.hit(rect);
       // Low-priority labels that cannot be placed cleanly are hidden rather than drawn over something.
-      if ((stillHit && i.pri <= 2) || rect.t < ay0 - 1) { this.hide(i); if (i.arrow) i.arrow.style.display = 'none'; continue; }
+      if ((stillHit && !i.nudge) || rect.t < ay0 - 1) { this.hide(i); if (i.arrow) i.arrow.style.display = 'none'; continue; }
       this.placed.push(rect);
       const far = Math.min(1, Math.max(0, (i.dist - 60) / 40));
-      this.show(i, x, y, s, i.pri >= 4 ? 1 : 1 - far * 0.7);
+      this.show(i, x, y, s, i.pri >= 5 ? 1 : 1 - far * 0.7);
       if (i.arrow) { i.arrow.style.display = 'none'; i.arrowRect = undefined; }
     }
   }

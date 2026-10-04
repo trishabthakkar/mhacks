@@ -30,8 +30,9 @@ export class TaskPlants {
         this.items.set(m.id, t); this.group.add(t.g);
       }
       t.x = p.x; t.z = p.z; t.g.position.set(p.x, 0, p.z); t.status = m.status;
-      const text = `${clip(m.title, 34)} · ${m.handle}`;
+      const text = clip(m.title, 24); // the pot colour already says whose it is
       if (text !== t.labelText) { t.labelText = text; this.labels.setText(t.label, text); t.label.style.borderColor = m.color; }
+      t.label.classList.toggle('done', m.status === 'done'); // done tasks show their flower, not a label
       if (key !== t.key) { t.key = key; this.build(t, m); }
     }
   }

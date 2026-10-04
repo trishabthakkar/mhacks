@@ -1,0 +1,44 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import type { GardenSnapshot } from '../../shared/types.ts';
+import { layoutGarden, layoutPaths } from './layout.ts';
+import { BANK, pondSpot } from './pond.ts';
+import { gardenFence, inRect, repoName, signLine } from './boundary.ts';
+
+const files = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `d${i % 5}/f${i}.ts`, bed: `d${i % 5}`, lines: 50 }));
+const frontZ = (l: ReturnType<typeof layoutGarden>) => Math.max(4, l.depth / 2) + 3.6;
+
+for (const n of [3, 40, 400]) {
+  test(`fence (${n} files) encloses beds, paths, pond, shed and lane, with a gate on the front`, () => {
+    const l = layoutGarden(files(n)), fz = frontZ(l), f = gardenFence(l, fz), halfW = Math.max(6, l.width / 2), halfD = Math.max(4, l.depth / 2);
+    for (const b of l.beds) for (const [x, z] of [[b.x - b.w / 2, b.z - b.d / 2], [b.x + b.w / 2, b.z + b.d / 2]]) assert.ok(inRect(f.rect, x!, z!, 1), `bed ${b.name}`);
+    for (const p of layoutPaths(l)) assert.ok(inRect(f.rect, p.x - p.w / 2, p.z, 0.5) && inRect(f.rect, p.x + p.w / 2, p.z, 0.5), 'path');
+    const ps = pondSpot(l);
+    assert.ok(inRect(f.rect, ps.x + ps.r * BANK, ps.z + ps.r * BANK, 0.5) && inRect(f.rect, ps.x - ps.r * BANK, ps.z - ps.r * BANK, 0.5), 'pond');
+    assert.ok(inRect(f.rect, halfW - 1.5, -halfD - 6.5, 0.5), 'shed');
+    assert.ok(inRect(f.rect, -(halfW + 3.5), fz, 1) && inRect(f.rect, halfW + 3.5, fz, 1), 'front lane');
+    assert.equal(f.gate.z, f.rect.maxZ);
+    assert.ok(f.pickets.length > 20);
+    assert.ok(f.pickets.every((p) => !(Math.abs(p.z - f.rect.maxZ) < 0.01 && Math.abs(p.x - f.gate.x) < f.gate.w / 2)), 'no picket in the gate');
+    assert.ok(f.pickets.every((p) => Math.abs(p.x - f.rect.minX) < 0.01 || Math.abs(p.x - f.rect.maxX) < 0.01 || Math.abs(p.z - f.rect.minZ) < 0.01 || Math.abs(p.z - f.rect.maxZ) < 0.01), 'pickets on the line');
+  });
+}
+
+const snap = (o: Partial<GardenSnapshot> = {}): GardenSnapshot => ({ at: 0, members: [], agents: [], plants: [], claims: [], messages: [], testRuns: [], certifications: [], activity: [], ...o });
+
+test('repo name: ?repo, then the latest test run repo, then the db name, then a default', () => {
+  const run = (repo: string, at: number) => ({ id: at, handle: 'a', repo, command: '', exitCode: 0, at });
+  assert.equal(repoName(new URLSearchParams('repo=Sprout'), snap(), 'sprout-mhacks'), 'Sprout');
+  assert.equal(repoName(new URLSearchParams(), snap({ testRuns: [run('/Users/x/old', 1), run('/Users/x/Projects/mhacks/', 2)] }), 'sprout-demo'), 'mhacks');
+  assert.equal(repoName(new URLSearchParams(), snap({ testRuns: [run('git@github.com:team/cool-app.git', 1)] }), ''), 'cool-app');
+  assert.equal(repoName(new URLSearchParams(), snap(), 'sprout-mhacks'), 'mhacks');
+  assert.equal(repoName(new URLSearchParams(), snap(), ''), 'our garden');
+  assert.equal(repoName(new URLSearchParams(`repo=${'x'.repeat(60)}`), snap(), '').length, 28);
+});
+
+test('sign line counts people online, plants and blooms today', () => {
+  const s = snap({ at: 10 * 86_400_000,
+    members: [{ handle: 'a', color: '', online: true, paused: false, lastSeen: 0 }, { handle: 'b', color: '', online: false, paused: false, lastSeen: 0 }],
+    plants: [{ path: 'a', bed: '', lines: 1, stage: 'bloom', bugs: 0, lastActivity: 0, lastBloomAt: 10 * 86_400_000 - 1000 }, { path: 'b', bed: '', lines: 1, stage: 'seed', bugs: 0, lastActivity: 0 }] });
+  assert.equal(signLine(s), '1 gardener · 2 plants · 1 🌸 today');
+});

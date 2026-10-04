@@ -15,3 +15,7 @@ test('tidyTitle: one line, no wrapping quotes, no trailing period, capitalised u
   assert.equal(tidyTitle(' "  " '), '');
   assert.equal(tidyTitle(''), '');
 });
+
+test('tidyTitle: a name made only of quotes or backticks is empty (then rejected / ignored)', () => {
+  for (const q of ['"', '"""', `'"`, '`', ' " \' ']) assert.equal(tidyTitle(q), '', JSON.stringify(q));
+});

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isClick, parsePick, pickAt, pickColumn, pickKey, samePick, type PickInput, type PickScene } from './pick.ts';
+import { isClick, parsePick, personAt, pickAt, pickColumn, pickKey, samePick, type PickInput, type PickScene } from './pick.ts';
 
 const scene = (o: Partial<PickScene> = {}): PickScene => ({ people: [], plants: [], commits: [], beds: [], ...o });
 const at = (x: number, z: number, o: Partial<PickInput> = {}): PickInput => ({ screen: { x: 500, y: 500 }, ground: { x, z }, shed: false, arch: false, ...o });
@@ -87,4 +87,13 @@ test('pickAt: a plant column beats pond and bed, loses to people and task pots',
   assert.deepEqual(pickAt(at(0, 0, { plant: 'src/a.ts' }), sc), { kind: 'plant', key: 'src/a.ts' });
   assert.deepEqual(pickAt(at(0, 0, { plant: 'src/a.ts', task: 3 }), sc), { kind: 'task', key: 3 });
   assert.deepEqual(pickAt(at(0, 0), sc), { kind: 'bed', key: 'src' });
+});
+
+test('personAt: returns the nearest person entry under the pointer (so a bot rings itself, not its gardener)', () => {
+  const people = [
+    { pick: { kind: 'member' as const, key: 'trisha' }, sx: 100, sy: 100, r: 20, depth: 10, at: { x: 0, z: 0 } },
+    { pick: { kind: 'member' as const, key: 'trisha' }, sx: 500, sy: 500, r: 20, depth: 12, at: { x: 9, z: 9 } },
+  ];
+  assert.deepEqual(personAt({ x: 505, y: 498 }, people)?.at, { x: 9, z: 9 });
+  assert.equal(personAt({ x: 300, y: 300 }, people), undefined);
 });

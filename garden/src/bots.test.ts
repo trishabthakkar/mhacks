@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentView, GardenSnapshot } from '../../shared/types.ts';
-import { botFor, botHandleOf, botLine } from './bots.ts';
+import { botFor, botHandleOf, botLine, followHandle } from './bots.ts';
 
 const NOW = 10_000_000;
 const ag = (o: Partial<AgentView>): AgentView => ({ sessionId: 's', handle: 'trisha', kind: 'claude', status: 'idle', currentAction: '', lastSeen: 0, ...o });
@@ -43,4 +43,13 @@ test('botLine says what the Claude is doing, or how long it has slept', () => {
   assert.equal(botLine(snap([ag({ status: 'dormant', lastSeen: NOW - 2 * 3_600_000 })]), 'trisha'), 'Claude asleep · last active 2h ago');
   assert.equal(botLine(snap([ag({ status: 'working', currentPath: 'src/api/routes.ts', lastSeen: NOW })]), 'trisha'), 'Claude working on routes.ts');
   assert.equal(botLine(snap([ag({ status: 'needs_review', lastSeen: NOW })]), 'trisha'), 'Claude waiting for review');
+});
+
+test('followHandle: only the session the bot shows, while awake-ish (an ended session stops the follow)', () => {
+  const s = snap([ag({ sessionId: 'old', status: 'dormant', lastSeen: 1 }), ag({ sessionId: 'now', status: 'working', lastSeen: 5 })]);
+  assert.equal(followHandle(s, 'now'), 'trisha');
+  assert.equal(followHandle(s, 'old'), undefined);
+  assert.equal(followHandle(snap([ag({ sessionId: 'x', status: 'dormant' })]), 'x'), undefined);
+  assert.equal(followHandle(snap([ag({ sessionId: 'i', status: 'idle' })]), 'i'), 'trisha');
+  assert.equal(followHandle(s, 'nope'), undefined);
 });

@@ -16,6 +16,13 @@ export function botFor(s: GardenSnapshot, handle: string): { agent?: AgentView; 
   return { agent, asleep: !agent || agent.status === 'idle' || agent.status === 'dormant' || !m || !m.online || m.paused };
 }
 
+/** The member to follow for a session: only the session their bot shows, and only until it ends (else the follow stops). */
+export function followHandle(s: GardenSnapshot, sessionId: string): string | undefined {
+  const h = botHandleOf(s, sessionId); if (!h) return undefined;
+  const a = botFor(s, h).agent;
+  return a && a.sessionId === sessionId && a.status !== 'dormant' ? h : undefined;
+}
+
 /** The member a session belongs to (bots are drawn per member, not per session). */
 export const botHandleOf = (s: GardenSnapshot, sessionId: string) => s.agents.find((a) => a.sessionId === sessionId)?.handle;
 

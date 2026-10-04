@@ -8,7 +8,7 @@ export type Pick =
 
 export interface PickScene {
   /** Gardeners and the botanist as screen-space circles (px); depth = distance to the camera. */
-  people: Array<{ pick: Pick; sx: number; sy: number; r: number; depth: number }>;
+  people: Array<{ pick: Pick; sx: number; sy: number; r: number; depth: number; at?: { x: number; z: number } }>;
   plants: Array<{ path: string; x: number; z: number; size: number }>;
   commits: Array<{ id: number; x: number; z: number; size: number }>;
   pond?: { x: number; z: number; r: number };
@@ -50,17 +50,22 @@ export function pickColumn(o: V3, d: V3, cols: Column[]): string | undefined {
 }
 
 export const CLICK_PX = 5;
+
+type Person = PickScene['people'][number];
+/** The person circle under the pointer, nearest to the camera first (its `at` is where to draw their ring). */
+export function personAt(screen: { x: number; y: number }, people: Person[]): Person | undefined {
+  let best: Person | undefined;
+  for (const p of people) if (Math.hypot(screen.x - p.sx, screen.y - p.sy) <= p.r && (!best || p.depth < best.depth)) best = p;
+  return best;
+}
 export const isClick = (down: { x: number; y: number } | undefined, up: { x: number; y: number }) =>
   !!down && Math.hypot(up.x - down.x, up.y - down.y) <= CLICK_PX;
 
 const plantR = (size: number) => Math.max(0.6, size * 0.55);
 
 export function pickAt(inp: PickInput, sc: PickScene): Pick | null {
-  let best: { pick: Pick; depth: number } | undefined;
-  for (const p of sc.people) {
-    if (Math.hypot(inp.screen.x - p.sx, inp.screen.y - p.sy) <= p.r && (!best || p.depth < best.depth)) best = { pick: p.pick, depth: p.depth };
-  }
-  if (best) return best.pick;
+  const person = personAt(inp.screen, sc.people);
+  if (person) return person.pick;
   if (inp.task !== undefined) return { kind: 'task', key: inp.task };
   if (inp.plant !== undefined) return { kind: 'plant', key: inp.plant };
   const g = inp.ground;

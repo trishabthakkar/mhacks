@@ -6,7 +6,7 @@ import { bedStyleOf, collapseGenerated, speciesOf } from '../species.ts';
 import { TaskPlants } from './taskPlants.ts';
 import { currentTaskOf, taskModels } from '../tasks.ts';
 import { hoverText } from '../ui/inspect.ts';
-import { isClick, pickAt, pickColumn, samePick, type Pick, type PickScene } from '../pick.ts';
+import { isClick, personAt, pickAt, pickColumn, samePick, type Pick, type PickScene } from '../pick.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import type { Spot } from './wander.ts';
@@ -552,8 +552,10 @@ export class GardenWorld implements WorldLookup {
       const v = this.tmpV.copy(pos).setY(pos.y + 0.8).project(this.camera);
       if (v.z > 1) return;
       const depth = this.camera.position.distanceTo(pos);
-      people.push({ pick, sx: r.left + ((v.x + 1) / 2) * r.width, sy: r.top + ((1 - v.y) / 2) * r.height, r: Math.max(14, 900 / depth), depth });
+      people.push({ pick, sx: r.left + ((v.x + 1) / 2) * r.width, sy: r.top + ((1 - v.y) / 2) * r.height, r: Math.max(14, 900 / depth), depth, at: { x: pos.x, z: pos.z } });
     });
+    // a gardener and their bot both pick as the member: ring whichever one is under the pointer
+    this.personAnchor = personAt({ x: cx, y: cy }, people)?.at;
     const g = this.ray.ray.intersectPlane(this.groundPlane, this.hit);
     // plants are columns from their soil to their top, so tall plants and plants on mounds pick where they are drawn
     const cols = this.layout.plants.map((p) => {
@@ -582,11 +584,12 @@ export class GardenWorld implements WorldLookup {
     // every pick hovers the same way: one plain line + a ring (a task's full card lives in the inspector)
     this.hoverEl.className = 'tip'; this.hoverEl.textContent = text; this.hoverEl.hidden = false;
     this.hoverEl.style.left = `${Math.min(innerWidth - 300, cx + 16)}px`; this.hoverEl.style.top = `${Math.max(8, cy - 34)}px`;
-    const at = this.pickPos(p);
+    const at = (p.kind === 'member' && this.personAnchor ? this.tmpV.set(this.personAnchor.x, 0, this.personAnchor.z) : undefined) ?? this.pickPos(p);
     this.hoverRing.visible = !!at && !samePick(p, this.selected);
     if (at) { this.hoverRing.position.set(at.x, this.ringY(p), at.z); this.hoverRing.scale.setScalar(this.ringSize(p)); }
   }
 
+  private personAnchor?: { x: number; z: number };
   private ringY(p: Pick) { return p.kind === 'plant' ? this.plantBase(this.bedOfPath(p.key) ?? '') + 0.15 : 0.33; }
   private ringSize(p: Pick) {
     if (p.kind === 'plant') return Math.max(0.6, (this.layout.plants.find((x) => x.path === p.key)?.size ?? 1) * 0.65);
@@ -601,7 +604,7 @@ export class GardenWorld implements WorldLookup {
     switch (p.kind) {
       case 'plant': return this.plantXZ.get(p.key);
       case 'bed': return this.bedCenter(p.key);
-      case 'member': return this.actors.gardenerPos(p.key);
+      case 'member': return this.actors.gardenerPos(p.key) ?? this.actors.botPosOf(p.key); // offline: their sleeping bot
       case 'botanist': return this.actors.botanistPos();
       case 'task': return this.tasks.posOf(p.key);
       case 'pond': { const s = this.pond.spot; return new THREE.Vector3(s.x, 0, s.z); }

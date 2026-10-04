@@ -11,7 +11,7 @@ const CHAR_SCALE = 2.3; // Kenney characters are ~0.6 units tall; our people are
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
-import { botFor, botHandleOf } from '../bots.ts';
+import { botFor, botHandleOf, followHandle } from '../bots.ts';
 import { clipWords, tidy } from '../ui/fmt.ts';
 import { spiritText } from './spiritText.ts';
 
@@ -286,10 +286,10 @@ export class Actors {
     cb({ kind: 'botanist' }, this.botanist.obj.position);
   }
   gardenerPos(handle: string): THREE.Vector3 | undefined { return this.gardeners.get(handle)?.obj.position; }
+  botPosOf(handle: string): THREE.Vector3 | undefined { return this.bots.get(handle)?.obj.position; }
   /** Where a bot (main session) or spirit (subagent) is right now. */
   agentPos(sessionId: string): THREE.Vector3 | undefined {
-    const bot = this.bots.get(botHandleOf(this.snap, sessionId) ?? '');
-    return this.bees.get(sessionId)?.obj.position ?? (this.snap.agents.some((a) => a.sessionId === sessionId && a.kind === 'claude') ? bot?.obj.position : undefined);
+    return this.bees.get(sessionId)?.obj.position ?? this.bots.get(followHandle(this.snap, sessionId) ?? '')?.obj.position;
   }
   private botPos(sessionId: string) { return this.bots.get(botHandleOf(this.snap, sessionId) ?? '')?.obj.position; }
   /** The member's Claude session the garden shows (the busiest one); may be idle or ended. */

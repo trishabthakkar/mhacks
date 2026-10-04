@@ -7,6 +7,7 @@ export function tidyTitle(s: string): string {
   for (let i = 0; i < 3; i++) { const m = /^(["'`])(.*)\1$/.exec(t); if (!m) break; t = m[2]!.trim(); }
   t = t.replace(/^`([^`]+)`/, '$1');
   t = t.replace(/(?<!\.)\.$/, '').trim();
+  if (/^["'`\s]*$/.test(t)) return ''; // only quotes left: nothing was named
   if (t && !CODEISH.test(t)) t = t[0]!.toUpperCase() + t.slice(1);
   return t;
 }

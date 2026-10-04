@@ -18,3 +18,7 @@ test('clipWords cuts at a word boundary with an ellipsis', () => {
   assert.equal(clipWords('Supercalifragilisticexpialidocious', 10), 'Supercali…');
   assert.equal(clipWords('Fix it, then ship', 9), 'Fix it…');
 });
+
+test('tidy: a name made only of quotes or backticks is empty (then rejected / ignored)', () => {
+  for (const q of ['"', '"""', `'"`, '`', ' " \' ']) assert.equal(tidy(q), '', JSON.stringify(q));
+});

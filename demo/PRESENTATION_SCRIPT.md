@@ -28,8 +28,13 @@ Demo steps in detail: demo/DEMO_SCRIPT.md (run demo-reset first).
 > And you watch it all as a live garden: folders are beds, files are plants, every teammate and their Claude is a gardener. **No new workflow: you keep your own Claude Code and join with one command.**
 
 ### 5 · Architecture — "The database is the referee" (30s)
-> Quickly, how it works. **See:** hooks in Claude Code, the shell and git report what each person's agent is doing. **Decide:** that goes to SpacetimeDB, which is the referee. Every rule, who holds a fence, which messages were delivered, whether tests passed, lives in the database, so no single agent can cheat. **Act:** each Claude gets team tools through one MCP server. **Show:** the Three.js garden subscribes straight to the database, so every screen updates instantly.
-> Only status leaves your laptop, never code or prompts. A message from another agent is information, never an order. And we make zero LLM calls ourselves.
+*Point at each box as you say its word.*
+> So how does it work? Four steps.
+> **See:** tiny hooks on each laptop notice what your Claude is doing: which file, what action, did the tests pass. Only that status leaves your laptop, never your code.
+> **Decide:** it all goes to SpacetimeDB, our referee. Before an agent takes a file, sends a message, or says it's done, the database checks the rules. **So no AI can cheat.**
+> **Act:** every teammate's Claude gets these team powers through one MCP server: one command to set up.
+> **Show:** the garden watches the database live, so every screen updates instantly.
+> And we make zero AI calls ourselves: your own Claude does the thinking.
 
 ### 6 · "Let's see it live" → SWITCH TABS (≈2 min)
 > Enough slides. This is our actual repo, the garden we've been growing all weekend.

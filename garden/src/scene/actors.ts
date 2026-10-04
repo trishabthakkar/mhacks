@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Pick } from '../pick.ts';
 import type { ActivityView, AgentView, GardenSnapshot, MessageView } from '../../../shared/types.ts';
 import { geo, hashString, mat, mesh } from './materials.ts';
 import { idleSpot, tendSpot } from './wander.ts';
@@ -252,6 +253,12 @@ export class Actors {
     this.homes.clear();
     this.snap.members.forEach((m, i) => this.homes.set(m.handle, this.computeHome(i, n)));
     this.botHome.set(this.world.homeFrame.halfW + 2.5, 0, this.world.homeFrame.frontZ - 1);
+  }
+  botanistPos(): THREE.Vector3 { return this.botanist.obj.position; }
+  /** Every clickable character: gardeners by handle, then the botanist. */
+  forEachPerson(cb: (pick: Pick, pos: THREE.Vector3) => void) {
+    for (const [handle, g] of this.gardeners) cb({ kind: 'member', key: handle }, g.obj.position);
+    cb({ kind: 'botanist' }, this.botanist.obj.position);
   }
   gardenerPos(handle: string): THREE.Vector3 | undefined { return this.gardeners.get(handle)?.obj.position; }
   /** Where a bot (main session) or spirit (subagent) is right now. */

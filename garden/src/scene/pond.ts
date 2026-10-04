@@ -154,5 +154,12 @@ export class Pond {
     }
   }
 
+  get spot() { return { x: this.group.position.x, z: this.group.position.z, r: this.r }; }
+  /** Pads in world coordinates, for picking. */
+  padSpots(): Array<{ id: number; x: number; z: number; size: number }> {
+    const ox = this.group.position.x, oz = this.group.position.z, out: Array<{ id: number; x: number; z: number; size: number }> = [];
+    for (const [id, p] of this.pads) out.push({ id, x: ox + p.x, z: oz + p.z, size: p.size });
+    return out;
+  }
   get extentX() { return this.group.position.x + this.r * 1.45; }
 }

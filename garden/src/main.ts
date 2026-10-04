@@ -62,6 +62,7 @@ world.onLayout = (l) => { layout = l; };
 world.onFollowEnd = () => refresh();
 world.onError = reportError;
 world.onShedClick = () => setCollapsed(!collapsed);
+world.onSelect = (p) => setSelected(p);
 const announcer = createAnnouncer(document.getElementById('announcer')!);
 const srSummary = document.getElementById('sr-summary')!;
 if (world.available) {
@@ -86,6 +87,7 @@ let selected: Pick | null = null;
 function setSelected(p: Pick | null) {
   if (p?.kind === 'shed') { setCollapsed(!collapsed); return; }
   selected = p;
+  world.setSelected(p);
   if (p && collapsed) setCollapsed(false); else refresh();
 }
 
@@ -245,7 +247,7 @@ function refresh() {
   const s = store.snapshot;
   const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
   const repo = repoName(q, s, liveDb());
-  if (selected && !inspect(selected, s, { repo })) selected = null; // the subject left the garden
+  if (selected && !inspect(selected, s, { repo })) { selected = null; world.setSelected(null); } // the subject left the garden
   renderShed(shed, s, { source, connection, collapsed, following: world.follow, selected, repo });
   emptyState.hidden = s.plants.length > 0 || conn.state === 'connecting';
   // The chip only carries what the shed pill doesn't: camera modes and the demo pause control.

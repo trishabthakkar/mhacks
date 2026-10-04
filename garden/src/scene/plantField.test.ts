@@ -140,3 +140,13 @@ test('plantHeight grows with stage and size', () => {
   assert.ok(plantHeight('growing', 1.5, true) > plantHeight('growing', 1, true));
   assert.ok(plantHeight('seed', 1, false) >= 0.3);
 });
+
+test('quiet ground cover is a small leafy rosette, not a single flat disc', () => {
+  const f = field();
+  f.upsert('a.ts', 0, 0, 1, 'growing', 0, false, 0, true);
+  const parts = f.get('a.ts')!.parts;
+  assert.ok(parts.length >= 3, `only ${parts.length} part(s)`);
+  const pos = parts.map((p) => new THREE.Vector3().setFromMatrixPosition(p.base));
+  assert.ok(Math.max(...pos.map((v) => v.y)) < 0.3, 'rosette should stay low');
+  assert.ok(new Set(pos.map((v) => `${v.x.toFixed(2)},${v.z.toFixed(2)}`)).size >= 3, 'leaves should fan out');
+});

@@ -18,7 +18,7 @@ const C = {
   soil: new THREE.Color('#6b4a2f'), stem: new THREE.Color('#3f7d3a'), stemD: new THREE.Color('#8a8570'),
   leaf: new THREE.Color('#58a24a'), leafS: new THREE.Color('#7fc36a'), leafD: new THREE.Color('#a39f86'),
   bud: new THREE.Color('#9ac26b'), budD: new THREE.Color('#a39f86'), center: new THREE.Color('#f2c230'),
-  bug: new THREE.Color('#1c1c1c'), tuft: new THREE.Color('#6aa84f'), tuftD: new THREE.Color('#b3b09a'),
+  bug: new THREE.Color('#1c1c1c'), tuft: new THREE.Color('#6aa84f'), tuftD: new THREE.Color('#7d9460'), // faded sage: still reads as a plant
   sunPetal: new THREE.Color('#f7c613'), sunCenter: new THREE.Color('#5a3a1a'),
   fern: new THREE.Color('#2e7a4c'), fernTip: new THREE.Color('#9ccf6e'),
   cactus: new THREE.Color('#5e9c58'), cactusD: new THREE.Color('#9c9a84'), cactusBloom: new THREE.Color('#ff7eb6'),
@@ -58,7 +58,7 @@ export class PlantField {
   private mat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.85, metalness: 0 });
   private mT = new THREE.Matrix4(); private mA = new THREE.Matrix4(); private mB = new THREE.Matrix4(); private mO = new THREE.Matrix4();
   private q = new THREE.Quaternion(); private e = new THREE.Euler(); private p = new THREE.Vector3(); private s = new THREE.Vector3();
-  private col = new THREE.Color(); private tint = new THREE.Color();
+  private col = new THREE.Color(); private tint = new THREE.Color(); private tuftC = new THREE.Color();
   /** Foliage colour for one leaf: this plant's jitter, alternate leaves a shade lighter (two-tone). */
   private leafTone(inst: PlantInst, base: THREE.Color, i: number) { return this.tint.copy(base).offsetHSL(inst.jit.dh, 0, inst.jit.dl + (i % 2 ? 0.06 : -0.02)); }
   private dirtyColor: [boolean, boolean] = [false, false];
@@ -127,9 +127,18 @@ export class PlantField {
   private build(inst: PlantInst) {
     this.release(inst.parts);
     const { size: s, stage, species: sp } = inst, d = stage === 'dormant';
-    if (!inst.full) { // ground cover: one tuft, coloured by species
-      const tc = d ? C.tuftD : inst.owner ? this.tint.copy(TUFT[sp]).lerp(inst.owner, 0.35) : TUFT[sp]; // owner tint: who works where
-      this.add(inst, SPH, tc, 'body', 0, 0.35 * s, (sp === 'cactus' ? 0.3 : 0.14) * s, 0.35 * s, 0, 0.1, 0);
+    if (!inst.full) { // ground cover: a small low rosette (or a few pebbles for images), coloured by species
+      const tc = this.tuftC.copy(d ? C.tuftD : TUFT[sp]); if (!d && inst.owner) tc.lerp(inst.owner, 0.35); // owner tint: who works where
+      if (sp === 'stone') {
+        for (let i = 0; i < 3; i++) { const a = i * 2.1 + inst.phase; this.add(inst, SPH, i ? PEBBLES[(i + 1) % PEBBLES.length]! : tc, 'body', i, 0.14 * s, 0.07 * s, 0.11 * s, Math.cos(a) * 0.12 * s, 0.06, Math.sin(a) * 0.12 * s, a); }
+        return;
+      }
+      this.add(inst, SPH, tc, 'body', 0, 0.09 * s, (sp === 'cactus' ? 0.2 : 0.11) * s, 0.09 * s, 0, 0.13, 0); // raised centre the leaves grow from
+      const n = sp === 'fern' ? 6 : 5;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + inst.phase;
+        this.add(inst, SPH, this.leafTone(inst, tc, i), 'body', i + 1, 0.27 * s, 0.05 * s, 0.12 * s, Math.cos(a) * 0.15 * s, 0.13, Math.sin(a) * 0.15 * s, -a, 0.5); // leaves meet at the centre and tilt up
+      }
       return;
     }
     if (sp === 'clover') { this.buildHedge(inst); return; }

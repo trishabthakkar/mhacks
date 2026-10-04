@@ -64,5 +64,5 @@ const mix = (a: string, b: string, k: number) => {
  */
 export function nightLight(lv: number, daySun = 2.7): { sky: string; ground: string; hemi: number; sun: number } {
   const k = Math.min(1, Math.max(0, lv));
-  return { sky: mix('#d4e9ff', '#6c82c8', k), ground: mix('#6b7a55', '#26324a', k), hemi: 1.2 + (0.75 - 1.2) * k, sun: daySun + (0.55 - daySun) * k };
+  return { sky: mix('#d4e9ff', '#6c82c8', k), ground: mix('#6b7a55', '#26324a', k), hemi: 1.2 + (0.95 - 1.2) * k, sun: daySun + (0.55 - daySun) * k };
 }

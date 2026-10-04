@@ -11,7 +11,8 @@ const height = (l: Lamp) => (l.kind === 'path' ? 0.55 : l.kind === 'arch' ? 2.2 
 const size = (l: Lamp) => (l.kind === 'path' ? 0.7 : 1);
 
 /** A radial falloff with no visible edge: light fades smoothly to nothing (a hard-ish disc read as a sticker). */
-function softTexture(peak: number) {
+function softTexture(peak: number): THREE.Texture | null {
+  if (typeof document === 'undefined') return null; // node tests: no canvas
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d')!, grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   for (let i = 0; i <= 10; i++) { const t = i / 10, a = peak * Math.pow(1 - t, 2.2); grd.addColorStop(t, `rgba(255,${Math.round(200 - 30 * t)},${Math.round(120 - 50 * t)},${a.toFixed(3)})`); }
@@ -29,15 +30,10 @@ export class GardenLamps {
   private halos?: THREE.Points;
   private lights: THREE.PointLight[] = [];
   private postMat = new THREE.MeshStandardMaterial({ color: PALETTE.woodDark, flatShading: true, roughness: 0.9 });
-<<<<<<< Updated upstream
-  private bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: WARM, emissiveIntensity: 0 });
-  private glowMat = new THREE.MeshBasicMaterial({ map: typeof document === 'undefined' ? null : glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
-=======
   private roofMat = new THREE.MeshStandardMaterial({ color: '#3b2f28', flatShading: true, roughness: 0.7, metalness: 0.2 });
   private paneMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: WARM, emissiveIntensity: 0, roughness: 0.4 });
   private glowMat = new THREE.MeshBasicMaterial({ map: softTexture(0.55), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, fog: false });
   private haloMat = new THREE.PointsMaterial({ map: softTexture(0.9), size: 1.6, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, fog: false });
->>>>>>> Stashed changes
   private glowGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private roofGeo = new THREE.ConeGeometry(1, 1, 4).rotateY(Math.PI / 4); // a little four-sided lantern roof
   private level = -1;

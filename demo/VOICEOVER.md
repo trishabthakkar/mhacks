@@ -1,5 +1,7 @@
 # Devpost video: skit + voiceover (≈2:50 total)
 
+Recorded shots: see demo/pitch and the scratch takes; the final cut follows the order below.
+
 Pace: ~150 words a minute, calm and warm. Pause one beat after every **bold** line. Shot numbers match BACKUP.md.
 Lines marked *(cut if long)* can go if the video runs over 3:00.
 

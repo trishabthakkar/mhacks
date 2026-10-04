@@ -97,7 +97,8 @@ export class Props {
   }
 
   /** Rebuild the static world for a garden of this size. `halfW/halfD` = half extent of the beds. */
-  rebuild(halfW: number, halfD: number, frontZ: number, paths: PathLayout[] = []) {
+  rebuild(halfW: number, halfD: number, frontZ: number, paths: PathLayout[] = [], keepClear: { x: number; z: number; r: number }[] = []) {
+    const clear = (x: number, z: number, m = 0) => keepClear.every((k) => Math.hypot(x - k.x, z - k.z) > k.r + m); // e.g. the pond
     for (const o of [...this.world.children]) { this.world.remove(o); o.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); }); }
     this.radius = Math.max(150, Math.hypot(halfW, halfD) * 2 + 70); // wide enough that the camera never sees past the land
     const R = this.radius, gardenR = Math.hypot(halfW, halfD);
@@ -149,6 +150,7 @@ export class Props {
     const rMin = gardenR + 9, rMax = R * 0.88;
     for (let i = 0; i < 44; i++) {
       const p = place(i, 11, rMin, rMax), s = 0.9 + p.k * 0.9, t = new THREE.Group();
+      if (!clear(p.x, p.z, 2)) continue;
       t.add(mesh(geo.cyl, mat(PALETTE.trunk), 0.28 * s, 1.5 * s, 0.28 * s, 0, 0.75 * s, 0));
       t.add(mesh(geo.cone, mat(PALETTE.leaf), 1.5 * s, 2.4 * s, 1.5 * s, 0, 2.3 * s, 0));
       t.add(mesh(geo.cone, mat(PALETTE.leafDark), 1.15 * s, 2.0 * s, 1.15 * s, 0, 3.4 * s, 0));
@@ -156,6 +158,7 @@ export class Props {
     }
     for (let i = 0; i < 30; i++) {
       const p = place(i, 31, gardenR + 6, R * 0.9), s = 0.4 + p.k * 0.8;
+      if (!clear(p.x, p.z, 1)) continue;
       const rock = mesh(geo.sphere, mat(p.k > 0.5 ? PALETTE.stone : PALETTE.stoneDark), s * 1.2, s * 0.65, s, p.x, s * 0.25, p.z);
       rock.rotation.y = p.k * 6; this.world.add(rock);
     }
@@ -164,6 +167,7 @@ export class Props {
     for (let i = 0; i < tufts; i++) {
       const p = place(i, 71, gardenR + 3, R * 0.92), s = 0.25 + p.k * 0.35;
       dm.position.set(p.x, s * 0.5 - 0.05, p.z); dm.scale.set(s * 0.5, s, s * 0.5); dm.rotation.y = p.k * 9; dm.updateMatrix();
+      if (!clear(p.x, p.z)) dm.matrix.makeScale(0, 0, 0);
       gm.setMatrixAt(i, dm.matrix); gm.setColorAt(i, c.set(PALETTE.leaf).lerp(this.tmpC.set(PALETTE.meadowInner), p.k));
     }
     gm.castShadow = false; gm.frustumCulled = false; this.world.add(gm);
@@ -171,10 +175,11 @@ export class Props {
     const WILD = ['#f4a6c1', '#f7d154', '#fbf7ee', '#b9a3e3', '#f29e7c'], patches = 70, per = 9;
     const fm = new THREE.InstancedMesh(geo.sphere, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.8 }), patches * per);
     for (let i = 0; i < patches; i++) {
-      const p = place(i, 91, gardenR + 4, R * 0.85), tone = WILD[Math.floor(p.k * WILD.length)]!;
+      const p = place(i, 91, gardenR + 4, R * 0.85), tone = WILD[Math.floor(p.k * WILD.length)]!, hide = !clear(p.x, p.z, 2);
       for (let j = 0; j < per; j++) {
         const a = hash2(i * per + j, 93) * Math.PI * 2, r = 0.3 + hash2(i * per + j, 94) * 1.6, s = 0.11 + hash2(i * per + j, 95) * 0.07;
         dm.position.set(p.x + Math.cos(a) * r, 0.16 + s * 0.3, p.z + Math.sin(a) * r); dm.scale.set(s, s * 0.7, s); dm.rotation.set(0, 0, 0); dm.updateMatrix();
+        if (hide) dm.matrix.makeScale(0, 0, 0);
         fm.setMatrixAt(i * per + j, dm.matrix); fm.setColorAt(i * per + j, c.set(j % 4 === 3 ? '#fbf7ee' : tone));
       }
     }

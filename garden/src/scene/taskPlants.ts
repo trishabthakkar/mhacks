@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import type { TaskModel } from '../tasks.ts';
 import type { TaskPlantLayout } from '../layout.ts';
 import type { Labels } from './effects.ts';
-import { geo, mat, mesh } from './materials.ts';
+import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
+
+const SHARED = new Set<THREE.BufferGeometry>([geo.sphere, geo.cyl, geo.box, geo.cone]);
 import { iconMat } from './actors.ts';
 
 interface TP { id: number; g: THREE.Group; key: string; label: HTMLElement; labelText: string; hand?: THREE.Sprite; x: number; z: number; status: string; born: number }
@@ -38,26 +40,30 @@ export class TaskPlants {
   }
 
   private build(t: TP, m: TaskModel) {
-    for (const c of [...t.g.children]) { t.g.remove(c); }
+    for (const c of [...t.g.children]) { t.g.remove(c); c.traverse((o) => { const g = (o as THREE.Mesh).geometry; if (g && !SHARED.has(g)) g.dispose(); }); }
+    // Built in a detached group at the origin, then merged by material: a pot is ~5 draw calls instead of ~23.
+    const body = new THREE.Group();
     const owner = mat(m.color), stem = mat('#3f7d3a'), leaf = mat('#58a24a');
-    t.g.add(mesh(geo.cyl, owner, 0.55, 0.45, 0.55, 0, 0.22, 0));                    // pot in the owner's colour
-    t.g.add(mesh(geo.cyl, stem, 0.08, 2.2, 0.08, 0, 1.45, 0));                       // tall stem
+    body.add(mesh(geo.cyl, owner, 0.55, 0.45, 0.55, 0, 0.22, 0));                    // pot in the owner's colour
+    body.add(mesh(geo.cyl, stem, 0.08, 2.2, 0.08, 0, 1.45, 0));                       // tall stem
     const leaves = Math.max(2, Math.min(8, m.paths.length));
     for (let i = 0; i < leaves; i++) {
       const a = (i / leaves) * Math.PI * 2, y = 0.8 + (i / leaves) * 1.4;
-      const l = mesh(geo.sphere, leaf, 0.42, 0.07, 0.18, Math.cos(a) * 0.3, y, Math.sin(a) * 0.3); l.rotation.y = -a; l.rotation.z = 0.35; t.g.add(l);
+      const l = mesh(geo.sphere, leaf, 0.42, 0.07, 0.18, Math.cos(a) * 0.3, y, Math.sin(a) * 0.3); l.rotation.y = -a; l.rotation.z = 0.35; body.add(l);
     }
     const n = Math.min(m.items.length, 12);
     for (let i = 0; i < n; i++) {                                                        // buds spiral up the top third
       const it = m.items[i]!, a = i * 2.4, y = 1.9 + (i / Math.max(1, n)) * 0.7;
       const c = it.state === 'completed' ? mat('#ffffff', { emissive: 0x222222 }) : it.state === 'in_progress' ? mat('#ffd23f', { emissive: 0x6b4f00 }) : mat('#9ac26b');
       const s = it.state === 'completed' ? 0.2 : 0.14;
-      t.g.add(mesh(geo.sphere, c, s, s, s, Math.cos(a) * 0.32, y, Math.sin(a) * 0.32));
+      body.add(mesh(geo.sphere, c, s, s, s, Math.cos(a) * 0.32, y, Math.sin(a) * 0.32));
     }
     if (m.status === 'done') {                                                           // certified: big bloom on top
-      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; t.g.add(mesh(geo.sphere, owner, 0.32, 0.08, 0.2, Math.cos(a) * 0.36, 2.65, Math.sin(a) * 0.36)); }
-      t.g.add(mesh(geo.sphere, mat('#f2c230'), 0.24, 0.18, 0.24, 0, 2.68, 0));
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; body.add(mesh(geo.sphere, owner, 0.32, 0.08, 0.2, Math.cos(a) * 0.36, 2.65, Math.sin(a) * 0.36)); }
+      body.add(mesh(geo.sphere, mat('#f2c230'), 0.24, 0.18, 0.24, 0, 2.68, 0));
     }
+    mergeByMaterial(body);
+    t.g.add(body);
     t.hand = undefined;
     if (m.status === 'blocked' || m.roadblocks.length) {
       t.hand = new THREE.Sprite(iconMat('✋')); t.hand.scale.setScalar(0.6); t.hand.position.set(0.55, 2.6, 0); t.g.add(t.hand);

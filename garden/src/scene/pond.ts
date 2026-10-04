@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { ActivityView, MemberView } from '../../../shared/types.ts';
-import { lilyPads } from '../pond.ts';
+import { lilyPads, MAX_PADS } from '../pond.ts';
 import type { Labels } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { hash2 } from './palette.ts';
@@ -10,6 +10,11 @@ const PAD_GEO = new THREE.CircleGeometry(1, 18, 0.35, Math.PI * 2 - 0.7).rotateX
 const RIPPLE_GEO = new THREE.RingGeometry(0.9, 1, 32).rotateX(-Math.PI / 2);
 const PAD_MAT = new THREE.MeshStandardMaterial({ color: '#4f9a45', roughness: 0.6, side: THREE.DoubleSide });
 const WATER_Y = 0.02;
+// A pad's flower, relative to the pad: five petals and a yellow centre (precomputed, instanced).
+const PETALS = Array.from({ length: 5 }, (_, i) => { const a = (i / 5) * Math.PI * 2; return new THREE.Matrix4().compose(
+  new THREE.Vector3(Math.cos(a) * 0.06, 0.06, Math.sin(a) * 0.06), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -a, 0.5)), new THREE.Vector3(0.07, 0.04, 0.045)); });
+const CENTRE = new THREE.Matrix4().compose(new THREE.Vector3(0, 0.08, 0), new THREE.Quaternion(), new THREE.Vector3(0.035, 0.035, 0.035));
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
 /**
  * The pond is the shared repo: each commit from the last day floats as a lily pad with a small flower in the
@@ -18,7 +23,11 @@ const WATER_Y = 0.02;
 export class Pond {
   private group = new THREE.Group();
   private still = new THREE.Group();
-  private pads = new Map<number, { obj: THREE.Group; born: number; phase: number }>();
+  // All pads share three instanced meshes (pad, petals, centres): 3 draw calls however many commits there are.
+  private pads = new Map<number, { slot: number; x: number; z: number; size: number; rot: number; born: number; phase: number }>();
+  private free = Array.from({ length: MAX_PADS }, (_, i) => MAX_PADS - 1 - i);
+  private padIM: THREE.InstancedMesh; private petalIM: THREE.InstancedMesh; private centreIM: THREE.InstancedMesh;
+  private mA = new THREE.Matrix4(); private mB = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private sv = new THREE.Vector3(); private col = new THREE.Color();
   private ripples: { m: THREE.Mesh; born: number; size: number }[] = [];
   private water?: THREE.MeshStandardMaterial;
   private label?: HTMLElement;
@@ -28,7 +37,19 @@ export class Pond {
   private nextIdle = 2;
   private synced = false; // pads already there on first load appear without ripples
 
-  constructor(scene: THREE.Scene, private labels: Labels) { scene.add(this.group); this.group.add(this.still); }
+  constructor(scene: THREE.Scene, private labels: Labels) {
+    scene.add(this.group); this.group.add(this.still);
+    const flower = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.8 });
+    this.padIM = new THREE.InstancedMesh(PAD_GEO, PAD_MAT, MAX_PADS);
+    this.petalIM = new THREE.InstancedMesh(geo.sphere, flower, MAX_PADS * 5);
+    this.centreIM = new THREE.InstancedMesh(geo.sphere, flower, MAX_PADS);
+    for (const im of [this.padIM, this.petalIM, this.centreIM]) {
+      for (let i = 0; i < im.count; i++) im.setMatrixAt(i, ZERO);
+      im.frustumCulled = false; im.receiveShadow = true; im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.group.add(im);
+    }
+    for (let i = 0; i < MAX_PADS; i++) this.centreIM.setColorAt(i, this.col.set('#f2c230'));
+    this.petalIM.setColorAt(0, this.col.set('#f4a6c1'));
+  }
 
   /** (Re)build the pond's banks and water at this spot. */
   place(x: number, z: number, r: number) {
@@ -83,23 +104,23 @@ export class Pond {
     const color = new Map(members.map((m) => [m.handle, m.color]));
     const byId = new Map(activity.map((a) => [a.id, a]));
     const keep = new Set(want.map((p) => p.id));
-    for (const [id, p] of this.pads) if (!keep.has(id)) { this.group.remove(p.obj); this.pads.delete(id); }
+    for (const [id, p] of this.pads) if (!keep.has(id)) { this.hidePad(p.slot); this.free.push(p.slot); this.pads.delete(id); }
     for (const p of want) {
-      if (this.pads.has(p.id)) continue;
-      const obj = new THREE.Group();
-      const pad = new THREE.Mesh(PAD_GEO, PAD_MAT); pad.scale.setScalar(p.size); pad.receiveShadow = true; obj.add(pad);
-      const fc = color.get(byId.get(p.id)?.handle ?? '') ?? '#f4a6c1'; // flower in the committer's colour
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2;
-        const petal = mesh(geo.sphere, mat(fc), 0.07, 0.04, 0.045, Math.cos(a) * 0.06, 0.06, Math.sin(a) * 0.06); petal.rotation.y = -a; petal.rotation.z = 0.5; obj.add(petal);
-      }
-      obj.add(mesh(geo.sphere, mat('#f2c230'), 0.035, 0.035, 0.035, 0, 0.08, 0));
-      obj.position.set(p.x, WATER_Y + 0.01, p.z); obj.rotation.y = p.id * 2.4;
+      if (this.pads.has(p.id) || !this.free.length) continue;
+      const slot = this.free.pop()!;
+      this.col.set(color.get(byId.get(p.id)?.handle ?? '') ?? '#f4a6c1'); // flower in the committer's colour
+      for (let i = 0; i < 5; i++) this.petalIM.setColorAt(slot * 5 + i, this.col);
+      this.petalIM.instanceColor!.needsUpdate = true;
       const fresh = this.synced;
-      this.group.add(obj); this.pads.set(p.id, { obj, born: fresh ? this.t : -10, phase: p.id * 1.7 });
+      this.pads.set(p.id, { slot, x: p.x, z: p.z, size: p.size, rot: p.id * 2.4, born: fresh ? this.t : -10, phase: p.id * 1.7 });
       if (fresh) this.ripple(p.x, p.z, 1.2);
     }
     this.synced = true;
+  }
+
+  private hidePad(slot: number) {
+    this.padIM.setMatrixAt(slot, ZERO); this.centreIM.setMatrixAt(slot, ZERO);
+    for (let i = 0; i < 5; i++) this.petalIM.setMatrixAt(slot * 5 + i, ZERO);
   }
 
   private ripple(x: number, z: number, size: number) {
@@ -112,11 +133,15 @@ export class Pond {
   update(dt: number, mo: number) {
     this.t += dt;
     for (const p of this.pads.values()) {
-      const k = Math.min(1, (this.t - p.born) / 0.6), pop = 1 - Math.pow(1 - k, 3);
-      p.obj.scale.setScalar(Math.max(0.01, pop));
-      p.obj.position.y = WATER_Y + 0.01 + Math.sin(this.t * 1.2 + p.phase) * 0.012 * mo;
-      p.obj.rotation.y += dt * 0.03 * mo;
+      const k = Math.min(1, (this.t - p.born) / 0.6), pop = Math.max(0.01, 1 - Math.pow(1 - k, 3));
+      p.rot += dt * 0.03 * mo;
+      this.q.setFromAxisAngle(this.v.set(0, 1, 0), p.rot);
+      const M = this.mA.compose(this.v.set(p.x, WATER_Y + 0.035 + Math.sin(this.t * 1.2 + p.phase) * 0.012 * mo, p.z), this.q, this.sv.setScalar(pop));
+      this.padIM.setMatrixAt(p.slot, this.mB.makeScale(p.size, p.size, p.size).premultiply(M)); // M × scale
+      for (let i = 0; i < 5; i++) this.petalIM.setMatrixAt(p.slot * 5 + i, this.mB.multiplyMatrices(M, PETALS[i]!));
+      this.centreIM.setMatrixAt(p.slot, this.mB.multiplyMatrices(M, CENTRE));
     }
+    for (const im of [this.padIM, this.petalIM, this.centreIM]) im.instanceMatrix.needsUpdate = true;
     if (mo > 0.5 && this.t > this.nextIdle) { // a fish, a falling leaf
       const a = hash2(Math.floor(this.t), 7) * Math.PI * 2, rr = Math.sqrt(hash2(Math.floor(this.t), 8)) * this.r * 0.7;
       this.ripple(Math.cos(a) * rr, Math.sin(a) * rr, 0.6);

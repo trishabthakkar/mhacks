@@ -261,7 +261,7 @@ export class GardenWorld implements WorldLookup {
       const ps = pondSpot(this.layout); this.pond.place(ps.x, ps.z, ps.r);
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
-      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, withPondLink(layoutPaths(this.layout), pondLink(this.layout)));
+      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, withPondLink(layoutPaths(this.layout), pondLink(this.layout)), [(({ x, z, r }) => ({ x, z, r: r * 1.5 }))(pondSpot(this.layout))]);
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;

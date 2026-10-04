@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import type { PlantStage } from '../../../shared/types.ts';
-import { PlantField } from './plantField.ts';
+import { PlantField, plantHeight } from './plantField.ts';
 
 const field = () => new PlantField(new THREE.Scene());
 const plant = (f: PlantField, path: string, stage: PlantStage, bloom?: string) => f.upsert(path, 0, 0, 1, stage, 0, true, 0, true, bloom).inst;
@@ -119,4 +119,24 @@ test('buds are slim and pointed (taller than wide)', () => {
   const bud = f.get('a.ts')!.parts.at(-1)!, s = new THREE.Vector3();
   bud.base.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
   assert.ok(s.y > s.x * 1.6 && s.x <= 0.13, `${s.x} x ${s.y}`);
+});
+
+test('setHighlight brightens one plant and restores it when moved away', () => {
+  const f = field();
+  plant(f, 'a.ts', 'growing'); plant(f, 'b.ts', 'growing');
+  const hex = () => f.get('a.ts')!.parts.map((p) => f.colorOf(p).getHexString()).join();
+  const before = hex();
+  f.setHighlight('a.ts', 0.4);
+  assert.notEqual(hex(), before);
+  f.setHighlight('a.ts', 0.6); // level change on the same plant: still bright, and restorable
+  f.setHighlight('b.ts', 0.4);
+  assert.equal(hex(), before);
+  f.setHighlight(null, 0);
+  assert.notEqual(f.get('b.ts')!.parts.map((p) => f.colorOf(p).getHexString()).join(), '');
+});
+
+test('plantHeight grows with stage and size', () => {
+  assert.ok(plantHeight('bloom', 1, true) > plantHeight('sprout', 1, true));
+  assert.ok(plantHeight('growing', 1.5, true) > plantHeight('growing', 1, true));
+  assert.ok(plantHeight('seed', 1, false) >= 0.3);
 });

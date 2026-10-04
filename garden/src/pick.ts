@@ -19,6 +19,34 @@ export interface PickInput {
   /** Where the pointer ray meets the plant-height plane, or null (pointing at the sky). */
   ground: { x: number; z: number } | null;
   task?: number; shed: boolean; arch: boolean;
+  /** The plant column the pointer ray enters first (see pickColumn); beats the ground-distance plant search. */
+  plant?: string;
+}
+
+export interface Column { path: string; x: number; z: number; r: number; y0: number; y1: number }
+type V3 = { x: number; y: number; z: number };
+/** The plant the ray enters first, each plant a vertical cylinder from its soil (y0) to its top (y1). */
+export function pickColumn(o: V3, d: V3, cols: Column[]): string | undefined {
+  let best: string | undefined, bt = Infinity;
+  const a = d.x * d.x + d.z * d.z;
+  for (const c of cols) {
+    const fx = o.x - c.x, fz = o.z - c.z;
+    let t0 = -Infinity, t1 = Infinity;
+    if (a < 1e-12) { if (fx * fx + fz * fz > c.r * c.r) continue; }
+    else {
+      const b = 2 * (fx * d.x + fz * d.z), cc = fx * fx + fz * fz - c.r * c.r, disc = b * b - 4 * a * cc;
+      if (disc < 0) continue;
+      const sq = Math.sqrt(disc); t0 = (-b - sq) / (2 * a); t1 = (-b + sq) / (2 * a);
+    }
+    if (Math.abs(d.y) > 1e-12) {
+      let ya = (c.y0 - o.y) / d.y, yb = (c.y1 - o.y) / d.y; if (ya > yb) [ya, yb] = [yb, ya];
+      t0 = Math.max(t0, ya); t1 = Math.min(t1, yb);
+    } else if (o.y < c.y0 || o.y > c.y1) continue;
+    const t = Math.max(t0, 0);
+    if (t1 < t) continue;
+    if (t < bt) { bt = t; best = c.path; }
+  }
+  return best;
 }
 
 export const CLICK_PX = 5;
@@ -34,6 +62,7 @@ export function pickAt(inp: PickInput, sc: PickScene): Pick | null {
   }
   if (best) return best.pick;
   if (inp.task !== undefined) return { kind: 'task', key: inp.task };
+  if (inp.plant !== undefined) return { kind: 'plant', key: inp.plant };
   const g = inp.ground;
   if (g) {
     let plant: string | undefined, pd = Infinity;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isClick, parsePick, pickAt, pickKey, samePick, type PickInput, type PickScene } from './pick.ts';
+import { isClick, parsePick, pickAt, pickColumn, pickKey, samePick, type PickInput, type PickScene } from './pick.ts';
 
 const scene = (o: Partial<PickScene> = {}): PickScene => ({ people: [], plants: [], commits: [], beds: [], ...o });
 const at = (x: number, z: number, o: Partial<PickInput> = {}): PickInput => ({ screen: { x: 500, y: 500 }, ground: { x, z }, shed: false, arch: false, ...o });
@@ -66,4 +66,25 @@ test('a press that moved more than 5px is a drag, not a click', () => {
   assert.ok(isClick({ x: 10, y: 10 }, { x: 13, y: 14 }));
   assert.ok(!isClick({ x: 10, y: 10 }, { x: 16, y: 10 }));
   assert.ok(!isClick(undefined, { x: 1, y: 1 }));
+});
+
+test('pickColumn: nearest column along the ray wins (a tall plant in front of a short one)', () => {
+  const cols = [{ path: 'back', x: 0, z: -2, r: 0.4, y0: 0.2, y1: 0.8 }, { path: 'front', x: 0, z: 0, r: 0.4, y0: 0.2, y1: 2 }];
+  const o = { x: 0, y: 3, z: 10 }, tgt = { x: 0, y: 0.5, z: -2 };
+  assert.equal(pickColumn(o, { x: tgt.x - o.x, y: tgt.y - o.y, z: tgt.z - o.z }, cols), 'front');
+});
+
+test('pickColumn: bare soil and above the top miss; through the stem hits', () => {
+  const cols = [{ path: 'a', x: 0, z: 0, r: 0.4, y0: 0.2, y1: 1 }];
+  assert.equal(pickColumn({ x: 3, y: 5, z: 3 }, { x: 0, y: -1, z: 0 }, cols), undefined);
+  assert.equal(pickColumn({ x: -5, y: 1.5, z: 0 }, { x: 1, y: 0, z: 0 }, cols), undefined);
+  assert.equal(pickColumn({ x: -5, y: 0.5, z: 0 }, { x: 1, y: 0, z: 0 }, cols), 'a');
+  assert.equal(pickColumn({ x: 0, y: 5, z: 0 }, { x: 0, y: -1, z: 0 }, cols), 'a');
+});
+
+test('pickAt: a plant column beats pond and bed, loses to people and task pots', () => {
+  const sc = scene({ beds: [{ name: 'src', x: 0, z: 0, w: 10, d: 10 }] });
+  assert.deepEqual(pickAt(at(0, 0, { plant: 'src/a.ts' }), sc), { kind: 'plant', key: 'src/a.ts' });
+  assert.deepEqual(pickAt(at(0, 0, { plant: 'src/a.ts', task: 3 }), sc), { kind: 'task', key: 3 });
+  assert.deepEqual(pickAt(at(0, 0), sc), { kind: 'bed', key: 'src' });
 });

@@ -132,7 +132,12 @@ export function hoverText(p: Pick, s: GardenSnapshot): string | null {
     }
     case 'bed': { const n = s.plants.filter((x) => normalizeBed(x.bed) === p.key).length; return n ? `${clip(p.key, 30)} · ${n} files` : null; }
     case 'member': return s.members.some((m) => m.handle === p.key) ? `${p.key} · ${memberStatus(s, p.key)}` : null;
-    case 'task': { const t = (s.tasks ?? []).find((x) => x.id === p.key); return t ? clip(t.title, 40) : null; }
+    case 'task': {
+      const t = (s.tasks ?? []).find((x) => x.id === p.key); if (!t) return null;
+      const items = (s.taskItems ?? []).filter((i) => i.taskId === t.id);
+      const tail = items.length ? `${items.filter((i) => i.state === 'completed').length}/${items.length} done` : t.status.replace(/_/g, ' ');
+      return `${clip(t.title, 40)} · ${t.handle} · ${tail}`;
+    }
     case 'commit': { const a = s.activity.find((x) => x.id === p.key); return a ? `${a.handle} committed${a.detail ? `: ${clip(a.detail, 40)}` : ''}` : null; }
     case 'botanist': return 'The botanist · click for verdicts';
     case 'pond': return 'The pond · today\'s commits';

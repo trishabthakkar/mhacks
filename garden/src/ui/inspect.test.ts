@@ -93,3 +93,10 @@ test('hover text is one short plain line', () => {
   assert.equal(hoverText({ kind: 'member', key: 'seno' }, snap()), 'seno · offline');
   assert.equal(hoverText({ kind: 'plant', key: 'gone.ts' }, snap()), null);
 });
+
+test('hoverText: a task pot is one line: title · handle · progress (or status)', () => {
+  const task = { id: 1, handle: 'trisha', title: 'Add login form', status: 'in_progress', bed: 'src', paths: [], createdAt: NOW, updatedAt: NOW } as never;
+  const items = [{ id: 1, taskId: 1, ord: 0, text: 'a', state: 'completed' }, { id: 2, taskId: 1, ord: 1, text: 'b', state: 'pending' }] as never;
+  assert.equal(hoverText({ kind: 'task', key: 1 }, snap({ tasks: [task], taskItems: items })), 'Add login form · trisha · 1/2 done');
+  assert.equal(hoverText({ kind: 'task', key: 1 }, snap({ tasks: [task], taskItems: [] })), 'Add login form · trisha · in progress');
+});

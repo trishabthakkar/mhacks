@@ -5,14 +5,13 @@ import { BED_PAD, layoutGarden, layoutPaths, layoutTaskPlants, SPACING, type Bed
 import { bedStyleOf, collapseGenerated, speciesOf } from '../species.ts';
 import { TaskPlants } from './taskPlants.ts';
 import { currentTaskOf, taskModels } from '../tasks.ts';
-import { taskCardHtml } from '../ui/taskCard.ts';
 import { hoverText } from '../ui/inspect.ts';
-import { isClick, pickAt, samePick, type Pick, type PickScene } from '../pick.ts';
+import { isClick, pickAt, pickColumn, samePick, type Pick, type PickScene } from '../pick.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
-import { PlantField } from './plantField.ts';
+import { PlantField, plantHeight } from './plantField.ts';
 import { Pond } from './pond.ts';
 import { pondLink, pondSpot } from '../pond.ts';
 import { Nav } from '../nav.ts';
@@ -167,7 +166,8 @@ export class GardenWorld implements WorldLookup {
     this.shaft.position.y = 3.6; this.scene.add(this.shaft);
     this.pulse.rotation.x = -Math.PI / 2; this.pulse.visible = false; this.scene.add(this.pulse);
     this.spotRing.rotation.x = -Math.PI / 2; this.spotRing.position.y = 0.32; this.scene.add(this.spotRing);
-    for (const r of [this.selRing, this.hoverRing]) { r.rotation.x = -Math.PI / 2; r.visible = false; this.scene.add(r); }
+    // rings draw over soil and leaves (a plant's ring would otherwise sit inside its mound)
+    for (const r of [this.selRing, this.hoverRing]) { r.rotation.x = -Math.PI / 2; r.visible = false; (r.material as THREE.Material).depthTest = false; r.renderOrder = 10; this.scene.add(r); }
     this.hoverEl.className = 'tip'; this.hoverEl.setAttribute('aria-hidden', 'true');
     this.lockMesh.add(mesh(geo.box, mat('#c9a227'), 0.28, 0.22, 0.12, 0, 0, 0));
     const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI), mat('#8d8d8d')); shackle.position.y = 0.11;
@@ -523,35 +523,39 @@ export class GardenWorld implements WorldLookup {
       people.push({ pick, sx: r.left + ((v.x + 1) / 2) * r.width, sy: r.top + ((1 - v.y) / 2) * r.height, r: Math.max(14, 900 / depth), depth });
     });
     const g = this.ray.ray.intersectPlane(this.groundPlane, this.hit);
+    // plants are columns from their soil to their top, so tall plants and plants on mounds pick where they are drawn
+    const cols = this.layout.plants.map((p) => {
+      const f = this.field.get(p.path), y0 = this.plantBase(p.bed);
+      return { path: p.path, x: p.x, z: p.z, r: Math.max(0.45, p.size * 0.42), y0, y1: y0 + plantHeight(f?.stage ?? 'seed', p.size, f?.full !== false) };
+    });
     return pickAt({
       screen: { x: cx, y: cy }, ground: g ? { x: g.x, z: g.z } : null,
       task: this.tasks.pick(this.ray), shed: this.props.hitShed(this.ray), arch: this.boundary.hit(this.ray),
+      plant: pickColumn(this.ray.ray.origin, this.ray.ray.direction, cols),
     }, {
-      people,
-      plants: this.layout.plants.map((p) => ({ path: p.path, x: p.x, z: p.z, size: this.field.get(p.path)?.full === false ? 0.6 : p.size })),
+      people, plants: [],
       commits: this.pond.padSpots(), pond: this.pond.spot,
       beds: this.layout.beds.map((b) => ({ name: b.name, x: b.x, z: b.z, w: b.w, d: b.d })),
     });
   }
+
+  /** Soil height under a bed's plants: stepping stones sit low, raised beds high. */
+  private plantBase(bed: string) { return bedStyleOf(bed).kind === 'stones' ? 0.1 : 0.32; }
 
   private setHover(p: Pick | null, cx: number, cy: number) {
     this.hovered = p;
     const text = p && this.snap ? hoverText(p, this.snap) : null;
     if (!p || !text) { this.hoverEl.hidden = true; this.hoverRing.visible = false; this.renderer.domElement.style.cursor = ''; return; }
     this.renderer.domElement.style.cursor = 'pointer';
-    const m = p.kind === 'task' ? taskModels(this.snap).find((x) => x.id === p.key) : undefined;
-    let card: HTMLElement = this.hoverEl;
-    if (m) { // tasks keep their full card on hover
-      this.hoverEl.className = ''; this.hoverEl.innerHTML = taskCardHtml(m, this.snap.at);
-      card = this.hoverEl.firstElementChild as HTMLElement; card.classList.add('hover');
-    } else { this.hoverEl.className = 'tip'; this.hoverEl.textContent = text; }
-    this.hoverEl.hidden = false;
-    card.style.left = `${Math.min(innerWidth - (m ? 380 : 300), cx + 16)}px`; card.style.top = `${Math.max(8, cy - (m ? 40 : 34))}px`;
+    // every pick hovers the same way: one plain line + a ring (a task's full card lives in the inspector)
+    this.hoverEl.className = 'tip'; this.hoverEl.textContent = text; this.hoverEl.hidden = false;
+    this.hoverEl.style.left = `${Math.min(innerWidth - 300, cx + 16)}px`; this.hoverEl.style.top = `${Math.max(8, cy - 34)}px`;
     const at = this.pickPos(p);
     this.hoverRing.visible = !!at && !samePick(p, this.selected);
-    if (at) { this.hoverRing.position.set(at.x, 0.33, at.z); this.hoverRing.scale.setScalar(this.ringSize(p)); }
+    if (at) { this.hoverRing.position.set(at.x, this.ringY(p), at.z); this.hoverRing.scale.setScalar(this.ringSize(p)); }
   }
 
+  private ringY(p: Pick) { return p.kind === 'plant' ? this.plantBase(this.bedOfPath(p.key) ?? '') + 0.15 : 0.33; }
   private ringSize(p: Pick) {
     if (p.kind === 'plant') return Math.max(0.6, (this.layout.plants.find((x) => x.path === p.key)?.size ?? 1) * 0.65);
     if (p.kind === 'bed') { const b = this.layout.beds.find((x) => x.name === p.key); return b ? Math.max(b.w, b.d) * 0.6 : 2; }
@@ -720,7 +724,9 @@ export class GardenWorld implements WorldLookup {
     if (this.hoverAt && (this.hoverDirty || ++this.hoverTick % 10 === 0)) { this.hoverDirty = false; const h = this.pickUnder(this.hoverAt.x, this.hoverAt.y); if (h || this.hovered) this.setHover(h, this.hoverAt.x, this.hoverAt.y); }
     const sp = this.selected ? this.pickPos(this.selected) : undefined;
     this.selRing.visible = !!sp;
-    if (sp) { this.selRing.position.set(sp.x, 0.34, sp.z); this.selRing.scale.setScalar(this.ringSize(this.selected!) * (1 + Math.sin(t * 3) * 0.05 * mo)); }
+    const hp = this.hovered?.kind === 'plant' ? this.hovered.key : null, slp = this.selected?.kind === 'plant' ? this.selected.key : null;
+    this.field.setHighlight(this.hedgeOf.get(hp ?? slp ?? '') ?? hp ?? slp, hp ? 0.35 : 0.5);
+    if (sp) { this.selRing.position.set(sp.x, this.ringY(this.selected!) + 0.01, sp.z); this.selRing.scale.setScalar(this.ringSize(this.selected!) * (1 + Math.sin(t * 3) * 0.05 * mo)); }
     this.props.update(t, dt, 0, 0, mo);
     // Camera: follow a member, or director mode follows the latest action.
     let focus: THREE.Vector3 | undefined;

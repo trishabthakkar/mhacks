@@ -39,6 +39,11 @@ const BLOOM: Record<Exclude<Species, 'flower'>, THREE.Color> = {
   sunflower: C.sunPetal, fern: C.fernTip, cactus: C.cactusBloom, shrub: C.berry, stone: C.white, clover: C.cloverHead,
 };
 
+/** Rough height of a plant above its soil, for picking. */
+export function plantHeight(stage: PlantStage, size: number, full: boolean): number {
+  return full ? 0.3 + STEM_H[stage] * size * 1.1 : 0.35;
+}
+
 /**
  * All plants as two InstancedMesh pools (spheres, cylinders). A plant is a handful of parts, each owning one
  * instance slot; per-frame animation (pop, sway, droop, wobble, petals opening, bugs crawling) only rewrites
@@ -277,6 +282,25 @@ export class PlantField {
     }
     if (inst.bugs !== bugs) { inst.bugs = bugs; this.buildBugs(inst); }
     return { wasStage, bugsBefore, inst };
+  }
+
+  private hl: { path: string; key: string; level: number; saved: number[] } | null = null;
+  /** Brighten one plant (hover/selection); whichever was lit before gets its colours back. Cheap to call every frame. */
+  setHighlight(path: string | null, level: number) {
+    const cur = this.hl, inst = path && level > 0 ? this.plants.get(path) : undefined;
+    if (cur && inst && cur.path === inst.path && cur.key === inst.key && cur.level === level) return;
+    if (cur) {
+      const was = this.plants.get(cur.path);
+      if (was && was.key === cur.key) was.parts.forEach((p, i) => { this.meshes[p.mesh]!.setColorAt(p.slot, this.col.fromArray(cur.saved, i * 3)); this.dirtyColor[p.mesh] = true; });
+      this.hl = null;
+    }
+    if (!inst) return;
+    const saved: number[] = [];
+    for (const p of inst.parts) {
+      const c = this.colorOf(p); saved.push(c.r, c.g, c.b);
+      this.meshes[p.mesh]!.setColorAt(p.slot, c.lerp(C.white, level)); this.dirtyColor[p.mesh] = true;
+    }
+    this.hl = { path: inst.path, key: inst.key, level, saved };
   }
 
   remove(path: string) {

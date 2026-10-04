@@ -37,6 +37,10 @@ export interface SproutDb {
   markDelivered(handle: string, id: string): Promise<void>;
   postMessage(fromHandle: string, toHandle: string, kind: string, body: string): Promise<void>;
   ackMessage(handle: string, id: string): Promise<void>;
+  /** Fence files or `dir/` prefixes. Rejects (module SenderError) if someone else holds a match. */
+  claimFiles(handle: string, paths: string[], ttlMinutes?: number): Promise<void>;
+  /** Empty `paths`: release all of mine. */
+  releaseFiles(handle: string, paths: string[]): Promise<void>;
 }
 
 type Log = (line: string) => void;
@@ -104,6 +108,24 @@ export class FakeDb implements SproutDb {
     await this.call('ackMessage', { handle, id });
     m.status = 'acked';
     m.ackedAt = Date.now();
+  }
+
+  async claimFiles(handle: string, paths: string[], ttlMinutes = 30) {
+    const now = Date.now();
+    for (const p of paths) {
+      const clash = this.claimRows.find((c) => c.handle !== handle && c.expiresAt > now
+        && (c.path === p || (c.path.endsWith('/') && p.startsWith(c.path)) || (p.endsWith('/') && c.path.startsWith(p))));
+      if (clash) throw new Error(`${p} is fenced by ${clash.handle}`);
+    }
+    await this.call('claimFiles', { handle, paths, ttlMinutes });
+    for (const p of paths) {
+      this.claimRows = this.claimRows.filter((c) => !(c.handle === handle && c.path === p));
+      this.claimRows.push({ id: String(this.claimRows.length + 1), path: p, handle, expiresAt: now + ttlMinutes * 60_000 });
+    }
+  }
+  async releaseFiles(handle: string, paths: string[]) {
+    await this.call('releaseFiles', { handle, paths });
+    this.claimRows = this.claimRows.filter((c) => c.handle !== handle || (paths.length > 0 && !paths.includes(c.path)));
   }
 }
 

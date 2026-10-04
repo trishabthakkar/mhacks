@@ -365,6 +365,45 @@ export class Daemon {
   }
 
   /** Sends now or says why not: a person typing a message should know whether it went. */
+/** Fence paths for this member (from `sprout claim`). The module owns the rules; its error text is returned as-is. */
+  async claim(rawPaths: unknown[], ttl?: unknown): Promise<{ ok: true; paths: string[]; until: number } | { ok: false; error: string }> {
+    const paths = [...new Set(rawPaths.map((p) => safePath(p)).filter((p): p is string => !!p))].slice(0, 50);
+    if (!paths.length) return { ok: false, error: 'no repo-relative paths to claim' };
+    const hidden = paths.filter((p) => isHidden(shareOf(this.cfg).hidden, p));
+    if (hidden.length) return { ok: false, error: `${hidden.join(', ')} is hidden on this laptop (sprout unhide first); not claimed` };
+    const ttlMinutes = Number.isInteger(ttl) && (ttl as number) > 0 && (ttl as number) <= 24 * 60 ? (ttl as number) : undefined;
+    if (!this.db?.isConnected()) return { ok: false, error: 'offline: not connected to the team database, nothing was claimed' };
+    try {
+      await this.db.claimFiles(this.cfg.handle, paths, ttlMinutes);
+    } catch (e) {
+      return { ok: false, error: String((e as Error)?.message ?? e) };
+    }
+    this.note(`claimed ${paths.join(', ')}`);
+    const mine = this.db.claims().filter((c) => c.handle === this.cfg.handle && paths.includes(c.path));
+    const until = mine.length ? Math.min(...mine.map((c) => c.expiresAt)) : Date.now() + (ttlMinutes ?? Number(this.db.config('claimTtlMinutes') ?? 30)) * 60_000;
+    return { ok: true, paths, until };
+  }
+
+  async release(rawPaths: unknown[]): Promise<{ ok: true; released: string[] } | { ok: false; error: string }> {
+    const paths = [...new Set(rawPaths.map((p) => safePath(p)).filter((p): p is string => !!p))].slice(0, 50);
+    if (rawPaths.length && !paths.length) return { ok: false, error: 'no repo-relative paths to release' };
+    if (!this.db?.isConnected()) return { ok: false, error: 'offline: not connected to the team database, nothing was released' };
+    const before = this.db.claims().filter((c) => c.handle === this.cfg.handle).map((c) => c.path);
+    try {
+      await this.db.releaseFiles(this.cfg.handle, paths);
+    } catch (e) {
+      return { ok: false, error: String((e as Error)?.message ?? e) };
+    }
+    const released = paths.length ? paths : before;
+    this.note(`released ${released.length ? released.join(', ') : '(nothing held)'}`);
+    return { ok: true, released };
+  }
+
+  claimsView(): { me: string; claims: ClaimRowLite[] } {
+    const now = Date.now();
+    return { me: this.cfg.handle, claims: (this.db?.claims() ?? []).filter((c) => c.expiresAt > now).sort((a, b) => a.path.localeCompare(b.path)) };
+  }
+
   async sendMessage(to: string, rawBody: string, kind: string): Promise<{ ok: true; body: string; masked: boolean } | { ok: false; error: string }> {
     const toHandle = to.trim().replace(/^@/, '');
     if (!/^[A-Za-z0-9_.-]{1,32}$/.test(toHandle)) return { ok: false, error: `not a handle: ${toHandle || '(empty)'}` };
@@ -487,6 +526,15 @@ export class Daemon {
       case 'GET /inbox': return json(200, { messages: this.inbox() });
       case 'GET /status': return json(200, this.status());
       case 'GET /messages': return json(200, this.messagesView());
+      case 'GET /claims': return json(200, this.claimsView());
+      case 'POST /claim': {
+        const b = JSON.parse((await readBody(req)) || '{}') as { paths?: unknown[]; ttl?: unknown };
+        return json(200, await this.claim(Array.isArray(b.paths) ? b.paths : [], b.ttl));
+      }
+      case 'POST /release': {
+        const b = JSON.parse((await readBody(req)) || '{}') as { paths?: unknown[] };
+        return json(200, await this.release(Array.isArray(b.paths) ? b.paths : []));
+      }
       case 'POST /send': {
         const b = JSON.parse((await readBody(req)) || '{}') as { to?: unknown; body?: unknown; kind?: unknown };
         return json(200, await this.sendMessage(String(b.to ?? ''), String(b.body ?? ''), String(b.kind ?? 'finding')));

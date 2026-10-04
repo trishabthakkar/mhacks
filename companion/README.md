@@ -36,6 +36,9 @@ If `npm i -g .` needs sudo (system Node), use `npm link` or nvm. After a `git pu
 
 | | |
 |---|---|
+| `sprout claim <path…> [--ttl <min>]` | fence files or folders from your terminal (a folder becomes `dir/`); errors name who holds a clash |
+| `sprout release [path…]` | drop your fences (no paths: all of yours) |
+| `sprout claims` | who has fenced what, and until when (★ = yours) |
 | `sprout inbox` | messages to you, and whether your agent has them yet |
 | `sprout send <handle> <message…> [--request]` | message a teammate; their agent gets it on their next prompt |
 | `sprout reply <id> <message…>` | answer a message (sent as `re #id: …`) |

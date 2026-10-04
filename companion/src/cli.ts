@@ -26,6 +26,11 @@ Messages (straight from your terminal, no AI needed):
   allow <id…|all>                    pass held messages to your agent (inbox mode "ask")
   sent                               what you sent and whether it landed
 
+Fences (claims), from your terminal:
+  claim <path…> [--ttl <minutes>]    fence files or folders so teammates' agents are warned/blocked
+  release [path…]                    drop your fences (no paths: all of yours)
+  claims                             who has fenced what, and until when
+
 What you share:
   share                              show what leaves this laptop and how messages reach your agent
   share <activity|reads|commands|tests|diffs> <on|off>
@@ -142,6 +147,15 @@ export async function main(argv: string[]): Promise<number> {
       if (!ids.length) { console.error('usage: sprout allow <id…|all>'); return 2; }
       return (await import('./messages.ts')).allow(ids.includes('all') ? 'all' : ids);
     }
+    case 'claim': {
+      const { pos, opt } = flags(rest);
+      if (!pos.length) { console.error('usage: sprout claim <path…> [--ttl <minutes>]'); return 2; }
+      const ttl = typeof opt.ttl === 'string' ? Number(opt.ttl) : undefined;
+      if (ttl !== undefined && !(Number.isInteger(ttl) && ttl > 0)) { console.error('--ttl must be a whole number of minutes'); return 2; }
+      return (await import('./claims.ts')).claim(pos, ttl);
+    }
+    case 'release': return (await import('./claims.ts')).release(flags(rest).pos);
+    case 'claims': return (await import('./claims.ts')).claims();
     case 'share':
     case 'hide':
     case 'unhide': {

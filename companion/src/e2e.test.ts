@@ -161,6 +161,22 @@ test('join → hooks → block / warn / inject → git commit chain', async () =
     .find((c) => c.name === 'recordTestRun' && c.args.exitCode === 1));
   assert.deepEqual(tr.args, { handle: 'trisha', repo: 'team/garden-app', command: 'API_KEY=*** pytest -k auth', exitCode: 1 });
 
+  // ---- human fences from the terminal ----
+  const c1 = sprout(['claim', 'README.md', '--ttl', '20']);
+  assert.equal(c1.status, 0, c1.stderr);
+  assert.match(c1.stdout, /fenced README\.md until \d+:\d\d[ap]m/);
+  const listed = sprout(['claims']);
+  assert.match(listed.stdout, /★ README\.md\s+trisha/);
+  assert.match(listed.stdout, /  src\/api\/\s+alex/);
+  const clash = sprout(['claim', 'src/api/routes.ts']); // alex's fence from the block test still covers src/api/
+  assert.equal(clash.status, 1);
+  assert.match(clash.stderr, /not claimed: src\/api\/routes\.ts is fenced by alex/);
+  const outside = sprout(['claim', '/etc/passwd']);
+  assert.equal(outside.status, 2);
+  const r1 = sprout(['release']);
+  assert.equal(r1.status, 0, r1.stderr);
+  assert.match(r1.stdout, /released README\.md/);
+
   // ---- status ----
   const st = sprout(['status']);
   assert.match(st.stdout, /claimMode {2}warn/);

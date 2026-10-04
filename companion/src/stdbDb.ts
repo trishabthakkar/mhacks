@@ -187,4 +187,10 @@ export class StdbDb implements SproutDb {
   ackMessage(handle: string, id: string) {
     return withTimeout(this.r().ackMessage({ handle, id: BigInt(id) }), CALL_TIMEOUT_MS, 'ackMessage');
   }
+  claimFiles(handle: string, paths: string[], ttlMinutes?: number) {
+    return withTimeout(this.r().claimFiles({ handle, paths, ttlMinutes }), CALL_TIMEOUT_MS, 'claimFiles');
+  }
+  releaseFiles(handle: string, paths: string[]) {
+    return withTimeout(this.r().releaseFiles({ handle, paths }), CALL_TIMEOUT_MS, 'releaseFiles');
+  }
 }

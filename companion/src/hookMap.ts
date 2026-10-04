@@ -113,7 +113,9 @@ export function mapHook(eventName: string, p: HookPayload, ctx: MapCtx): HookPla
         return { events: [act(isCreate(p.tool_response) ? 'create' : 'edit', { path, lines })] };
       }
       if (tool === 'Bash') {
-        const events: DaemonEvent[] = [act('bash', { detail: redactCommand(cmd) || undefined })];
+        // The `bash` activity was already sent on PreToolUse (the bot walks over while it runs);
+        // here only the test result, so one command is one feed line.
+        const events: DaemonEvent[] = [];
         const interrupted = !!(p.tool_response && typeof p.tool_response === 'object' && (p.tool_response as { interrupted?: boolean }).interrupted);
         if (isTestCommand(cmd) && !interrupted) events.push({ type: 'test_run', repo: repo.name, command: redactCommand(cmd), exitCode: 0, sessionId });
         return { events };

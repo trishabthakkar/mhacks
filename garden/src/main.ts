@@ -9,6 +9,7 @@ import type { GardenSnapshot } from '../../shared/types.ts';
 import { GardenWorld } from './scene/world.ts';
 import { initShed, renderShed, tickFreshness } from './ui/shed.ts';
 import { createAnnouncer, summarize } from './ui/announce.ts';
+import './ui/board.css';
 import { initPlan, renderPlan } from './ui/plan.ts';
 import { CUE_STEPS, renderCue, resetCue, seen, toggleManual } from './ui/cue.ts';
 import { applyShot } from './ui/shots.ts';
@@ -222,7 +223,7 @@ initShed(shed, {
 });
 shed.addEventListener('shed-rerender', () => refresh());
 initPlan(plan, {
-  onShowIn3D: (path) => { setPlan(false); world.focus('plant', path); },
+  onShowIn3D: (path) => { setPlan(false); world.focus('fence', path); },
   onClose: () => setPlan(false),
 });
 

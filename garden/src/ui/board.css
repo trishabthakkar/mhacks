@@ -1,0 +1,36 @@
+/* Team board (P) and task cards (also used by the 3D hover card). Large type: readable on a projector. */
+#plan .plan-bar { font-size: 18px; gap: 16px; }
+#plan .plan-bar .hint { opacity: .65; font-size: 15px; }
+#plan .board { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+#plan .attn { display: flex; flex-wrap: wrap; gap: 8px; }
+#plan .attn.ok { font-size: 17px; opacity: .7; }
+#plan .attn-chip { font-family: inherit; font-size: 16px; font-weight: 600; line-height: 1.3; padding: 6px 12px; border-radius: 999px; border: 2px solid #c0392b; background: #fff4f2; color: #24231d; cursor: pointer; }
+#plan .attn-chip.message, #plan .attn-chip.handoff { border-color: #2a6df4; background: #f1f6ff; }
+#plan .attn-chip:focus-visible { outline: 3px solid #2a6df4; outline-offset: 1px; }
+#plan .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start; }
+#plan .col h3 { margin: 0 0 8px; font-size: 22px; display: flex; align-items: center; gap: 8px; border-bottom: 4px solid var(--owner); padding-bottom: 6px; }
+#plan .col h3 small { font-weight: 400; font-size: 15px; opacity: .75; margin-left: auto; }
+#plan .dot { width: 12px; height: 12px; border-radius: 50%; background: #bbb; flex: none; }
+#plan .dot.on { background: #2e9e4f; }
+#plan .none { font-size: 16px; opacity: .6; margin: 6px 0; }
+.task-card { background: #fff; border: 1px solid #d9d2b8; border-left: 6px solid var(--owner); border-radius: 12px; padding: 10px 14px; margin: 0 0 10px; font-size: 16px; line-height: 1.35; color: #24231d; }
+.task-card:focus { outline: 3px solid #2a6df4; }
+.task-card header { display: flex; gap: 8px; align-items: baseline; }
+.task-card h4 { margin: 0; font-size: 19px; flex: 1; overflow-wrap: anywhere; }
+.task-card .st { font-size: 14px; white-space: nowrap; }
+.task-card.st-blocked { background: #fff6f4; }
+.task-card.st-done { opacity: .8; }
+.task-card .meta { margin: 2px 0 6px; font-size: 14px; opacity: .75; }
+.task-card .bar { height: 8px; background: #eee6cc; border-radius: 4px; overflow: hidden; }
+.task-card .bar i { display: block; height: 100%; background: var(--owner); }
+.task-card .prog { margin: 2px 0 4px; font-size: 13px; opacity: .7; }
+.task-card ul { list-style: none; margin: 4px 0; padding: 0; }
+.task-card .it .mk { display: inline-block; width: 1.3em; }
+.task-card .it.completed { opacity: .6; text-decoration: line-through; }
+.task-card .it.in_progress { font-weight: 700; }
+.task-card .blocks li { color: #b0301f; font-weight: 600; }
+.task-card .lives li { font-size: 14px; }
+.task-card .lives span { display: inline-block; min-width: 4.6em; }
+.task-card.compact .lives li { font-size: 13px; }
+#plan details.done summary { cursor: pointer; font-size: 15px; opacity: .75; margin: 4px 0 8px; }
+.task-card.hover { position: fixed; z-index: 6; max-width: 360px; pointer-events: none; box-shadow: 0 8px 24px rgba(0,0,0,.2); }

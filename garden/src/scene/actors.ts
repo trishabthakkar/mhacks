@@ -4,6 +4,7 @@ import { geo, mat, mesh } from './materials.ts';
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
+import { spiritText } from './spiritText.ts';
 
 export interface WorldLookup {
   plantPos(path: string): THREE.Vector3 | undefined;
@@ -146,13 +147,13 @@ function makeBot(color: string): { m: Mover; alert: THREE.Object3D; body: THREE.
   m.obj.add(alert);
   return { m, alert, body, rig: { wheelL, wheelR, tip, icon, iconFor: '' } };
 }
-function makeBee(): Mover {
-  const m = new Mover(5);
-  m.obj.add(mesh(geo.sphere, mat('#f6c21a'), 0.1, 0.08, 0.14));
-  m.obj.add(mesh(geo.box, mat('#222'), 0.105, 0.03, 0.04, 0, 0.01, 0.02));
-  const w = mesh(geo.box, mat('#ffffff', { opacity: 0.6 }), 0.16, 0.01, 0.07, 0, 0.09, 0);
-  m.obj.add(w);
-  m.obj.userData.wing = w;
+function makeSpirit(color: string): Mover {
+  const m = new Mover(4.5);
+  const body = mesh(geo.sphere, mat('#fffaf0', { emissive: new THREE.Color(color).multiplyScalar(0.35).getHex() }), 0.2, 0.22, 0.2, 0, 0.2, 0);
+  m.obj.add(body);
+  for (const sx of [-1, 1]) m.obj.add(mesh(geo.sphere, mat('#1c1c1c'), 0.035, 0.045, 0.02, sx * 0.06, 0.24, 0.18)); // eyes
+  const hat = mesh(geo.cone, mat('#58a24a'), 0.16, 0.2, 0.16, 0, 0.46, 0); m.obj.add(hat);                       // leaf hat
+  m.obj.add(mesh(geo.sphere, mat(color, { emissive: new THREE.Color(color).multiplyScalar(0.6).getHex() }), 0.06, 0.06, 0.06, 0, 0.6, 0)); // glow tip in owner colour
   return m;
 }
 function makeButterfly(color: string): Mover {
@@ -189,7 +190,7 @@ export class Actors {
   private snap: GardenSnapshot = { at: 0, members: [], agents: [], plants: [], claims: [], messages: [], testRuns: [], certifications: [], activity: [] };
   private gardeners = new Map<string, { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig }>();
   private bots = new Map<string, { obj: THREE.Object3D; m: Mover; alert: THREE.Object3D; body: THREE.Object3D; agent: AgentView; rig: BotRig }>();
-  private bees = new Map<string, { obj: THREE.Object3D; m: Mover; seed: number; parent: string; handle: string; trail: THREE.Points; trailPos: Float32Array; returning: boolean }>();
+  private bees = new Map<string, { obj: THREE.Object3D; m: Mover; seed: number; parent: string; handle: string; returning: boolean; bubble: HTMLElement; text: string; hop: number }>();
   private flies = new Map<string, Fly>();
   private meet = new Map<string, { pos: THREE.Vector3; until: number; with?: string }>();
   private botanist = makeBotanist();
@@ -286,26 +287,26 @@ export class Actors {
     }, this.scene, (b) => (b.rig.tip.material as THREE.Material).dispose());
     for (const a of claudes) { const b = this.bots.get(a.sessionId); if (b) b.agent = a; }
 
-    // Bees: a subagent that finishes flies back to its parent bot before disappearing.
+    // Spirits: one per subagent, hopping between its owner's task plant and the file it's on; a finished one flies home and pops.
     const subs = snap.agents.filter((a) => a.kind === 'subagent' && a.status !== 'dormant');
     const live = new Set(subs.map((a) => a.sessionId));
     for (const a of subs) {
       let b = this.bees.get(a.sessionId);
       if (!b) {
-        const m = makeBee();
-        const parent = this.bots.get(a.parentSessionId ?? '');
-        m.obj.position.copy(parent ? parent.obj.position : this.home(a.handle)).setY(1);
-        const trailPos = new Float32Array(14 * 3);
-        for (let i = 0; i < 14; i++) trailPos.set([m.obj.position.x, m.obj.position.y, m.obj.position.z], i * 3);
-        const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
-        const trail = new THREE.Points(tg, new THREE.PointsMaterial({ color: 0xffd84a, size: 0.09, transparent: true, opacity: 0.55, depthWrite: false }));
-        trail.frustumCulled = false;
-        this.scene.add(m.obj, trail);
-        b = { obj: m.obj, m, seed: m.obj.position.x, parent: a.parentSessionId ?? '', handle: a.handle, trail, trailPos, returning: false };
+        const m = makeSpirit(this.memberColor(a.handle));
+        const start = this.world.taskPlantPos(a.handle) ?? this.bots.get(a.parentSessionId ?? '')?.obj.position ?? this.home(a.handle);
+        m.obj.position.copy(start).setY(0.6);
+        this.scene.add(m.obj);
+        const bp = new THREE.Vector3();
+        const text = spiritText(a.currentAction, a.currentPath);
+        const bubble = this.labels.add(text, () => bp.copy(m.obj.position).setY(m.obj.position.y + 0.9), 'bubble spirit');
+        b = { obj: m.obj, m, seed: m.obj.position.x, parent: a.parentSessionId ?? '', handle: a.handle, returning: false, bubble, text, hop: 0 };
         this.bees.set(a.sessionId, b);
       }
       b.returning = false;
-      b.m.target.copy((a.currentPath ? this.world.plantPos(a.currentPath) : undefined) ?? this.home(a.handle)).setY(1.1);
+      const text = spiritText(a.currentAction, a.currentPath);
+      if (text !== b.text) { b.text = text; this.labels.setText(b.bubble, text); }
+      b.m.target.copy((a.currentPath ? this.world.plantPos(a.currentPath) : undefined) ?? this.world.taskPlantPos(a.handle) ?? this.home(a.handle)).setY(0.35);
     }
     for (const [id, b] of this.bees) if (!live.has(id)) b.returning = true; // flies home in tick(), then is removed
 
@@ -447,8 +448,8 @@ export class Actors {
     this.scene.remove(a.tag); if (a.chip) this.labels.remove(a.chip); this.handoffs.delete(id);
   }
 
-  private dropBee(id: string, b: { obj: THREE.Object3D; trail: THREE.Points }) {
-    this.scene.remove(b.obj, b.trail); b.trail.geometry.dispose(); this.bees.delete(id);
+  private dropBee(id: string, b: { obj: THREE.Object3D; bubble: HTMLElement }) {
+    this.scene.remove(b.obj); this.labels.remove(b.bubble); this.bees.delete(id);
   }
 
   tick(dt: number) {
@@ -511,20 +512,16 @@ export class Actors {
 
     for (const [id, b] of this.bees) {
       if (b.returning) {
-        const home = this.bots.get(b.parent);
+        const home = this.world.taskPlantPos(b.handle) ?? this.bots.get(b.parent)?.obj.position;
         if (!home) { this.dropBee(id, b); continue; }
-        b.m.target.copy(home.obj.position).setY(1.0);
-        if (b.obj.position.distanceToSquared(b.m.target) < 0.25) { this.fx.burst(b.obj.position, 0xffd84a, 8, 0.8, 1.5); this.dropBee(id, b); continue; }
+        b.m.target.copy(home).setY(0.6);
+        if (b.obj.position.distanceToSquared(b.m.target) < 0.25) { this.fx.burst(b.obj.position, 0xfff1a8, 10, 0.8, 1.5); this.dropBee(id, b); continue; }
       }
+      // Hop on top of the eased height; last frame's hop comes off first so it never feeds the easing (which would float the spirit ~2 units up).
+      b.obj.position.y -= b.hop;
       b.m.step(dt, true);
-      b.obj.position.y += Math.sin(t * 5 + b.seed) * 0.004 * mo;
-      b.obj.position.x += Math.cos(t * 3 + b.seed) * 0.01 * mo;
-      (b.obj.userData.wing as THREE.Object3D).scale.z = 0.07 * (0.5 + Math.abs(Math.sin(t * 40)));
-      // trail: shift history by one and put the head at the bee
-      const tp = b.trailPos;
-      for (let i = 13; i > 0; i--) { tp[i * 3] = tp[(i - 1) * 3]!; tp[i * 3 + 1] = tp[(i - 1) * 3 + 1]!; tp[i * 3 + 2] = tp[(i - 1) * 3 + 2]!; }
-      tp[0] = b.obj.position.x; tp[1] = b.obj.position.y; tp[2] = b.obj.position.z;
-      (b.trail.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      b.hop = Math.abs(Math.sin(t * 6 + b.seed)) * 0.18 * mo;
+      b.obj.position.y = Math.max(b.obj.position.y, 0.15) + b.hop;
     }
 
     for (const f of this.flies.values()) {

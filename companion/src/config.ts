@@ -3,7 +3,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { realish } from './redact.ts';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { DAEMON_PORT } from '../../shared/constants.ts';
 
 export interface JoinedRepo {
@@ -62,12 +62,18 @@ export function saveConfig(cfg: SproutConfig): void {
   renameSync(tmp, files.config());
 }
 
+/** Comparable form of a path: git gives `C:/x` on Windows, Claude Code `C:\x`, and the drive's case varies. */
+function pathKey(p: string): string {
+  const s = resolve(p).replace(/\\/g, '/');
+  return process.platform === 'win32' ? s.toLowerCase() : s;
+}
+
 /** The joined repo containing `absPath`, deepest root first. Matches through symlinks (macOS /var -> /private/var). */
 export function repoFor(cfg: Pick<SproutConfig, 'repos'>, absPath: string): JoinedRepo | undefined {
-  const paths = [absPath, realish(absPath)];
+  const paths = [absPath, realish(absPath)].map(pathKey);
   let best: JoinedRepo | undefined;
   for (const r of cfg.repos) {
-    for (const root of new Set([r.root, realish(r.root)])) {
+    for (const root of new Set([r.root, realish(r.root)].map(pathKey))) {
       const prefix = root.endsWith('/') ? root : root + '/';
       if (paths.some((p) => p === root || p.startsWith(prefix))) {
         if (!best || r.root.length > best.root.length) best = r;

@@ -97,7 +97,7 @@ test('relPath and repoFor see through symlinks (macOS /var -> /private/var)', as
   const real = realpathSync(mkdtempSync(join(tmpdir(), 'sprout-link-')));
   mkdirSync(join(real, 'repo/src'), { recursive: true });
   writeFileSync(join(real, 'repo/src/a.ts'), 'x');
-  symlinkSync(join(real, 'repo'), join(real, 'link'));
+  symlinkSync(join(real, 'repo'), join(real, 'link'), 'junction'); // junction: no admin needed on Windows, ignored elsewhere
   const viaLink = join(real, 'link/src/a.ts');
   assert.equal(relPath(join(real, 'repo'), viaLink), 'src/a.ts');
   assert.equal(relPath(join(real, 'link'), join(real, 'repo/src/a.ts')), 'src/a.ts');

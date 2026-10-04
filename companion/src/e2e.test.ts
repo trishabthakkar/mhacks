@@ -4,7 +4,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeTeamCode } from './teamCode.ts';
@@ -141,7 +141,8 @@ test('join → hooks → block / warn / inject → git commit chain', async () =
   await waitFor(async () => existsSync(join(home, 'old-hook-ran')));
   const calls = await waitFor(async () => {
     const c = (await http('GET', '/fake/calls')).calls as { name: string; args: any }[];
-    return c.some((x) => x.name === 'recordDiff' && x.args.commit) ? c : undefined;
+    // recordTestRun waits on a git poll first, which can trail the commit where spawning git is slow (Windows)
+    return c.some((x) => x.name === 'recordDiff' && x.args.commit) && c.some((x) => x.name === 'recordTestRun') ? c : undefined;
   });
   const names = calls.map((c) => c.name);
   for (const n of ['joinMember', 'ingestActivity', 'recordTestRun', 'markDelivered', 'recordDiff']) assert.ok(names.includes(n), n);
@@ -154,7 +155,7 @@ test('join → hooks → block / warn / inject → git commit chain', async () =
   for (const k of ['blocked_edit', 'prompt', 'read', 'bash', 'idle']) assert.ok(kinds.includes(k), k);
 
   // ---- shell hook path (what the curl in shell-init sends) ----
-  execFileSync('curl', ['-s', '-o', '/dev/null', '--max-time', '0.3', '--data-urlencode', 'cmd=API_KEY=sk-abcdefghijklmnop1234 pytest -k auth',
+  execFileSync('curl', ['-s', '-o', devNull, '--max-time', '0.3', '--data-urlencode', 'cmd=API_KEY=sk-abcdefghijklmnop1234 pytest -k auth',
     '--data-urlencode', 'ec=1', '--data-urlencode', `cwd=${repo}`, `http://127.0.0.1:${port}/event`]);
   const tr = await waitFor(async () => ((await http('GET', '/fake/calls')).calls as { name: string; args: any }[])
     .find((c) => c.name === 'recordTestRun' && c.args.exitCode === 1));

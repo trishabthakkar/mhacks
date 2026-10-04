@@ -1,6 +1,7 @@
 // Pure mapping from a Claude Code hook payload (see HOOK_PAYLOADS.md) to what the hook does:
 // events to POST, an optional claim check, an optional inbox fetch. No I/O except the
 // injected `countLines` (local only; only the number leaves the laptop).
+import { isAbsolute, resolve } from 'node:path';
 import type { ActivityKind } from '../../shared/types.ts';
 import { repoFor, type JoinedRepo } from './config.ts';
 import type { CheckResult, DaemonEvent, InboxMessage } from './events.ts';
@@ -69,7 +70,7 @@ export function mapHook(eventName: string, p: HookPayload, ctx: MapCtx): HookPla
   const absTool = (() => {
     const tp = toolPath(p);
     if (!tp) return undefined;
-    return tp.startsWith('/') ? tp : `${cwd.replace(/\/$/, '')}/${tp}`;
+    return isAbsolute(tp) ? tp : resolve(cwd, tp);
   })();
   const repo = repoFor(ctx, cwd) ?? (absTool ? repoFor(ctx, absTool) : undefined);
   if (!repo) return { events: [] }; // not a Sprout repo: nothing leaves the laptop

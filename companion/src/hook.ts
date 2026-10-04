@@ -39,7 +39,7 @@ export async function ensureDaemon(): Promise<void> {
     writeFileSync(files.starting(), String(Date.now()));
     const { spawn } = await import('node:child_process');
     const out = openSync(files.log(), 'a');
-    const child = spawn(process.execPath, [binPath(), 'daemon'], { detached: true, stdio: ['ignore', out, out], env: process.env });
+    const child = spawn(process.execPath, [binPath(), 'daemon'], { detached: true, windowsHide: true, stdio: ['ignore', out, out], env: process.env });
     child.unref();
     closeSync(out);
   } catch { /* fail open */ }

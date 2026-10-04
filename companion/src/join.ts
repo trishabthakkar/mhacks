@@ -16,7 +16,7 @@ const LOCKFILES = new Set(['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '
   'poetry.lock', 'Pipfile.lock', 'Gemfile.lock', 'composer.lock', 'go.sum', 'uv.lock', 'flake.lock']);
 const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|icns|bmp|tiff?|pdf|zip|gz|tgz|bz2|xz|7z|rar|jar|war|class|so|dylib|dll|exe|bin|o|a|wasm|woff2?|ttf|otf|eot|mp[34]|mov|avi|webm|wav|ogg|flac|glb|gltf|fbx|blend|psd|sketch|fig|sqlite|db|pyc)$/i;
 
-const gitOut = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
+const gitOut = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, maxBuffer: 64 * 1024 * 1024 });
 
 export function repoRoot(dir: string): string {
   return gitOut(dir, ['rev-parse', '--show-toplevel']).trim();
@@ -105,7 +105,7 @@ export function installClaudeHooks(root: string): string {
   writeFileSync(file, JSON.stringify(mergeHooks(settings), null, 2) + '\n');
   // Make sure it's never committed (local-only exclude; no change to the team's .gitignore).
   let ignored = false;
-  try { execFileSync('git', ['check-ignore', '-q', '.claude/settings.local.json'], { cwd: root, stdio: 'ignore' }); ignored = true; } catch { /* not ignored */ }
+  try { execFileSync('git', ['check-ignore', '-q', '.claude/settings.local.json'], { cwd: root, stdio: 'ignore', windowsHide: true }); ignored = true; } catch { /* not ignored */ }
   if (!ignored) {
     const exclude = resolve(root, gitOut(root, ['rev-parse', '--git-path', 'info/exclude']).trim());
     mkdirSync(dirname(exclude), { recursive: true });

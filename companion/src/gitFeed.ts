@@ -7,7 +7,7 @@ import type { JoinedRepo } from './config.ts';
 
 export function git(cwd: string, args: string[], timeoutMs = 3000): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+    execFile('git', args, { cwd, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
       if (err) reject(err); else resolve(stdout);
     });
   });

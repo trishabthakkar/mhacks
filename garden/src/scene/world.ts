@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GardenSnapshot, PlantStage, PlantView } from '../../../shared/types.ts';
-import { layoutGarden, layoutPaths, layoutTaskPlants, type BedLayout, type GardenLayout, type PlantLayout } from '../layout.ts';
+import { BED_PAD, layoutGarden, layoutPaths, layoutTaskPlants, SPACING, type BedLayout, type GardenLayout, type PlantLayout } from '../layout.ts';
 import { bedStyleOf, collapseGenerated, speciesOf } from '../species.ts';
 import { TaskPlants } from './taskPlants.ts';
 import { currentTaskOf, taskModels } from '../tasks.ts';
@@ -23,6 +23,10 @@ const LOD_LIMIT = 80; // above this many plants, quiet ones become ground cover
 const ACTIVE_MS = 30 * 60_000;
 
 /** Free the GPU buffers of baked (merged) scenery before it is rebuilt; the shared unit shapes are left alone. */
+const capC = new THREE.Color();
+/** A bed border's top edge: the border colour, a little lighter. */
+const capColor = (border: string) => `#${capC.set(border).offsetHSL(0, -0.04, 0.1).getHexString()}`;
+
 export function disposeGeometries(root: THREE.Object3D) {
   root.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); });
 }
@@ -273,18 +277,21 @@ export class GardenWorld implements WorldLookup {
       for (const p of plants) g.add(sh(mesh(geo.cyl, mat(PALETTE.stone), 0.62, 0.14, 0.55, p.x, 0.07, p.z), false));
       return sign;
     }
-    g.add(sh(mesh(geo.box, mat(PALETTE.mulch), b.w + 0.7, 0.04, b.d + 0.7, b.x, -0.04, b.z), false)); // bark mulch rim seats the bed in the grass
+    g.add(sh(mesh(geo.box, mat(PALETTE.mulch), b.w + 0.36, 0.04, b.d + 0.36, b.x, -0.04, b.z), false)); // bark mulch rim seats the bed in the grass
     const t = 0.28, h = 0.42, g2 = style.kind === 'greenhouse';
     const wood = mat(g2 ? PALETTE.wood : style.border), post = mat(g2 ? PALETTE.woodDark : style.post);
     g.add(sh(mesh(geo.box, mat(PALETTE.soil), b.w - t * 2, 0.34, b.d - t * 2, b.x, 0.17, b.z), false));
-    // furrows between plant rows (rows sit SPACING apart from BED_PAD)
-    const rows = Math.max(1, Math.round((b.d - 2) / 1.7));
-    for (let r = 0; r <= rows; r++) {
-      const z = b.z - b.d / 2 + 1 + r * 1.7 - 0.85;
-      if (z > b.z - b.d / 2 + t + 0.2 && z < b.z + b.d / 2 - t - 0.2) g.add(sh(mesh(geo.box, mat(PALETTE.furrow), b.w - t * 2 - 0.4, 0.05, 0.1, b.x, 0.35, z), false));
+    // a raised, rounded mound under each row of plants (rows sit SPACING apart from BED_PAD)
+    const rows = Math.max(1, Math.round((b.d - BED_PAD * 2) / SPACING)), moundM = mat(PALETTE.mound);
+    for (let r = 0; r < rows; r++) {
+      const mound = sh(mesh(geo.cyl, moundM, 0.07, b.w - t * 2 - 0.9, 0.55, b.x, 0.31, b.z - b.d / 2 + BED_PAD + SPACING * (r + 0.5)), false);
+      mound.rotation.z = Math.PI / 2; g.add(mound);
     }
     g.add(sh(mesh(geo.box, wood, b.w, h, t, b.x, h / 2, b.z - b.d / 2 + t / 2)), sh(mesh(geo.box, wood, b.w, h, t, b.x, h / 2, b.z + b.d / 2 - t / 2)));
     g.add(sh(mesh(geo.box, wood, t, h, b.d - t * 2, b.x - b.w / 2 + t / 2, h / 2, b.z)), sh(mesh(geo.box, wood, t, h, b.d - t * 2, b.x + b.w / 2 - t / 2, h / 2, b.z)));
+    const cap = mat(g2 ? PALETTE.woodLight : capColor(style.border)); // lighter top edge gives the border definition
+    g.add(sh(mesh(geo.box, cap, b.w + 0.04, 0.05, t + 0.06, b.x, h + 0.025, b.z - b.d / 2 + t / 2)), sh(mesh(geo.box, cap, b.w + 0.04, 0.05, t + 0.06, b.x, h + 0.025, b.z + b.d / 2 - t / 2)));
+    g.add(sh(mesh(geo.box, cap, t + 0.06, 0.05, b.d - t * 2, b.x - b.w / 2 + t / 2, h + 0.025, b.z)), sh(mesh(geo.box, cap, t + 0.06, 0.05, b.d - t * 2, b.x + b.w / 2 - t / 2, h + 0.025, b.z)));
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(sh(mesh(geo.box, post, 0.36, h + 0.14, 0.36, b.x + sx * (b.w / 2 - 0.12), (h + 0.14) / 2, b.z + sz * (b.d / 2 - 0.12))));
     if (!g2) return sign;
     const frame = mat(PALETTE.frame), pane = mat(PALETTE.glass, { opacity: 0.2 }), H = 2.3;

@@ -126,7 +126,7 @@ export class PlantField {
       return;
     }
     if (sp === 'clover') { this.buildHedge(inst); return; }
-    if (sp === 'cactus') this.add(inst, CYL, C.pot, 'body', -1, 0.3 * s, 0.32 * s, 0.3 * s, 0, 0.1 * s, 0); // config grows in a pot
+    if (sp === 'cactus') this.add(inst, CYL, C.pot, 'body', -1, 0.3 * s, 0.36 * s, 0.3 * s, 0, 0.18 * s, 0); // config grows in a pot
     else this.add(inst, SPH, C.soil, 'body', -1, 0.5 * s, 0.2 * s, 0.5 * s, 0, 0.04, 0);
     if (stage === 'seed') return;
     if (sp === 'fern') this.buildFern(inst, s, d);
@@ -177,7 +177,7 @@ export class PlantField {
 
   /** Config: a squat cactus with two arms once grown; a small pink cactus flower on bloom. */
   private buildCactus(inst: PlantInst, s: number, d: boolean) {
-    const stage = inst.stage, col = d ? C.cactusD : C.cactus, h = (0.2 + 0.55 * STEM_H[stage]) * s, r = 0.17 * s, y0 = 0.26 * s;
+    const stage = inst.stage, col = d ? C.cactusD : C.cactus, h = (0.2 + 0.55 * STEM_H[stage]) * s, r = 0.17 * s, y0 = 0.36 * s;
     this.add(inst, CYL, C.potRim, 'body', -1, 0.33 * s, 0.06 * s, 0.33 * s, 0, y0, 0);
     this.add(inst, SPH, C.soil, 'body', -1, 0.27 * s, 0.04 * s, 0.27 * s, 0, y0 + 0.02 * s, 0);
     this.add(inst, CYL, col, 'body', 0, r, h, r, 0, y0 + h / 2, 0);

@@ -19,6 +19,9 @@ import { Nav } from '../nav.ts';
 import { CameraRig } from './camera.ts';
 import { PALETTE } from './palette.ts';
 import { Props, type Quality } from './props.ts';
+import { GardenBoundary } from './boundary.ts';
+import { paintSign } from './signTexture.ts';
+import { gardenFence, signLine, type Rect } from '../boundary.ts';
 
 const FENCE_RING = new THREE.TorusGeometry(0.8, 0.05, 6, 24); // one-file fences share this
 const LOD_LIMIT = 80; // above this many plants, quiet ones become ground cover
@@ -70,6 +73,13 @@ export class GardenWorld implements WorldLookup {
   private hemi = new THREE.HemisphereLight(0xcfe8ff, 0x7a8a4a, 1.3); // cool sky fill, warm ground bounce
   nav = new Nav([]);
   private props!: Props;
+  private boundary!: GardenBoundary;
+  private repoName = 'our garden';
+  /** The repo name painted on the arch (set by the page; repaints at once, even with no data arriving). */
+  set repo(name: string) { if (name === this.repoName) return; this.repoName = name; if (this.snap) this.boundary.setSign(name, signLine(this.snap)); }
+  get repo() { return this.repoName; }
+  private gardenRect?: Rect;
+  private signGroup = new THREE.Group(); // painted bed signs (textured, so kept out of the merged bed group)
   readonly quality: Quality = new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high';
   /** Called when the 3D shed is clicked (toggles the HTML shed panel). */
   onShedClick: () => void = () => {};
@@ -145,6 +155,7 @@ export class GardenWorld implements WorldLookup {
 
     this.scene.fog = new THREE.Fog('#cfe6ee', 40, 120);
     this.props = new Props(this.scene, this.quality, () => this.onShedClick());
+    this.boundary = new GardenBoundary(this.scene); this.scene.add(this.signGroup);
     this.scene.add(this.hemi, this.sun, this.bedGroup, this.fenceGroup);
     if (gl && this.quality === 'low') gl.shadowMap.enabled = false;
     this.shaft.position.y = 3.6; this.scene.add(this.shaft);
@@ -216,6 +227,7 @@ export class GardenWorld implements WorldLookup {
     for (const a of u.newActivity) if (a.kind === 'certify_bloom' && a.path) this.pendingBloom.set(a.path, performance.now() + 15000);
     this.syncPlants(u.reset);
     this.syncFences();
+    this.boundary.setSign(this.repo, signLine(u.snapshot));
     this.pond.sync(u.snapshot.activity, u.snapshot.at, u.snapshot.members);
     this.actors.sync(u.snapshot);
     const models = taskModels(u.snapshot);
@@ -252,18 +264,24 @@ export class GardenWorld implements WorldLookup {
       this.layoutKey = key;
       disposeGeometries(this.bedGroup);
       this.bedGroup.clear();
+      for (const o of [...this.signGroup.children]) { const m = o as THREE.Mesh, sm = m.material as THREE.MeshStandardMaterial; sm.map?.dispose(); sm.dispose(); m.geometry.dispose(); }
+      this.signGroup.clear();
       for (const el of this.bedLabels) this.labels.remove(el);
       this.bedLabels = [];
       for (const b of this.layout.beds) {
         const sign = this.buildBed(b, this.layout.plants.filter((p) => p.bed === b.name));
-        this.bedLabels.push(this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => sign, 'label bed'));
+        const el = this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => sign, 'label bed');
+        el.classList.toggle('off', !this.showPlantLabels); // the painted sign names the bed; the pill only with L
+        this.bedLabels.push(el);
       }
       for (const h of hedges) { const at = new THREE.Vector3(h.x, 0.75, h.z); this.bedLabels.push(this.labels.add('generated', () => at, 'label plant')); }
       mergeByMaterial(this.bedGroup);
       const ps = pondSpot(this.layout); this.pond.place(ps.x, ps.z, ps.r);
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
-      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, withPondLink(layoutPaths(this.layout), pondLink(this.layout)), [(({ x, z, r }) => ({ x, z, r: r * 1.5 }))(pondSpot(this.layout))]);
+      const fence = gardenFence(this.layout, hf.frontZ); this.gardenRect = fence.rect;
+      this.boundary.rebuild(fence);
+      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, withPondLink(layoutPaths(this.layout), pondLink(this.layout)), [(({ x, z, r }) => ({ x, z, r: r * 1.5 }))(pondSpot(this.layout))], fence.rect);
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;
@@ -280,9 +298,11 @@ export class GardenWorld implements WorldLookup {
     const style = bedStyleOf(b.name), g = this.bedGroup;
     const sh = (o: THREE.Mesh, cast = true) => { o.castShadow = cast; o.receiveShadow = true; return o; };
     // signboard at the front-left corner, just outside the bed
-    const sx0 = b.x - b.w / 2 + 0.55, sz0 = b.z + b.d / 2 + 0.3;
-    g.add(sh(mesh(geo.box, mat(PALETTE.woodDark), 0.1, 0.8, 0.1, sx0, 0.4, sz0)), sh(mesh(geo.box, mat(PALETTE.woodLight), 0.95, 0.42, 0.07, sx0, 0.78, sz0 + 0.06)));
-    const sign = new THREE.Vector3(sx0, 0.78, sz0 + 0.1);
+    const sx0 = b.x - b.w / 2 + 1.7, sz0 = b.z + b.d / 2 + 0.4;
+    g.add(sh(mesh(geo.box, mat(PALETTE.woodDark), 0.12, 1.1, 0.12, sx0 - 1.25, 0.55, sz0)), sh(mesh(geo.box, mat(PALETTE.woodDark), 0.12, 1.1, 0.12, sx0 + 1.25, 0.55, sz0)));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.75), new THREE.MeshStandardMaterial({ map: paintSign(b.greenhouse ? `${b.name} 🧪` : b.name, '', { w: 512, h: 128 }), roughness: 0.85 }));
+    face.position.set(sx0, 0.95, sz0 + 0.08); face.rotation.x = -0.35; face.castShadow = true; this.signGroup.add(face);
+    const sign = new THREE.Vector3(sx0, 0.95, sz0 + 0.1);
     if (style.kind === 'stones') {
       g.add(sh(mesh(geo.box, mat(PALETTE.path), b.w - 0.4, 0.04, b.d - 0.4, b.x, 0.02, b.z), false));
       for (const p of plants) g.add(sh(mesh(geo.cyl, mat(PALETTE.stone), 0.62, 0.14, 0.55, p.x, 0.07, p.z), false));
@@ -324,7 +344,7 @@ export class GardenWorld implements WorldLookup {
   }
 
   /** Readable mode (key L): every full plant gets a text label with its stage, so status never relies on colour alone. */
-  setPlantLabels(on: boolean) { this.showPlantLabels = on; this.syncPlantLabels(); }
+  setPlantLabels(on: boolean) { this.showPlantLabels = on; for (const el of this.bedLabels) if (el.classList.contains('bed')) el.classList.toggle('off', !on); this.syncPlantLabels(); }
   private syncPlantLabels() {
     if (!this.showPlantLabels || !this.snap) {
       for (const v of this.plantLabels.values()) this.labels.remove(v.el);
@@ -486,7 +506,7 @@ export class GardenWorld implements WorldLookup {
     const g = this.ray.ray.intersectPlane(this.groundPlane, this.hit);
     return pickAt({
       screen: { x: cx, y: cy }, ground: g ? { x: g.x, z: g.z } : null,
-      task: this.tasks.pick(this.ray), shed: this.props.hitShed(this.ray), arch: false,
+      task: this.tasks.pick(this.ray), shed: this.props.hitShed(this.ray), arch: this.boundary.hit(this.ray),
     }, {
       people,
       plants: this.layout.plants.map((p) => ({ path: p.path, x: p.x, z: p.z, size: this.field.get(p.path)?.full === false ? 0.6 : p.size })),
@@ -531,7 +551,7 @@ export class GardenWorld implements WorldLookup {
       case 'task': return this.tasks.posOf(p.key);
       case 'pond': { const s = this.pond.spot; return new THREE.Vector3(s.x, 0, s.z); }
       case 'commit': { const c = this.pond.padSpots().find((x) => x.id === p.key); return c ? new THREE.Vector3(c.x, 0, c.z) : undefined; }
-      case 'garden': return undefined;
+      case 'garden': return this.boundary.archPos();
       case 'shed': return undefined;
     }
   }
@@ -576,6 +596,7 @@ export class GardenWorld implements WorldLookup {
     let minX = -halfW, maxX = Math.max(halfW + 3.5, this.pond.extentX), minZ = -4, maxZ = frontZ + 1.4;
     minZ = Math.min(minZ, -Math.max(4, this.layout.depth / 2) - 8); // the shed behind the beds
     for (const b of bs) { minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2); minZ = Math.min(minZ, b.z - b.d / 2); }
+    if (this.gardenRect) maxZ = Math.max(maxZ, this.gardenRect.maxZ + 0.5); // the arch with the repo name is part of the picture
     return { minX: minX - 1, maxX: maxX + 1, minZ: minZ - 1, maxZ };
   }
   reservedForShed() { return this.reservedPx(); }

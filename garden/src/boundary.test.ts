@@ -18,6 +18,8 @@ for (const n of [3, 40, 400]) {
     assert.ok(inRect(f.rect, halfW - 1.5, -halfD - 6.5, 0.5), 'shed');
     assert.ok(inRect(f.rect, -(halfW + 3.5), fz, 1) && inRect(f.rect, halfW + 3.5, fz, 1), 'front lane');
     assert.equal(f.gate.z, f.rect.maxZ);
+    assert.ok(Math.abs(f.gate.x - (f.rect.minX + f.rect.maxX) / 2) < 0.01, 'gate centred on the front');
+    assert.ok(Math.abs(f.gate.x) + f.gate.w / 2 < halfW + 3.5, 'gate opens onto the lane');
     assert.ok(f.pickets.length > 20);
     assert.ok(f.pickets.every((p) => !(Math.abs(p.z - f.rect.maxZ) < 0.01 && Math.abs(p.x - f.gate.x) < f.gate.w / 2)), 'no picket in the gate');
     assert.ok(f.pickets.every((p) => Math.abs(p.x - f.rect.minX) < 0.01 || Math.abs(p.x - f.rect.maxX) < 0.01 || Math.abs(p.z - f.rect.minZ) < 0.01 || Math.abs(p.z - f.rect.maxZ) < 0.01), 'pickets on the line');

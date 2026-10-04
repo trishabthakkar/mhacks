@@ -247,6 +247,7 @@ function refresh() {
   const s = store.snapshot;
   const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
   const repo = repoName(q, s, liveDb());
+  world.repo = repo;
   if (selected && !inspect(selected, s, { repo })) { selected = null; world.setSelected(null); } // the subject left the garden
   renderShed(shed, s, { source, connection, collapsed, following: world.follow, selected, repo });
   emptyState.hidden = s.plants.length > 0 || conn.state === 'connecting';

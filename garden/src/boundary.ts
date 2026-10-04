@@ -15,7 +15,7 @@ export function gardenFence(l: GardenLayout, frontZ: number): GardenFence {
   const halfW = Math.max(6, l.width / 2), halfD = Math.max(4, l.depth / 2), ps = pondSpot(l), pr = ps.r * BANK;
   let minX = -halfW - 7, maxX = Math.max(halfW + 5.5, ps.x + pr + 1.5), minZ = Math.min(-halfD - 8, ps.z - pr - 1.5), maxZ = Math.max(frontZ + 3.2, ps.z + pr + 1.5);
   for (const p of layoutPaths(l)) { minX = Math.min(minX, p.x - p.w / 2 - 1.5); maxX = Math.max(maxX, p.x + p.w / 2 + 1.5); }
-  const rect = { minX, maxX, minZ, maxZ }, gate = { x: 0, z: maxZ, w: GATE_W };
+  const rect = { minX, maxX, minZ, maxZ }, gate = { x: Math.round((minX + maxX) / 2 * 100) / 100, z: maxZ, w: GATE_W }; // centred on the front
   const pickets: GardenFence['pickets'] = [];
   const side = (x0: number, z0: number, x1: number, z1: number, ry: number, front = false) => {
     const len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / PICKET_STEP));

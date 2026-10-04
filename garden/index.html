@@ -58,6 +58,7 @@
       .spin { display:inline-block; width:11px; height:11px; border:2px solid #b8962e; border-top-color:transparent; border-radius:50%; animation:spin .9s linear infinite; vertical-align:-1px; } @keyframes spin { to { transform:rotate(360deg); } }
       #empty { position:fixed; left:50%; top:46%; transform:translate(-50%,-50%); background:var(--card); border:1px dashed var(--ink); border-radius:14px; padding:16px 24px; text-align:center; font-size:15px; max-width:80vw; } #empty[hidden] { display:none; }
       #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); display:flex; flex-direction:column; gap:6px; z-index:10; } .toast { background:var(--ink); color:#fff; padding:8px 16px; border-radius:10px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.3); }
+      .label.bed.off { display:none !important; }
       .tip { position:fixed; z-index:6; pointer-events:none; background:var(--ink); color:#fff; font-size:12.5px; font-weight:600; padding:4px 10px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.25); white-space:nowrap; } .tip[hidden] { display:none; } body.present .tip { font-size:16px; }
       body.stale #app canvas { filter:saturate(.65) brightness(.93); }
       .label.plant { font-weight:500; font-size:11px; background:rgba(255,252,243,.88); } .label.task.done { display:none !important; }

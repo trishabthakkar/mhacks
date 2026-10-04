@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { hash2, PALETTE, skyColors } from './palette.ts';
+import { inRect, type Rect } from '../boundary.ts';
 import type { PathLayout } from '../layout.ts';
 
 export type Quality = 'low' | 'high';
@@ -97,7 +98,8 @@ export class Props {
   }
 
   /** Rebuild the static world for a garden of this size. `halfW/halfD` = half extent of the beds. */
-  rebuild(halfW: number, halfD: number, frontZ: number, paths: PathLayout[] = [], keepClear: { x: number; z: number; r: number }[] = []) {
+  rebuild(halfW: number, halfD: number, frontZ: number, paths: PathLayout[] = [], keepClear: { x: number; z: number; r: number }[] = [], fence?: Rect) {
+    const wild = (x: number, z: number, m: number) => !fence || !inRect(fence, x, z, -m); // at least m outside the garden fence
     const clear = (x: number, z: number, m = 0) => keepClear.every((k) => Math.hypot(x - k.x, z - k.z) > k.r + m); // e.g. the pond
     for (const o of [...this.world.children]) { this.world.remove(o); o.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); }); }
     this.radius = Math.max(150, Math.hypot(halfW, halfD) * 2 + 70); // wide enough that the camera never sees past the land
@@ -114,6 +116,7 @@ export class Props {
       const px = Math.cos(a) * rr, pz = Math.sin(a) * rr; // soft patches by position (per-vertex noise made radial streaks)
       const patch = Math.sin(px * 0.19 + 1.3) * Math.sin(pz * 0.23 + 0.4) + 0.5 * Math.sin(px * 0.07 - pz * 0.09);
       c.copy(inC).lerp(outC, Math.min(1, rr / R)).offsetHSL(0, 0, patch * 0.025);
+      if (fence && inRect(fence, px, pz, -0.5)) c.offsetHSL(0.01, 0.04, 0.035); // mown lawn inside the fence
       cols.push(c.r, c.g, c.b);
     }
     for (let s = 0; s < segs; s++) idx.push(0, 1 + ((s + 1) % segs), 1 + s);
@@ -139,6 +142,7 @@ export class Props {
     };
     for (const p of paths) strip(p.x, p.z, p.w, p.d);
     strip(0, frontZ + 0.3, halfW * 2 + 7, 3.2);
+    if (fence) strip((fence.minX + fence.maxX) / 2, (frontZ + 1.9 + fence.maxZ + 1.2) / 2, 3.0, fence.maxZ + 1.2 - (frontZ + 1.9)); // through the gate
 
     if (this.quality === 'low') { this.buildShed(halfW, halfD); mergeByMaterial(this.world, (m) => m === meadow); return; }
 
@@ -150,15 +154,31 @@ export class Props {
     const rMin = gardenR + 9, rMax = R * 0.88;
     for (let i = 0; i < 44; i++) {
       const p = place(i, 11, rMin, rMax), s = 0.9 + p.k * 0.9, t = new THREE.Group();
-      if (!clear(p.x, p.z, 2)) continue;
+      if (!clear(p.x, p.z, 2) || !wild(p.x, p.z, 2)) continue;
       t.add(mesh(geo.cyl, mat(PALETTE.trunk), 0.28 * s, 1.5 * s, 0.28 * s, 0, 0.75 * s, 0));
       t.add(mesh(geo.cone, mat(PALETTE.leaf), 1.5 * s, 2.4 * s, 1.5 * s, 0, 2.3 * s, 0));
       t.add(mesh(geo.cone, mat(PALETTE.leafDark), 1.15 * s, 2.0 * s, 1.15 * s, 0, 3.4 * s, 0));
       t.position.set(p.x, 0, p.z); this.world.add(t);
     }
+    if (fence) { // a loose ring of trees just outside the fence frames the garden (the view of the arch stays open)
+      const W = fence.maxX - fence.minX, D = fence.maxZ - fence.minZ, per = (W + D) * 2;
+      for (let i = 0, n = Math.round(per / 5); i < n; i++) {
+        let d = (i / n) * per + hash2(i, 41) * 2, x: number, z: number;
+        const out = 3 + hash2(i, 42) * 4;
+        if (d < W) { x = fence.minX + d; z = fence.minZ - out; } else if ((d -= W) < D) { x = fence.maxX + out; z = fence.minZ + d; }
+        else if ((d -= D) < W) { x = fence.maxX - d; z = fence.maxZ + out; } else { d -= W; x = fence.minX - out; z = fence.maxZ - d; }
+        if (z > fence.maxZ) continue; // nothing between the camera and the garden
+        if (!clear(x, z, 2)) continue;
+        const s = 0.9 + hash2(i, 43) * 0.8, t = new THREE.Group();
+        t.add(mesh(geo.cyl, mat(PALETTE.trunk), 0.28 * s, 1.5 * s, 0.28 * s, 0, 0.75 * s, 0));
+        t.add(mesh(geo.cone, mat(PALETTE.leaf), 1.5 * s, 2.4 * s, 1.5 * s, 0, 2.3 * s, 0));
+        t.add(mesh(geo.cone, mat(PALETTE.leafDark), 1.15 * s, 2.0 * s, 1.15 * s, 0, 3.4 * s, 0));
+        t.position.set(x, 0, z); this.world.add(t);
+      }
+    }
     for (let i = 0; i < 30; i++) {
       const p = place(i, 31, gardenR + 6, R * 0.9), s = 0.4 + p.k * 0.8;
-      if (!clear(p.x, p.z, 1)) continue;
+      if (!clear(p.x, p.z, 1) || !wild(p.x, p.z, 1)) continue;
       const rock = mesh(geo.sphere, mat(p.k > 0.5 ? PALETTE.stone : PALETTE.stoneDark), s * 1.2, s * 0.65, s, p.x, s * 0.25, p.z);
       rock.rotation.y = p.k * 6; this.world.add(rock);
     }
@@ -167,7 +187,7 @@ export class Props {
     for (let i = 0; i < tufts; i++) {
       const p = place(i, 71, gardenR + 3, R * 0.92), s = 0.25 + p.k * 0.35;
       dm.position.set(p.x, s * 0.5 - 0.05, p.z); dm.scale.set(s * 0.5, s, s * 0.5); dm.rotation.y = p.k * 9; dm.updateMatrix();
-      if (!clear(p.x, p.z)) dm.matrix.makeScale(0, 0, 0);
+      if (!clear(p.x, p.z) || !wild(p.x, p.z, 0.6)) dm.matrix.makeScale(0, 0, 0);
       gm.setMatrixAt(i, dm.matrix); gm.setColorAt(i, c.set(PALETTE.leaf).lerp(this.tmpC.set(PALETTE.meadowInner), p.k));
     }
     gm.castShadow = false; gm.frustumCulled = false; this.world.add(gm);
@@ -175,7 +195,7 @@ export class Props {
     const WILD = ['#f4a6c1', '#f7d154', '#fbf7ee', '#b9a3e3', '#f29e7c'], patches = 70, per = 9;
     const fm = new THREE.InstancedMesh(geo.sphere, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.8 }), patches * per);
     for (let i = 0; i < patches; i++) {
-      const p = place(i, 91, gardenR + 4, R * 0.85), tone = WILD[Math.floor(p.k * WILD.length)]!, hide = !clear(p.x, p.z, 2);
+      const p = place(i, 91, gardenR + 4, R * 0.85), tone = WILD[Math.floor(p.k * WILD.length)]!, hide = !clear(p.x, p.z, 2) || !wild(p.x, p.z, 1.5);
       for (let j = 0; j < per; j++) {
         const a = hash2(i * per + j, 93) * Math.PI * 2, r = 0.3 + hash2(i * per + j, 94) * 1.6, s = 0.11 + hash2(i * per + j, 95) * 0.07;
         dm.position.set(p.x + Math.cos(a) * r, 0.16 + s * 0.3, p.z + Math.sin(a) * r); dm.scale.set(s, s * 0.7, s); dm.rotation.set(0, 0, 0); dm.updateMatrix();

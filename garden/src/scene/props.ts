@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { hash2, PALETTE, skyColors } from './palette.ts';
 import { inRect, type Rect } from '../boundary.ts';
+import { addSway } from './sway.ts';
 import type { PathLayout } from '../layout.ts';
 
 export type Quality = 'low' | 'high';
@@ -190,6 +191,7 @@ export class Props {
       if (!clear(p.x, p.z) || !wild(p.x, p.z, 0.6)) dm.matrix.makeScale(0, 0, 0);
       gm.setMatrixAt(i, dm.matrix); gm.setColorAt(i, c.set(PALETTE.leaf).lerp(this.tmpC.set(PALETTE.meadowInner), p.k));
     }
+    addSway(gm.material as THREE.Material);
     gm.castShadow = false; gm.frustumCulled = false; this.world.add(gm);
     // Wildflowers in small patches on the meadow (decoration only: never inside the beds, so never mistaken for files).
     const WILD = ['#f4a6c1', '#f7d154', '#fbf7ee', '#b9a3e3', '#f29e7c'], patches = 70, per = 9;
@@ -203,6 +205,7 @@ export class Props {
         fm.setMatrixAt(i * per + j, dm.matrix); fm.setColorAt(i * per + j, c.set(j % 4 === 3 ? '#fbf7ee' : tone));
       }
     }
+    addSway(fm.material as THREE.Material);
     fm.castShadow = false; fm.frustumCulled = false; this.world.add(fm);
 
     // Bench and well near the front-left.

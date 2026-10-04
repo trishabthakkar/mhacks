@@ -20,6 +20,8 @@ import { CameraRig } from './camera.ts';
 import { PALETTE } from './palette.ts';
 import { Props, type Quality } from './props.ts';
 import { GardenBoundary } from './boundary.ts';
+import { ContactShadows } from './contactShadows.ts';
+import { SWAY } from './sway.ts';
 import { paintSign } from './signTexture.ts';
 import { gardenFence, signLine, type Rect } from '../boundary.ts';
 
@@ -69,8 +71,8 @@ export class GardenWorld implements WorldLookup {
   private hit = new THREE.Vector3();
   private selRing = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.2, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false }));
   private hoverRing = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.08, 48), new THREE.MeshBasicMaterial({ color: 0xfff3c4, transparent: true, opacity: 0.55, depthWrite: false }));
-  private sun = new THREE.DirectionalLight(0xffe9c4, 2.6); // warm late-morning sun
-  private hemi = new THREE.HemisphereLight(0xcfe8ff, 0x7a8a4a, 1.3); // cool sky fill, warm ground bounce
+  private sun = new THREE.DirectionalLight(0xffe2b0, 2.7); // warm sun, a little lower: longer shadows
+  private hemi = new THREE.HemisphereLight(0xd4e9ff, 0x6b7a55, 1.2); // cool sky fill, cooler ground bounce in the shade
   nav = new Nav([]);
   private props!: Props;
   private boundary!: GardenBoundary;
@@ -103,7 +105,8 @@ export class GardenWorld implements WorldLookup {
   private spotRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 40), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0, depthWrite: false }));
   private lockMesh = new THREE.Group();
   private pulse = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 40), new THREE.MeshBasicMaterial({ color: 0xff7a59, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
-  private baseHemi = 1.3; private baseSun = 2.6;
+  private baseHemi = 1.2; private baseSun = 2.7;
+  private contact!: ContactShadows;
   private dim = 1;
   private clock = new THREE.Clock();
   /** Scene time in seconds; advances with real frames or with advance() (deterministic, for tests and hidden panes). */
@@ -166,10 +169,10 @@ export class GardenWorld implements WorldLookup {
     this.lockMesh.add(mesh(geo.box, mat('#c9a227'), 0.28, 0.22, 0.12, 0, 0, 0));
     const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI), mat('#8d8d8d')); shackle.position.y = 0.11;
     this.lockMesh.add(shackle); this.lockMesh.scale.setScalar(0.6); this.lockMesh.visible = false; this.scene.add(this.lockMesh);
-    this.sun.position.set(18, 26, 12); this.sun.castShadow = true;
+    this.sun.position.set(16, 21, 13); this.sun.castShadow = true; this.scene.add(this.sun.target);
+    this.contact = new ContactShadows(this.scene); this.contact.visible = this.quality !== 'low';
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.03; // no shadow acne (moire spokes on the meadow)
-    const sc = this.sun.shadow.camera; sc.left = sc.bottom = -35; sc.right = sc.top = 35; sc.far = 90;
 
     this.camera.position.set(0, 18, 22);
     this.controls = new OrbitControls(this.camera, gl?.domElement ?? document.createElement('canvas'));
@@ -246,7 +249,7 @@ export class GardenWorld implements WorldLookup {
     (this.scene.background as THREE.Color | null) ? (this.scene.background as THREE.Color).copy(c) : (this.scene.background = c.clone());
     (this.scene.fog as THREE.Fog).color.copy(c);
     const night = hour < 5 || hour > 20.5;
-    this.baseHemi = night ? 1.0 : 1.3; this.baseSun = night ? 0.9 : hour > 17.5 ? 2.1 : 2.6;
+    this.baseHemi = night ? 1.0 : 1.2; this.baseSun = night ? 0.9 : hour > 17.5 ? 2.1 : 2.7;
     this.sun.color.set(hour > 17.5 && hour < 20.5 ? '#ffc58a' : '#fff0d0');
   }
 
@@ -280,7 +283,7 @@ export class GardenWorld implements WorldLookup {
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
       const fence = gardenFence(this.layout, hf.frontZ); this.gardenRect = fence.rect;
-      this.boundary.rebuild(fence);
+      this.boundary.rebuild(fence); this.fitShadow(fence.rect);
       this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, withPondLink(layoutPaths(this.layout), pondLink(this.layout)), [(({ x, z, r }) => ({ x, z, r: r * 1.5 }))(pondSpot(this.layout))], fence.rect);
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
@@ -490,6 +493,15 @@ export class GardenWorld implements WorldLookup {
     if (kind !== 'member' && kind !== 'agent') { this.follow = null; this.director = false; this.rig.flyTo(p); }
     this.pulseAt.copy(p); this.pulseT = 2.4;
   }
+  /** Shadows only where the garden is: a tight shadow frustum around the fence gives crisper shadows. */
+  private fitShadow(r: Rect) {
+    const cx = (r.minX + r.maxX) / 2, cz = (r.minZ + r.maxZ) / 2, half = Math.max(r.maxX - r.minX, r.maxZ - r.minZ) / 2 + 3;
+    this.sun.target.position.set(cx, 0, cz); this.sun.position.set(cx + 16, 21, cz + 13);
+    const sc = this.sun.shadow.camera; sc.left = sc.bottom = -half; sc.right = sc.top = half; sc.near = 1; sc.far = 80 + half; sc.updateProjectionMatrix();
+    const size = half > 40 ? 4096 : 2048;
+    if (this.sun.shadow.mapSize.x !== size) { this.sun.shadow.mapSize.setScalar(size); this.sun.shadow.map?.dispose(); (this.sun.shadow as { map: THREE.WebGLRenderTarget | null }).map = null; }
+  }
+
   /** Everything clickable, in pick order. Characters are projected to screen circles; the rest is on the ground. */
   private pickUnder(cx: number, cy: number): Pick | null {
     if (!this.snap || document.body.classList.contains('plan-open')) return null;
@@ -673,6 +685,13 @@ export class GardenWorld implements WorldLookup {
     this.time += dt;
     const t = this.time, mo = this.motionFactor;
     this.actors.tick(dt); this.fx.update(dt);
+    if (this.quality !== 'low') { // soft contact blobs under everyone who stands on the ground, and the task pots
+      this.contact.begin();
+      this.actors.forEachBody((x, z, r) => this.contact.add(x, z, r));
+      this.tasks.forEachPos((x, z) => this.contact.add(x, z, 0.5));
+      this.contact.end();
+    }
+    SWAY.uTime.value = this.time; SWAY.uSway.value = this.calm || this.reducedMotion ? 0 : 1;
     // Botanist shot: dim the scene a little, light the plant, push the camera in.
     const shot = this.actors.shot;
     this.dim += ((shot ? 0.72 : 1) - this.dim) * Math.min(1, dt * 3);

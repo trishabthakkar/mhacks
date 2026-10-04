@@ -254,6 +254,12 @@ export class Actors {
     this.snap.members.forEach((m, i) => this.homes.set(m.handle, this.computeHome(i, n)));
     this.botHome.set(this.world.homeFrame.halfW + 2.5, 0, this.world.homeFrame.frontZ - 1);
   }
+  /** Ground contact points for soft shadows: gardeners, bots and the botanist (not flying spirits or butterflies). */
+  forEachBody(cb: (x: number, z: number, r: number) => void) {
+    for (const g of this.gardeners.values()) cb(g.obj.position.x, g.obj.position.z, 0.55);
+    for (const b of this.bots.values()) cb(b.obj.position.x, b.obj.position.z, 0.4);
+    const p = this.botanist.obj.position; cb(p.x, p.z, 0.55);
+  }
   botanistPos(): THREE.Vector3 { return this.botanist.obj.position; }
   /** Every clickable character: gardeners by handle, then the botanist. */
   forEachPerson(cb: (pick: Pick, pos: THREE.Vector3) => void) {

@@ -16,6 +16,7 @@ export class TaskPlants {
   readonly group = new THREE.Group();
   constructor(scene: THREE.Scene, private labels: Labels) { scene.add(this.group); }
 
+  forEachPos(cb: (x: number, z: number) => void) { for (const t of this.items.values()) cb(t.x, t.z); }
   posOf(id: number) { const t = this.items.get(id); return t ? new THREE.Vector3(t.x, 0, t.z) : undefined; }
 
   sync(models: TaskModel[], layout: TaskPlantLayout[], now: number) {

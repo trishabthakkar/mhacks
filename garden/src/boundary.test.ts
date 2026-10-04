@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { GardenSnapshot } from '../../shared/types.ts';
 import { layoutGarden, layoutPaths } from './layout.ts';
 import { BANK, pondSpot } from './pond.ts';
-import { gardenFence, inRect, repoName, signLine } from './boundary.ts';
+import { borderStrips, gardenFence, inRect, repoName, signLine } from './boundary.ts';
 
 const files = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `d${i % 5}/f${i}.ts`, bed: `d${i % 5}`, lines: 50 }));
 const frontZ = (l: ReturnType<typeof layoutGarden>) => Math.max(4, l.depth / 2) + 3.6;
@@ -43,4 +43,24 @@ test('sign line counts people online, plants and blooms today', () => {
     members: [{ handle: 'a', color: '', online: true, paused: false, lastSeen: 0 }, { handle: 'b', color: '', online: false, paused: false, lastSeen: 0 }],
     plants: [{ path: 'a', bed: '', lines: 1, stage: 'bloom', bugs: 0, lastActivity: 0, lastBloomAt: 10 * 86_400_000 - 1000 }, { path: 'b', bed: '', lines: 1, stage: 'seed', bugs: 0, lastActivity: 0 }] });
   assert.equal(signLine(s), '1 gardener · 2 plants · 1 🌸 today');
+});
+
+test('flower borders run along the inside of the fence, clear of the gate and everything in the way', () => {
+  const rect = { minX: -20, maxX: 20, minZ: -15, maxZ: 15 }, gate = { x: 0, z: 15, w: 3.6 };
+  const shed = { x: 12, z: -13, w: 4, d: 3.5 }, lane = { x: 0, z: 12.5, w: 30, d: 3.2 }, pond = { x: 14, z: 0, r: 5 };
+  const strips = borderStrips(rect, gate, [shed, lane], [pond]);
+  assert.ok(strips.length >= 4);
+  const overlaps = (a: { x: number; z: number; w: number; d: number }, b: { x: number; z: number; w: number; d: number }) =>
+    Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.z - b.z) < (a.d + b.d) / 2;
+  for (const s of strips) {
+    assert.ok(s.x - s.w / 2 >= rect.minX && s.x + s.w / 2 <= rect.maxX && s.z - s.d / 2 >= rect.minZ && s.z + s.d / 2 <= rect.maxZ, 'inside the fence');
+    assert.ok(!overlaps(s, shed) && !overlaps(s, lane), 'clear of the shed and lane');
+    const nx = Math.max(Math.abs(pond.x - s.x) - s.w / 2, 0), nz = Math.max(Math.abs(pond.z - s.z) - s.d / 2, 0);
+    assert.ok(Math.hypot(nx, nz) > pond.r, 'clear of the pond');
+    assert.ok(!overlaps(s, { x: gate.x, z: gate.z - 1, w: gate.w + 1, d: 2 }), 'gate left open');
+    assert.ok(Math.max(s.w, s.d) >= 1.5, 'no stubs');
+  }
+  const total = strips.reduce((a, s) => a + Math.max(s.w, s.d), 0);
+  assert.ok(total > 70, `borders too sparse: ${total.toFixed(1)} m`);
+  assert.deepEqual(borderStrips(rect, gate, [shed, lane], [pond]), strips);
 });

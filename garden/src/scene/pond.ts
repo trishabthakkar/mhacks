@@ -68,7 +68,10 @@ export class Pond {
     const bank = new THREE.Mesh(shape(1.18), mat('#6b5a3e')); bank.position.y = -0.01; bank.receiveShadow = true;
     this.water ??= new THREE.MeshStandardMaterial({ color: '#4f9fc4', roughness: 0.15, metalness: 0.1, emissive: '#1d4f6b', emissiveIntensity: 0.25 });
     const water = new THREE.Mesh(shape(1), this.water); water.position.y = WATER_Y; water.receiveShadow = true; water.userData.keep = true;
-    this.still.add(bank, water);
+    // Depth: a pale shallow rim and a darker deep centre (one flat blue read as a puddle of paint).
+    const shallow = new THREE.Mesh(shape(1.06), new THREE.MeshStandardMaterial({ color: '#7cc3d8', roughness: 0.3 })); shallow.position.y = WATER_Y - 0.004; shallow.receiveShadow = true;
+    const deep = new THREE.Mesh(shape(0.58), new THREE.MeshStandardMaterial({ color: '#2f78a3', roughness: 0.15, transparent: true, opacity: 0.75 })); deep.position.y = WATER_Y + 0.003; deep.userData.keep = true;
+    this.still.add(bank, shallow, water, deep);
     // Stones around the edge, reeds in three clumps.
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2 + hash2(i, 1) * 0.3, rr = r * (1.12 + 0.12 * Math.sin(a * 3 + 0.7)), s = 0.25 + hash2(i, 2) * 0.3;

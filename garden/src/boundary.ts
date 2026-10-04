@@ -50,3 +50,36 @@ export function signLine(s: GardenSnapshot): string {
   const today = s.plants.filter((p) => p.stage === 'bloom' && p.lastBloomAt !== undefined && s.at - p.lastBloomAt < 86_400_000).length;
   return `${online} gardener${online === 1 ? '' : 's'} · ${s.plants.length} plant${s.plants.length === 1 ? '' : 's'} · ${today} 🌸 today`;
 }
+
+type Box = { x: number; z: number; w: number; d: number };
+const BORDER_IN = 0.35, BORDER_D = 0.9, CELL = 0.5, MIN_STRIP = 1.5, GAP = 0.4;
+
+/**
+ * Cottage flower borders along the inside of the fence: a 0.9 m strip on each side, broken wherever something stands
+ * (gate, shed, lane, paths, the pond...), with no stubs shorter than 1.5 m. Corners are left to the side strips.
+ */
+export function borderStrips(r: Rect, gate: { x: number; w: number }, boxes: Box[], circles: { x: number; z: number; r: number }[] = []): Box[] {
+  const out: Box[] = [];
+  const blocked = (c: Box, front: boolean) =>
+    (front && Math.abs(c.x - gate.x) < gate.w / 2 + 0.9) ||
+    boxes.some((b) => Math.abs(c.x - b.x) < (c.w + b.w) / 2 + GAP && Math.abs(c.z - b.z) < (c.d + b.d) / 2 + GAP) ||
+    circles.some((k) => Math.hypot(Math.max(Math.abs(k.x - c.x) - c.w / 2, 0), Math.max(Math.abs(k.z - c.z) - c.d / 2, 0)) < k.r + GAP);
+  const run = (along: 'x' | 'z', fixed: number, from: number, to: number, front = false) => {
+    let start: number | null = null;
+    const flush = (end: number) => {
+      if (start !== null && end - start >= MIN_STRIP) out.push(along === 'x' ? { x: (start + end) / 2, z: fixed, w: end - start, d: BORDER_D } : { x: fixed, z: (start + end) / 2, w: BORDER_D, d: end - start });
+      start = null;
+    };
+    for (let a = from; a + CELL <= to + 1e-9; a += CELL) {
+      const c = along === 'x' ? { x: a + CELL / 2, z: fixed, w: CELL, d: BORDER_D } : { x: fixed, z: a + CELL / 2, w: BORDER_D, d: CELL };
+      if (blocked(c, front)) flush(a); else if (start === null) start = a;
+    }
+    flush(Math.floor((to - from) / CELL) * CELL + from);
+  };
+  const inset = BORDER_IN + BORDER_D / 2, corner = BORDER_IN + BORDER_D;
+  run('x', r.minZ + inset, r.minX + corner, r.maxX - corner);        // back
+  run('x', r.maxZ - inset, r.minX + corner, r.maxX - corner, true); // front, gate left open
+  run('z', r.minX + inset, r.minZ + BORDER_IN, r.maxZ - BORDER_IN);   // left
+  run('z', r.maxX - inset, r.minZ + BORDER_IN, r.maxZ - BORDER_IN);   // right
+  return out.map((b) => ({ x: Math.round(b.x * 100) / 100, z: Math.round(b.z * 100) / 100, w: Math.round(b.w * 100) / 100, d: Math.round(b.d * 100) / 100 }));
+}

@@ -179,7 +179,7 @@ export class Props {
     this.shed.add(mesh(geo.box, mat(PALETTE.shedWall), w, h, d, 0, h / 2, 0));
     for (const sx of [-1, 1]) { // gabled roof
       const r = mesh(geo.box, mat(PALETTE.shedRoof), w + 0.5, 0.12, d / 2 + 0.55, 0, h + 0.55, sx * (d / 4 + 0.05));
-      r.rotation.x = -sx * 0.5; this.shed.add(r);
+      r.rotation.x = sx * 0.5; this.shed.add(r);
     }
     this.shed.add(mesh(geo.box, mat(PALETTE.woodDark), 0.8, 1.6, 0.06, -0.8, 0.8, d / 2 + 0.02)); // door
     this.shed.add(mesh(geo.box, mat(PALETTE.shedTrim), 0.9, 0.9, 0.06, 0.95, 1.5, d / 2 + 0.02)); // window frame

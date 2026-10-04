@@ -49,3 +49,13 @@ test('repeated identical events collapse into one row with a count', () => {
   const g = groupFeed([act(1, 'edit', { path: 'a' }), act(2, 'edit', { path: 'a' }), act(3, 'edit', { path: 'b' }), act(4, 'edit', { path: 'a' })]);
   assert.deepEqual(g.map((x) => [x.a.id, x.count]), [[2, 2], [3, 1], [4, 1]]);
 });
+
+test('shedAttention: two people on the same files get an early collision warning that selects the shared plant', () => {
+  const s = { at: 1e9, members: [{ handle: 'ana', color: '#888', online: true, paused: false, lastSeen: 1e9 }, { handle: 'ben', color: '#888', online: true, paused: false, lastSeen: 1e9 }],
+    agents: [], plants: [], claims: [], messages: [], testRuns: [], certifications: [], activity: [], taskItems: [],
+    tasks: [{ id: 1, handle: 'ana', title: 'a', status: 'active', bed: '', paths: ['src/api/'], createdAt: 0, updatedAt: 1 }, { id: 2, handle: 'ben', title: 'b', status: 'active', bed: '', paths: ['src/api/routes.ts'], createdAt: 0, updatedAt: 1 }],
+  } as never;
+  const it = shedAttention(s).find((i) => i.icon === '⚠️')!;
+  assert.match(it.text, /<b>ana<\/b> and <b>ben<\/b> are both working on <code>routes.ts<\/code>/);
+  assert.deepEqual(it.pick, { kind: 'plant', key: 'src/api/routes.ts' });
+});

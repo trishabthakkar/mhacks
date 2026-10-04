@@ -4,6 +4,7 @@ import type { ActivityView, GardenSnapshot } from '../../../shared/types.ts';
 import { normalizeBed } from '../layout.ts';
 import type { Pick } from '../pick.ts';
 import { base, clip, esc } from './fmt.ts';
+import { overlaps } from '../overlap.ts';
 
 export interface AttentionItem { rank: number; icon: string; text: string; pick: Pick | null; at: number }
 
@@ -17,6 +18,12 @@ export function shedAttention(s: GardenSnapshot): AttentionItem[] {
     const k = `${a.handle}|${a.path}`; if (seen.has(k)) continue; seen.add(k);
     out.push({ rank: 1, icon: '🚧', at: a.at, text: `<b>${esc(a.handle)}</b> was stopped at a fence${a.path ? ` on <code>${esc(clip(base(a.path), 28))}</code>` : ''}`,
       pick: a.path ? { kind: 'plant', key: a.path } : { kind: 'member', key: a.handle } });
+  }
+  // two people about to edit the same files: say so before anyone hits a fence
+  for (const o of overlaps(s)) {
+    const inFolder = o.path.endsWith('/') ? s.plants.find((p) => p.path.startsWith(o.path)) : undefined;
+    out.push({ rank: 1.5, icon: '⚠️', at: s.at, text: `<b>${esc(o.a)}</b> and <b>${esc(o.b)}</b> are both working on <code>${esc(clip(base(o.path), 28))}</code>`,
+      pick: inFolder ? { kind: 'bed', key: normalizeBed(inFolder.bed) } : o.path.endsWith('/') ? { kind: 'member', key: o.b } : { kind: 'plant', key: o.path } });
   }
   const latest = new Map<string, (typeof s.certifications)[number]>();
   for (const c of s.certifications) { const p = latest.get(c.path); if (!p || c.at >= p.at) latest.set(c.path, c); }

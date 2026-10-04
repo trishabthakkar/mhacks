@@ -11,6 +11,8 @@ import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import type { Spot } from './wander.ts';
 import { GardenLamps } from './lamps.ts';
+import { OverlapLines } from './overlapLines.ts';
+import { overlaps, type Overlap } from '../overlap.ts';
 import { lampLevel, lampSpots, nightLight } from '../lamps.ts';
 import { Labels, Particles } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
@@ -81,6 +83,8 @@ export class GardenWorld implements WorldLookup {
   private props!: Props;
   private boundary!: GardenBoundary;
   private lamps!: GardenLamps;
+  /** Teammates about to edit the same files: an amber dashed line joins them (and the shed warns). */
+  private overlapLines!: OverlapLines; private overlapPairs: Overlap[] = [];
   /** ?hour=21 previews any time of day (sky, sun and lamps) instead of the local clock. */
   private hourOverride = (() => { const q = new URLSearchParams(globalThis.location?.search ?? ''); const h = Number(q.get('hour')); return q.has('hour') && Number.isFinite(h) ? Math.min(24, Math.max(0, h)) : undefined; })();
   private repoName = 'our garden';
@@ -180,6 +184,7 @@ export class GardenWorld implements WorldLookup {
     this.lockMesh.add(shackle); this.lockMesh.scale.setScalar(0.6); this.lockMesh.visible = false; this.scene.add(this.lockMesh);
     this.sun.position.set(16, 21, 13); this.sun.castShadow = true; this.scene.add(this.sun.target);
     this.lamps = new GardenLamps(this.scene, this.quality);
+    this.overlapLines = new OverlapLines(this.scene);
     this.contact = new ContactShadows(this.scene); this.contact.visible = this.quality !== 'low';
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.03; // no shadow acne (moire spokes on the meadow)
@@ -264,6 +269,7 @@ export class GardenWorld implements WorldLookup {
     const models = taskModels(u.snapshot);
     this.tasks.sync(models, layoutTaskPlants(this.layout, models), this.time);
     this.refreshPotSpots();
+    this.overlapPairs = overlaps(u.snapshot);
     const notes: Array<'fence' | 'request' | 'handoff' | 'bloom' | 'refused'> = [];
     for (const _c of u.snapshot.claims) notes.push('fence');
     for (const m of u.snapshot.messages) if (m.status !== 'acked') notes.push('request');
@@ -760,6 +766,7 @@ export class GardenWorld implements WorldLookup {
       if (!this.rig.userMoved && !this.calm) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
     this.actors.viewDist = this.camera.position.distanceTo(this.controls.target);
+    this.overlapLines.update(this.overlapPairs, (h) => this.actors.gardenerPos(h) ?? this.actors.botPosOf(h), mo > 0.5 ? t : 0);
     this.field.update(t, mo);
     this.pond.update(dt, mo);
     this.tasks.update(t, mo);

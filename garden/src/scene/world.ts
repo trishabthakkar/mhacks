@@ -70,9 +70,13 @@ export class GardenWorld implements WorldLookup {
   private time = 0;
   extent = 10;
   director = false;
+  /** What the camera follows: a handle (the gardener) or "agent:<sessionId>" (a bot or helper spirit). */
   follow: string | null = null;
+  private followZoom = false; // ease in close after a click; dropped as soon as the user moves the camera
   reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   onLayout: (l: GardenLayout) => void = () => {};
+  /** Called when a followed agent disappears (it finished), so the UI can update. */
+  onFollowEnd: () => void = () => {};
   fps = 0;
   private frames = 0; private fpsT = 0;
 
@@ -123,6 +127,7 @@ export class GardenWorld implements WorldLookup {
 
     this.camera.position.set(0, 18, 22);
     this.controls = new OrbitControls(this.camera, gl?.domElement ?? document.createElement('canvas'));
+    this.controls.addEventListener('start', () => { this.followZoom = false; });
     this.controls.enableDamping = true; this.controls.maxPolarAngle = Math.PI * 0.48; this.controls.maxDistance = 90;
     this.rig = new CameraRig(this.camera, this.controls, host);
     // A click (not a drag) on the 3D shed toggles the shed panel.
@@ -428,13 +433,14 @@ export class GardenWorld implements WorldLookup {
   }
 
   /** Look at a plant/fence/member and ring it briefly so the eye finds it. */
-  focus(kind: 'member' | 'plant' | 'fence', key: string) {
+  focus(kind: 'member' | 'agent' | 'plant' | 'fence', key: string) {
     let p: THREE.Vector3 | undefined;
     if (kind === 'member') { this.focusOnMember(this.follow === key ? null : key); p = this.actors.gardenerPos(key); }
+    else if (kind === 'agent') { this.focusOnMember(this.follow === `agent:${key}` ? null : `agent:${key}`); p = this.actors.agentPos(key); }
     else if (kind === 'plant') p = this.plantXZ.get(key);
     else { const hit = this.layout.plants.find((q) => q.path === key || (key.endsWith('/') && q.path.startsWith(key))); p = hit ? this.plantXZ.get(hit.path) : undefined; }
     if (!p) return;
-    if (kind !== 'member') { this.follow = null; this.director = false; this.rig.flyTo(p); }
+    if (kind !== 'member' && kind !== 'agent') { this.follow = null; this.director = false; this.rig.flyTo(p); }
     this.pulseAt.copy(p); this.pulseT = 2.4;
   }
   /** Instantly frame one bed from the current viewing direction (used for named screenshot shots). */
@@ -451,7 +457,13 @@ export class GardenWorld implements WorldLookup {
   private pulseAt = new THREE.Vector3();
   private pulseT = 0;
 
-  focusOnMember(handle: string | null) { this.follow = handle; if (handle) this.director = false; }
+  focusOnMember(handle: string | null) { this.follow = handle; this.followZoom = !!handle; if (handle) this.director = false; }
+  /** Human words for what the camera follows, e.g. "manahil's helper". */
+  get followLabel(): string | null {
+    if (!this.follow?.startsWith('agent:')) return this.follow;
+    const a = this.snap?.agents.find((x) => x.sessionId === this.follow!.slice(6));
+    return a ? `${a.handle}'s ${a.kind === 'subagent' ? 'helper' : 'bot'}` : 'an agent';
+  }
   /** Everything that should be on screen: beds, the gardeners' row in front, the botanist at the right. */
   private fitBox() {
     const bs = this.layout.beds;
@@ -555,11 +567,19 @@ export class GardenWorld implements WorldLookup {
     // Camera: follow a member, or director mode follows the latest action.
     let focus: THREE.Vector3 | undefined;
     if (shot) focus = undefined; // the cinematic shot owns the camera
-    else if (this.follow) focus = this.actors.gardenerPos(this.follow);
+    else if (this.follow) {
+      focus = this.follow.startsWith('agent:') ? this.actors.agentPos(this.follow.slice(6)) : this.actors.gardenerPos(this.follow);
+      if (!focus && this.follow.startsWith('agent:')) { this.follow = null; this.followZoom = false; this.onFollowEnd(); } // the agent finished
+    }
     else if (this.director) focus = this.actors.focus;
     if (focus) {
       const d = this.tmpV.copy(focus).sub(this.controls.target).multiplyScalar(Math.min(1, dt * 1.6));
       this.controls.target.add(d); this.camera.position.add(d);
+      if (this.follow && this.followZoom) { // glide in to a close view of who we follow
+        const off = this.tmpV.subVectors(this.camera.position, this.controls.target), len = off.length(), want = 8;
+        if (Math.abs(len - want) > 0.05) this.camera.position.copy(this.controls.target).add(off.multiplyScalar((len + (want - len) * Math.min(1, dt * 2)) / len));
+        else this.followZoom = false;
+      }
     }
     if (this.pulseT > 0) {
       this.pulseT -= dt;

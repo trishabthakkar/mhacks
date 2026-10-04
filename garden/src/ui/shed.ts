@@ -21,8 +21,22 @@ export interface ShedOptions {
   /** Human text for the connection state, e.g. "live", "reconnecting (2)", "demo data". */
   connection: string;
   collapsed: boolean;
+  /** What the camera follows: a handle, or "agent:<sessionId>". */
+  following?: string | null;
 }
-export type FocusKind = 'member' | 'plant' | 'fence';
+
+/** A gardener's live bot and subagents, each a button that flies the camera to it. `following` marks the followed one. */
+export function agentRows(s: GardenSnapshot, handle: string, following?: string | null): string {
+  const live = s.agents.filter((a) => a.handle === handle && a.status !== 'dormant')
+    .sort((a, b) => Number(a.kind === 'subagent') - Number(b.kind === 'subagent'));
+  if (!live.length) return '';
+  return `<ul class="agents">${live.map((a) => {
+    const key = `agent:${a.sessionId}`, sub = a.kind === 'subagent';
+    const what = `${esc(clip(a.currentAction || a.status, 24))}${a.currentPath ? ` <code>${esc(base(a.currentPath))}</code>` : ''}`;
+    return `<li><button class="link agent${following === key ? ' following' : ''}" data-focus="${esc(key)}" aria-label="Fly the camera to ${esc(handle)}'s ${sub ? 'helper agent' : 'bot'}">${sub ? '✨ helper' : '🤖 bot'} · ${what}</button></li>`;
+  }).join('')}</ul>`;
+}
+export type FocusKind = 'member' | 'agent' | 'plant' | 'fence';
 export interface ShedHandlers { onFocus(kind: FocusKind, key: string): void; onToggle(): void }
 
 let filter: Filter = 'all';
@@ -56,7 +70,8 @@ export function renderShed(el: HTMLElement, s: GardenSnapshot, o: ShedOptions) {
   const sig = JSON.stringify([
     o.source, o.connection, o.collapsed, filter,
     s.members.map((m) => [m.handle, m.online]),
-    s.agents.filter((a) => a.kind === 'claude' && a.status !== 'dormant').map((a) => [a.handle, a.status, a.currentPath]),
+    o.following ?? null,
+    s.agents.filter((a) => a.status !== 'dormant').map((a) => [a.sessionId, a.handle, a.status, a.currentPath, a.currentAction]),
     s.claims.map((c) => [c.id, c.path, mins(c.expiresAt - s.at)]),
     s.messages.filter((m) => m.status !== 'acked').map((m) => [m.id, m.status, mins(s.at - m.sentAt)]),
     (s.handoffs ?? []).slice(-5).map((h) => [h.id, h.status]),
@@ -80,8 +95,8 @@ export function renderShed(el: HTMLElement, s: GardenSnapshot, o: ShedOptions) {
     const unread = s.messages.filter((x) => x.toHandle === m.handle && x.status !== 'acked').length;
     const t = lastRun.get(m.handle);
     const what = !m.online ? 'offline' : bot ? `${bot.status}${bot.currentPath ? ` · ${esc(base(bot.currentPath))}` : ''}` : 'no agent';
-    return `<li><button class="who" data-focus="member:${esc(m.handle)}" aria-label="Focus the camera on ${esc(m.handle)}">${dot(m.color, m.online)}<b>${esc(m.handle)}</b></button>
-      <span class="sub">${what}${unread ? ` · ✉ ${unread} unread` : ''}${t === undefined ? '' : ` · tests ${t === 0 ? '✓ pass' : '✗ fail'}`}</span></li>`;
+    return `<li><button class="who${o.following === m.handle ? ' following' : ''}" data-focus="member:${esc(m.handle)}" aria-label="Follow ${esc(m.handle)} with the camera">${dot(m.color, m.online)}<b>${esc(m.handle)}</b></button>
+      <span class="sub">${what}${unread ? ` · ✉ ${unread} unread` : ''}${t === undefined ? '' : ` · tests ${t === 0 ? '✓ pass' : '✗ fail'}`}</span>${agentRows(s, m.handle, o.following)}</li>`;
   }).join('') + (ordered.length > MAX_PEOPLE ? `<li class="sub">+${ordered.length - MAX_PEOPLE} more (offline)</li>` : '') || '<li class="sub">nobody has joined yet</li>';
 
   const color = (h: string) => s.members.find((m) => m.handle === h)?.color ?? '#888';

@@ -55,6 +55,7 @@ addEventListener('unhandledrejection', (e) => reportError(e.reason));
 
 const world = new GardenWorld(app, store);
 world.onLayout = (l) => { layout = l; };
+world.onFollowEnd = () => refresh();
 world.onError = reportError;
 world.onShedClick = () => setCollapsed(!collapsed);
 const announcer = createAnnouncer(document.getElementById('announcer')!);
@@ -231,10 +232,10 @@ initPlan(plan, {
 function refresh() {
   const s = store.snapshot;
   const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
-  renderShed(shed, s, { source, connection, collapsed });
+  renderShed(shed, s, { source, connection, collapsed, following: world.follow });
   emptyState.hidden = s.plants.length > 0 || conn.state === 'connecting';
   // The chip only carries what the shed pill doesn't: camera modes and the demo pause control.
-  const modes = `${world.director ? 'director' : ''}${world.follow ? `${world.director ? ' · ' : ''}following ${world.follow}` : ''}${world.expandAll ? ' · all plants' : ''}`;
+  const modes = `${world.director ? 'director' : ''}${world.follow ? `${world.director ? ' · ' : ''}following ${world.followLabel}` : ''}${world.expandAll ? ' · all plants' : ''}`;
   statusText.textContent = conn.state === 'live' ? modes : `${connection}${modes ? ` · ${modes}` : ''}`;
   pauseBtn.hidden = !(fake && !replaying);
   status.hidden = !statusText.textContent && pauseBtn.hidden;

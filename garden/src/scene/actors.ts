@@ -244,6 +244,8 @@ export class Actors {
     this.botHome.set(this.world.homeFrame.halfW + 2.5, 0, this.world.homeFrame.frontZ - 1);
   }
   gardenerPos(handle: string): THREE.Vector3 | undefined { return this.gardeners.get(handle)?.obj.position; }
+  /** Where a bot (main session) or spirit (subagent) is right now. */
+  agentPos(sessionId: string): THREE.Vector3 | undefined { return this.bots.get(sessionId)?.obj.position ?? this.bees.get(sessionId)?.obj.position; }
   private claudeAgent(handle: string) { return this.snap.agents.find((a) => a.handle === handle && a.kind === 'claude'); }
 
   clearTransient() {

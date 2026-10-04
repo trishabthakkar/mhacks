@@ -14,12 +14,24 @@ export type DaemonEvent =
 
 export interface InboxMessage { id: string; fromHandle: string; kind: string; body: string; sentAt: number }
 
+/** A message to or from me, for `sprout inbox` / `sprout sent`. */
+export interface MessageRow extends InboxMessage {
+  toHandle: string; status: 'sent' | 'delivered' | 'acked'; deliveredAt?: number; ackedAt?: number;
+}
+
+/** GET /messages. `held`: waiting for my OK before my agent sees it (inbox mode `ask`). */
+export interface MessagesView {
+  me: string; mode: 'auto' | 'ask' | 'off'; connected: boolean;
+  inbox: (MessageRow & { held: boolean })[];
+  sent: MessageRow[];
+}
+
 export type CheckResult =
   | { fenced: false; mode: 'warn' | 'block' }
   | { fenced: true; mode: 'warn' | 'block'; holder: string; claimPath: string; expiresAt: number };
 
 export interface DaemonStatus {
   handle: string; connected: boolean; impl: 'fake' | 'spacetimedb'; paused: boolean; claimMode: string;
-  inbox: number; myClaims: { path: string; expiresAt: number }[]; recent: { at: number; text: string }[];
+  inbox: number; held: number; myClaims: { path: string; expiresAt: number }[]; recent: { at: number; text: string }[];
   queued: number; repos: string[];
 }

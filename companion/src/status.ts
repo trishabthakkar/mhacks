@@ -3,6 +3,7 @@ import { call } from './client.ts';
 import { daemonPort, files, loadConfig } from './config.ts';
 import type { DaemonStatus } from './events.ts';
 import { formatUntil } from './hookMap.ts';
+import { SHARE_CATEGORIES, shareOf } from './share.ts';
 
 export async function printStatus(print: (s: string) => void = console.log): Promise<number> {
   const cfg = loadConfig();
@@ -17,7 +18,10 @@ export async function printStatus(print: (s: string) => void = console.log): Pro
   }
   print(`daemon     running, ${s.connected ? 'connected' : 'OFFLINE (queueing)'} [${s.impl}]${s.queued ? `, ${s.queued} queued` : ''}`);
   print(`claimMode  ${s.claimMode}`);
-  print(`inbox      ${s.inbox} undelivered`);
+  const share = shareOf(cfg);
+  print(`inbox      ${s.inbox} for your agent${s.held ? `, ${s.held} waiting for your OK (sprout inbox)` : ''} [delivery: ${share.inbox}]`);
+  const off = SHARE_CATEGORIES.filter((c) => !share[c]);
+  print(`sharing    ${off.length ? `all but ${off.join(', ')}` : 'everything (sprout share)'}${share.hidden.length ? `; hidden: ${share.hidden.join(', ')}` : ''}`);
   print(`repos      ${s.repos.join(', ') || '(none)'}`);
   print(`my claims  ${s.myClaims.length ? s.myClaims.map((c) => `${c.path} (until ${formatUntil(c.expiresAt)})`).join(', ') : '(none)'}`);
   print('recent');

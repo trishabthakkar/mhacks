@@ -1,7 +1,7 @@
 // All SpacetimeDB access for the companion goes through this interface.
 // Implementations: FakeDb (below, logs calls, in-memory cache) and StdbDb (stdbDb.ts, real
 // SpacetimeDB via the generated bindings). Argument shapes follow CONTRACT.md "Generated casing".
-import type { InboxMessage } from './events.ts';
+import type { InboxMessage, MessageRow } from './events.ts';
 
 export interface ClaimRowLite { id: string; path: string; handle: string; expiresAt: number }
 
@@ -23,6 +23,8 @@ export interface SproutDb {
   config(key: string): string | undefined;
   /** Messages to `handle` still in status 'sent'. */
   undelivered(handle: string): InboxMessage[];
+  /** Every message to or from `handle`, oldest first. */
+  messagesOf(handle: string): MessageRow[];
 
   // ---- reducers ----
   joinMember(handle: string, color: string): Promise<void>;
@@ -33,6 +35,8 @@ export interface SproutDb {
   recordTestRun(handle: string, repo: string, command: string, exitCode: number): Promise<void>;
   recordDiff(handle: string, paths: string[], commit?: string): Promise<void>;
   markDelivered(handle: string, id: string): Promise<void>;
+  postMessage(fromHandle: string, toHandle: string, kind: string, body: string): Promise<void>;
+  ackMessage(handle: string, id: string): Promise<void>;
 }
 
 type Log = (line: string) => void;
@@ -43,7 +47,9 @@ export class FakeDb implements SproutDb {
   calls: { name: string; args: unknown }[] = [];
   claimRows: ClaimRowLite[] = [];
   configRows = new Map<string, string>([['claimMode', 'warn'], ['claimTtlMinutes', '30'], ['requireReview', 'false']]);
-  messages: (InboxMessage & { toHandle: string; status: 'sent' | 'delivered' | 'acked' })[] = [];
+  messages: MessageRow[] = [];
+  /** Handles postMessage accepts (the module rejects unknown members). Empty: anyone. */
+  members: string[] = [];
   connected = false;
   private listeners: ((c: boolean) => void)[] = [];
 
@@ -60,6 +66,10 @@ export class FakeDb implements SproutDb {
   undelivered(handle: string): InboxMessage[] {
     return this.messages.filter((m) => m.toHandle === handle && m.status === 'sent')
       .map(({ id, fromHandle, kind, body, sentAt }) => ({ id, fromHandle, kind, body, sentAt }));
+  }
+
+  messagesOf(handle: string): MessageRow[] {
+    return this.messages.filter((m) => m.toHandle === handle || m.fromHandle === handle);
   }
 
   private async call(name: string, args: unknown): Promise<void> {
@@ -79,7 +89,21 @@ export class FakeDb implements SproutDb {
   async markDelivered(handle: string, id: string) {
     await this.call('markDelivered', { handle, id });
     const m = this.messages.find((x) => x.id === id);
-    if (m && m.status === 'sent') m.status = 'delivered';
+    if (m && m.status === 'sent') { m.status = 'delivered'; m.deliveredAt = Date.now(); }
+  }
+  async postMessage(fromHandle: string, toHandle: string, kind: string, body: string) {
+    if (this.members.length && !this.members.includes(toHandle)) throw new Error(`unknown member ${toHandle}`);
+    await this.call('postMessage', { fromHandle, toHandle, kind, body });
+    const id = String(this.messages.reduce((n, m) => Math.max(n, Number(m.id)), 0) + 1);
+    this.messages.push({ id, fromHandle, toHandle, kind, body, status: 'sent', sentAt: Date.now() });
+  }
+  async ackMessage(handle: string, id: string) {
+    const m = this.messages.find((x) => x.id === id);
+    if (!m) throw new Error(`no message #${id}`);
+    if (m.toHandle !== handle) throw new Error(`only ${m.toHandle} can ack message #${id}`);
+    await this.call('ackMessage', { handle, id });
+    m.status = 'acked';
+    m.ackedAt = Date.now();
   }
 }
 

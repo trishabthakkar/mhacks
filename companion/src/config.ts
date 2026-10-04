@@ -1,10 +1,11 @@
-// ~/.sprout: config.json, daemon.pid, daemon.log, queue.jsonl, spool.jsonl, token.
+// ~/.sprout: config.json, daemon.pid, daemon.log, queue.jsonl, spool.jsonl, token, approved.json.
 // SPROUT_HOME overrides the location (tests, running two members on one machine).
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { realish } from './redact.ts';
 import { join, resolve } from 'node:path';
 import { DAEMON_PORT } from '../../shared/constants.ts';
+import type { ShareSettings } from './share.ts';
 
 export interface JoinedRepo {
   /** Absolute git toplevel on this laptop. */
@@ -22,6 +23,8 @@ export interface SproutConfig {
   repos: JoinedRepo[];
   paused: boolean;
   port?: number;
+  /** What this person lets leave the laptop (see share.ts). Missing keys use the defaults. */
+  share?: Partial<ShareSettings>;
 }
 
 export function sproutHome(): string {
@@ -36,6 +39,8 @@ export const files = {
   queue: () => join(sproutHome(), 'queue.jsonl'),
   spool: () => join(sproutHome(), 'spool.jsonl'),
   token: () => join(sproutHome(), 'token'),
+  /** Message ids the human let through to their agent (inbox mode `ask`). */
+  approved: () => join(sproutHome(), 'approved.json'),
 };
 
 export function daemonPort(cfg?: Pick<SproutConfig, 'port'> | null): number {

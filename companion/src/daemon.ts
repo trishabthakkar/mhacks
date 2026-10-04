@@ -2,13 +2,14 @@
 // (127.0.0.1 only), an offline queue, heartbeat, and the git poller.
 import { appendFileSync, existsSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { ACTIVITY_KINDS, DEFAULT_CLAIM_MODE } from '../../shared/constants.ts';
+import { ACTIVITY_KINDS, DEFAULT_CLAIM_MODE, MAX_MESSAGE_BODY } from '../../shared/constants.ts';
 import { daemonPort, files, loadConfig, repoFor, sproutHome, type JoinedRepo, type SproutConfig } from './config.ts';
 import { FakeDb, openDb, type ActivityArgs, type ClaimRowLite, type SproutDb } from './db.ts';
-import type { CheckResult, DaemonEvent, DaemonStatus, InboxMessage } from './events.ts';
+import type { CheckResult, DaemonEvent, DaemonStatus, InboxMessage, MessagesView } from './events.ts';
 import { GitPoller } from './gitFeed.ts';
 import { formatUntil } from './hookMap.ts';
-import { detail as cleanDetail, isTestCommand, redactCommand } from './redact.ts';
+import { clip, detail as cleanDetail, isTestCommand, maskSecrets, redactCommand } from './redact.ts';
+import { categoryOf, isHidden, shareOf } from './share.ts';
 
 const HEARTBEAT_MS = 30_000;
 const MAX_QUEUE = 5000;
@@ -47,6 +48,8 @@ export class Daemon {
   queue: Op[] = [];
   recent: { at: number; text: string }[] = [];
   delivered = new Set<string>();
+  /** Message ids the human let through to their agent (inbox mode `ask`). */
+  approved = new Set<string>();
   server: Server | null = null;
   poller: GitPoller;
   private timers: NodeJS.Timeout[] = [];
@@ -58,7 +61,7 @@ export class Daemon {
     this.cfg = cfg;
     this.poller = new GitPoller(
       () => this.cfg.repos,
-      (repo, paths) => this.enqueueOrSend({ op: 'recordDiff', args: { handle: this.cfg.handle, paths: paths.slice(0, 200) } }, `diff ${repo.name}: ${paths.length} path(s)`),
+      (repo, paths) => this.diff(paths, undefined, `diff ${repo.name}`),
       (repo, path) => this.activity({ kind: 'file_change', path }, repo),
     );
   }
@@ -67,6 +70,7 @@ export class Daemon {
   async start(opts: { db?: SproutDb; listen?: boolean; poll?: boolean } = {}): Promise<void> {
     mkdirSync(sproutHome(), { recursive: true, mode: 0o700 });
     this.loadQueue();
+    this.loadApproved();
     this.ingestSpool();
     if (opts.listen !== false) await this.listen();
     this.db = opts.db ?? (await openDb(this.cfg, this.log));
@@ -221,12 +225,19 @@ export class Daemon {
   activity(e: { kind: string; path?: string; sessionId?: string; parentSessionId?: string; lines?: number; detail?: string }, repo?: JoinedRepo): void {
     if (this.cfg.paused) return;
     if (!KINDS.has(e.kind)) return;
+    const share = shareOf(this.cfg);
+    if (!share[categoryOf(e.kind)]) return; // the human turned this off
+    let path = safePath(e.path);
+    if (path && isHidden(share.hidden, path)) {
+      if (e.kind === 'file_change') return;
+      path = undefined; // the event still counts; the hidden path stays on this laptop
+    }
     const args: ActivityArgs = {
       handle: this.cfg.handle,
       kind: e.kind,
       sessionId: typeof e.sessionId === 'string' ? e.sessionId.slice(0, 128) : undefined,
       parentSessionId: e.kind === 'subagent_start' && typeof e.parentSessionId === 'string' ? e.parentSessionId.slice(0, 128) : undefined,
-      path: safePath(e.path),
+      path,
       lines: typeof e.lines === 'number' && e.lines >= 0 && e.lines < 4_294_967_295 ? Math.floor(e.lines) : undefined,
       detail: cleanDetail(e.detail),
     };
@@ -257,10 +268,9 @@ export class Daemon {
       case 'diff': {
         const repo = byName(ev.repo);
         if (!repo) return;
-        const paths = (Array.isArray(ev.paths) ? ev.paths : []).map(safePath).filter((p): p is string => !!p).slice(0, 200);
+        const paths = (Array.isArray(ev.paths) ? ev.paths : []).map(safePath).filter((p): p is string => !!p);
         const commit = typeof ev.commit === 'string' && /^[0-9a-f]{7,64}$/.test(ev.commit) ? ev.commit : undefined;
-        if (!paths.length && !commit) return;
-        this.enqueueOrSend({ op: 'recordDiff', args: { handle: this.cfg.handle, paths, commit } }, `diff${commit ? ` ${commit.slice(0, 7)}` : ''}: ${paths.length} path(s)`);
+        this.diff(paths, commit, `diff${commit ? ` ${commit.slice(0, 7)}` : ''}`);
         // The module writes the `commit` activity (and auto-releases claims) itself.
         return;
       }
@@ -288,9 +298,20 @@ export class Daemon {
    * yet (≤5s lag) would otherwise land after the test run, so poll the repo first.
    */
   private testRun(repo: JoinedRepo, command: string, exitCode: number, label: string): void {
+    if (!shareOf(this.cfg).tests) return;
     const send = () => this.enqueueOrSend({ op: 'recordTestRun', args: { handle: this.cfg.handle, repo: repo.name, command, exitCode } }, label);
     if (!this.polling) return send();
     void this.poller.pollRepo(repo).catch(() => {}).finally(send);
+  }
+
+  /** Changed paths (and commit sha) for the botanist, minus anything the human hid. */
+  private diff(paths: string[], commit: string | undefined, label: string): void {
+    if (this.cfg.paused) return;
+    const share = shareOf(this.cfg);
+    if (!share.diffs) return;
+    const shown = paths.filter((p) => !isHidden(share.hidden, p)).slice(0, 200);
+    if (!shown.length && !commit) return;
+    this.enqueueOrSend({ op: 'recordDiff', args: { handle: this.cfg.handle, paths: shown, commit } }, `${label}: ${shown.length} path(s)`);
   }
 
   // ---------- queries ----------
@@ -310,8 +331,96 @@ export class Daemon {
     return res;
   }
 
-  inbox(): InboxMessage[] {
+  /** Messages to me that my agent hasn't been given yet (before my inbox setting applies). */
+  private pending(): InboxMessage[] {
     return (this.db?.undelivered(this.cfg.handle) ?? []).filter((m) => !this.delivered.has(m.id));
+  }
+
+  /** What the UserPromptSubmit hook may inject: depends on my inbox setting (auto / ask / off). */
+  inbox(): InboxMessage[] {
+    const mode = shareOf(this.cfg).inbox;
+    if (mode === 'off') return [];
+    const msgs = this.pending();
+    return mode === 'ask' ? msgs.filter((m) => this.approved.has(m.id)) : msgs;
+  }
+
+  /** Messages waiting for my OK before my agent sees them. */
+  held(): InboxMessage[] {
+    const mode = shareOf(this.cfg).inbox;
+    if (mode === 'auto') return [];
+    return this.pending().filter((m) => mode === 'off' || !this.approved.has(m.id));
+  }
+
+  // ---------- messaging straight from the human (no AI involved) ----------
+  messagesView(): MessagesView {
+    const me = this.cfg.handle;
+    const held = new Set(this.held().map((m) => m.id));
+    const rows = this.db?.messagesOf(me) ?? [];
+    return {
+      me, mode: shareOf(this.cfg).inbox, connected: !!this.db?.isConnected(),
+      inbox: rows.filter((m) => m.toHandle === me && m.status !== 'acked')
+        .map((m) => ({ ...m, status: this.delivered.has(m.id) && m.status === 'sent' ? 'delivered' as const : m.status, held: held.has(m.id) })),
+      sent: rows.filter((m) => m.fromHandle === me).slice(-20),
+    };
+  }
+
+  /** Sends now or says why not: a person typing a message should know whether it went. */
+  async sendMessage(to: string, rawBody: string, kind: string): Promise<{ ok: true; body: string; masked: boolean } | { ok: false; error: string }> {
+    const toHandle = to.trim().replace(/^@/, '');
+    if (!/^[A-Za-z0-9_.-]{1,32}$/.test(toHandle)) return { ok: false, error: `not a handle: ${toHandle || '(empty)'}` };
+    if (kind !== 'finding' && kind !== 'request') return { ok: false, error: 'kind must be finding or request' };
+    const flat = rawBody.replace(/\s+/g, ' ').trim();
+    if (!flat) return { ok: false, error: 'message is empty' };
+    const body = clip(maskSecrets(flat), MAX_MESSAGE_BODY);
+    if (!this.db?.isConnected()) return { ok: false, error: 'offline: not connected to the team database, nothing was sent' };
+    try {
+      await this.db.postMessage(this.cfg.handle, toHandle, kind, body);
+    } catch (e) {
+      return { ok: false, error: String((e as Error)?.message ?? e) };
+    }
+    this.note(`message to ${toHandle} (${kind})`);
+    return { ok: true, body, masked: body !== clip(flat, MAX_MESSAGE_BODY) };
+  }
+
+  async ack(ids: string[]): Promise<{ id: string; error?: string }[]> {
+    const out: { id: string; error?: string }[] = [];
+    for (const id of ids) {
+      if (!/^\d+$/.test(id)) { out.push({ id, error: 'not a message id' }); continue; }
+      if (!this.db?.isConnected()) { out.push({ id, error: 'offline' }); continue; }
+      try {
+        await this.db.ackMessage(this.cfg.handle, id);
+        this.approved.delete(id);
+        out.push({ id });
+      } catch (e) { out.push({ id, error: String((e as Error)?.message ?? e) }); }
+    }
+    this.saveApproved();
+    return out;
+  }
+
+  /** Let held messages through to my agent on my next prompt. Returns the ids let through. */
+  allow(ids: string[] | 'all'): string[] {
+    if (shareOf(this.cfg).inbox === 'off') return [];
+    const held = this.held().map((m) => m.id);
+    const pick = ids === 'all' ? held : ids.filter((id) => held.includes(id));
+    for (const id of pick) this.approved.add(id);
+    this.saveApproved();
+    return pick;
+  }
+
+  private loadApproved(): void {
+    try {
+      for (const id of JSON.parse(readFileSync(files.approved(), 'utf8')) as unknown[]) if (typeof id === 'string') this.approved.add(id);
+    } catch { /* none yet */ }
+  }
+
+  private saveApproved(): void {
+    try {
+      if (this.db?.isConnected()) { // keep only ids still waiting for delivery
+        const live = new Set(this.pending().map((m) => m.id));
+        for (const id of this.approved) if (!live.has(id)) this.approved.delete(id);
+      }
+      writeFileSync(files.approved(), JSON.stringify([...this.approved]), { mode: 0o600 });
+    } catch { /* best effort */ }
   }
 
   markDelivered(ids: string[]): void {
@@ -331,6 +440,7 @@ export class Daemon {
       paused: this.cfg.paused,
       claimMode: this.claimMode(),
       inbox: this.inbox().length,
+      held: this.held().length,
       myClaims: (this.db?.claims() ?? []).filter((c) => c.handle === this.cfg.handle && c.expiresAt > now)
         .map((c) => ({ path: c.path, expiresAt: c.expiresAt })),
       recent: this.recent.slice(-5),
@@ -376,6 +486,19 @@ export class Daemon {
       }
       case 'GET /inbox': return json(200, { messages: this.inbox() });
       case 'GET /status': return json(200, this.status());
+      case 'GET /messages': return json(200, this.messagesView());
+      case 'POST /send': {
+        const b = JSON.parse((await readBody(req)) || '{}') as { to?: unknown; body?: unknown; kind?: unknown };
+        return json(200, await this.sendMessage(String(b.to ?? ''), String(b.body ?? ''), String(b.kind ?? 'finding')));
+      }
+      case 'POST /ack': {
+        const b = JSON.parse((await readBody(req)) || '{}') as { ids?: unknown[] };
+        return json(200, { results: await this.ack((b.ids ?? []).map(String)) });
+      }
+      case 'POST /allow': {
+        const b = JSON.parse((await readBody(req)) || '{}') as { ids?: unknown[] | 'all' };
+        return json(200, { allowed: this.allow(b.ids === 'all' ? 'all' : (Array.isArray(b.ids) ? b.ids : []).map(String)) });
+      }
       case 'POST /delivered': {
         const body = await readBody(req);
         const ids = (JSON.parse(body || '{}') as { ids?: unknown[] }).ids ?? [];

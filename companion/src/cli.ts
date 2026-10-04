@@ -17,6 +17,22 @@ Commands:
   status                             show companion status
   stop                               stop the local daemon
 
+Messages (straight from your terminal, no AI needed):
+  inbox                              messages to you, and whether your agent has them
+  send <handle> <message…> [--request]
+                                     message a teammate (their agent gets it on their next prompt)
+  reply <id> <message…>              answer a message
+  ack <id…>                          done with it (an unread one never reaches your agent)
+  allow <id…|all>                    pass held messages to your agent (inbox mode "ask")
+  sent                               what you sent and whether it landed
+
+What you share:
+  share                              show what leaves this laptop and how messages reach your agent
+  share <activity|reads|commands|tests|diffs> <on|off>
+  share inbox <auto|ask|off>         auto: straight to your agent · ask: you approve each · off: never
+  hide <path|glob…>                  never share these paths (e.g. secrets/ or '.env*')
+  unhide <path|glob…>
+
 Options:
   -h, --help                         show this help
 `;
@@ -101,8 +117,36 @@ export async function main(argv: string[]): Promise<number> {
       cfg.paused = cmd === 'pause';
       saveConfig(cfg);
       await call(daemonPort(cfg), 'POST', '/reload', undefined, 1000).catch(() => {});
-      console.log(cfg.paused ? '⏸  tracking paused: nothing leaves this laptop until `sprout resume`' : '▶  tracking resumed');
+      console.log(cfg.paused ? '⏸  tracking paused: no activity leaves this laptop until `sprout resume` (messages you send yourself still go)' : '▶  tracking resumed');
       return 0;
+    }
+    case 'inbox': return (await import('./messages.ts')).inbox();
+    case 'sent': return (await import('./messages.ts')).sent();
+    case 'send': {
+      const { pos, opt } = flags(rest);
+      if (pos.length < 2) { console.error('usage: sprout send <handle> <message…> [--request]'); return 2; }
+      return (await import('./messages.ts')).send(pos[0]!, pos.slice(1).join(' '), opt.request ? 'request' : 'finding');
+    }
+    case 'reply': {
+      const { pos, opt } = flags(rest);
+      if (pos.length < 2 || !/^#?\d+$/.test(pos[0]!)) { console.error('usage: sprout reply <id> <message…> [--request]'); return 2; }
+      return (await import('./messages.ts')).reply(pos[0]!.replace('#', ''), pos.slice(1).join(' '), opt.request ? 'request' : 'finding');
+    }
+    case 'ack': {
+      const ids = rest.map((x) => x.replace('#', '')).filter(Boolean);
+      if (!ids.length) { console.error('usage: sprout ack <id…>'); return 2; }
+      return (await import('./messages.ts')).ack(ids);
+    }
+    case 'allow': {
+      const ids = rest.map((x) => x.replace('#', '')).filter(Boolean);
+      if (!ids.length) { console.error('usage: sprout allow <id…|all>'); return 2; }
+      return (await import('./messages.ts')).allow(ids.includes('all') ? 'all' : ids);
+    }
+    case 'share':
+    case 'hide':
+    case 'unhide': {
+      const { shareCommand } = await import('./shareCmd.ts');
+      return shareCommand(cmd, rest);
     }
     case 'status': {
       const { printStatus } = await import('./status.ts');

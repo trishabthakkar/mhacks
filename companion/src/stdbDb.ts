@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { DbConnection } from './module_bindings/index.ts';
 import { files } from './config.ts';
 import type { ActivityArgs, ClaimRowLite, SproutDb } from './db.ts';
-import type { InboxMessage } from './events.ts';
+import type { InboxMessage, MessageRow } from './events.ts';
 
 type Log = (line: string) => void;
 const CALL_TIMEOUT_MS = 8000;
@@ -143,6 +143,20 @@ export class StdbDb implements SproutDb {
       .map((m) => ({ id: String(m.id), fromHandle: m.fromHandle, kind: m.kind, body: m.body, sentAt: m.sentAt.toDate().getTime() }));
   }
 
+  messagesOf(handle: string): MessageRow[] {
+    if (!this.conn) return [];
+    return [...this.conn.db.message.iter()]
+      .filter((m) => m.toHandle === handle || m.fromHandle === handle)
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .map((m) => ({
+        id: String(m.id), fromHandle: m.fromHandle, toHandle: m.toHandle, kind: m.kind, body: m.body,
+        status: (m.status === 'delivered' || m.status === 'acked' ? m.status : 'sent') as MessageRow['status'],
+        sentAt: m.sentAt.toDate().getTime(),
+        deliveredAt: m.deliveredAt?.toDate().getTime(),
+        ackedAt: m.ackedAt?.toDate().getTime(),
+      }));
+  }
+
   // ---- reducers ----
   private r() {
     if (!this.conn || !this.connected) throw new Error('not connected');
@@ -166,5 +180,11 @@ export class StdbDb implements SproutDb {
   }
   markDelivered(handle: string, id: string) {
     return withTimeout(this.r().markDelivered({ handle, id: BigInt(id) }), CALL_TIMEOUT_MS, 'markDelivered');
+  }
+  postMessage(fromHandle: string, toHandle: string, kind: string, body: string) {
+    return withTimeout(this.r().postMessage({ fromHandle, fromSession: undefined, toHandle, kind, body }), CALL_TIMEOUT_MS, 'postMessage');
+  }
+  ackMessage(handle: string, id: string) {
+    return withTimeout(this.r().ackMessage({ handle, id: BigInt(id) }), CALL_TIMEOUT_MS, 'ackMessage');
   }
 }

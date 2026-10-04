@@ -30,7 +30,7 @@
 | 3 | Shed noticeboard close-up | N | 5s | who's online, fences (empty) |
 | 4 | A types the untilText prompt | A terminal (PiP) | 6s | prompt text, `Fenced mcp/src/ until …` |
 | 5 | Fence rises in A's color; bot tends plants; seedlings grow | N | 10s | fence color = A's avatar |
-| 6 | Subagent prompt → bee flies out and back | A PiP + N | 12s | bee leaves and returns |
+| 6 | Subagent prompt → spirit hops out and back | A PiP + N | 12s | spirit's bubble readable (`search …`) |
 | 7 | B types "change clock() format" → hook denial text | B terminal | 8s | `fenced by manahil until …` |
 | 8 | B's bot stops at the gate; gardeners meet on the path | N | 8s | both avatars on the path |
 | 9 | B's agent sends post_finding; butterfly to A's bed | B PiP + N | 7s | butterfly |
@@ -41,6 +41,7 @@
 | 14 | Botanist shakes head at the bud | N | 5s | head shake + bubble |
 | 15 | A: run tests → pass → **🌸 Bloom certified** | A terminal | 10s | `npm test` pass, bloom line |
 | 16 | Plant blooms, botanist nods | N | 6s | bloom burst |
+| 16b | Team board (P) full screen | N | 5s | four columns, needs-attention strip |
 | 17 | Timelapse of `sprout-mhacks`, noon Sat → now | N | 10s | bare soil → full garden |
 | 18 | End card: team names, "Built with SpacetimeDB · MCP · Claude Code · Three.js", repo URL | edit | 4s | — |
 

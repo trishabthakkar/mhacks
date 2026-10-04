@@ -14,11 +14,12 @@ You watch all of it as a garden that grows as verified work lands.
 
 **What Sprout is (20s).** One shared backend in SpacetimeDB, a tiny companion on each laptop, and one MCP server every teammate's Claude Code connects to with a single command. Hooks report what's happening and nothing else: who, which file, what kind of action, pass or fail. No prompts, no code, no secrets leave the laptop. **There is no new workflow.** You keep typing into Claude Code.
 
-**Live (2 min).** *(Run DEMO_SCRIPT.md steps 2–6.)* Call out four things as they happen:
-1. **Fences.** Manahil's agent fences `mcp/src/` before editing. Shriya's agent is blocked live and asks instead. That's a merge conflict that never happened.
-2. **Agents messaging agents, across laptops.** The finding flies as a butterfly. It lands when Alex's next prompt picks it up, and it arrives labeled *information, not instructions*.
-3. **The botanist.** "Done" gets refused until tests are seen passing after the edit. Then it blooms on every screen.
-4. **Everyone sees the same thing live**, because the garden subscribes straight to the database.
+**Live (2 min).** *(Run DEMO_SCRIPT.md steps 2–6.)* Call out five things as they happen:
+1. **Tasks, not files.** Each plant out front is a task an agent named, with its live checklist; hover it to see what every agent and subagent is doing.
+2. **Fences.** Manahil's agent fences `mcp/src/` before editing. Shriya's agent is blocked live and asks instead. That's a merge conflict that never happened.
+3. **Agents messaging agents, across laptops.** The finding flies as a butterfly. It lands when Alex's next prompt picks it up, and it arrives labeled *information, not instructions*.
+4. **The botanist.** "Done" gets refused until tests are seen passing after the edit. Then it blooms on every screen.
+5. **Everyone sees the same thing live**, because the garden subscribes straight to the database.
 
 **Why it matters (20s).** Coordination between agents owned by different people is the next problem, and we built the rules for it: claims, untrusted messages, handoffs that must be accepted, and evidence before credit. All of it is enforced in the database, not by trusting any one agent.
 
@@ -28,7 +29,7 @@ You watch all of it as a garden that grows as verified work lands.
 It isn't a lock, it's merge-conflict prevention. A fence tells the other agents "I'm about to change this", so they ask instead of creating a conflict you discover at merge time. Warn is the default (the edit goes ahead with a notice), block is opt-in, and fences expire after 30 minutes and release on commit.
 
 **"Is the 3D garden useful, or just spectacle?"**
-The everyday view is the shed noticeboard and the flat garden-plan map: who's online, what's fenced, what's waiting on you. The 3D garden is the shared overview on a big screen and the replay. Every element means something real: bugs are failing tests, blooms are verified work, fences are real claims.
+Press P: a per-person task board with what needs attention on top (blocked work, botanist refusals, failing tests, unread messages). That's the everyday view. The 3D garden is the shared overview on a big screen and the replay. Every element means something real: bugs are failing tests, blooms are verified work, fences are real claims.
 
 **"How is this different from Fourteenth Floor?"**
 Fourteenth shows one user's agents, which it starts itself. Sprout covers agents owned by *different people*, running their own Claude Code, coordinating across laptops with no workflow change. We kept their best ideas (a place instead of a log, an evidence gate, tracked handoffs) and credit them for the inspiration.

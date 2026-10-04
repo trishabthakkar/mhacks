@@ -7,6 +7,7 @@ export interface StoreUpdate { snapshot: GardenSnapshot; events: StoreEvent[]; n
 const KEYS: Record<TableName, string> = {
   members: 'handle', agents: 'sessionId', plants: 'path', claims: 'id', messages: 'id',
   testRuns: 'id', certifications: 'id', activity: 'id', handoffs: 'id',
+  tasks: 'id', taskItems: 'id',
 };
 
 export const emptySnapshot = (): GardenSnapshot => ({

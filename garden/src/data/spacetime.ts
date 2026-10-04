@@ -1,8 +1,10 @@
 import { DbConnection } from '../module_bindings/index.ts';
 import type {
-  ActivityKind, AgentView, GardenSnapshot, HandoffStatus, MessageView, PlantStage,
+  ActivityKind, AgentView, GardenSnapshot, HandoffStatus, MessageView, PlantStage, TaskItemState, TaskStatus,
 } from '../../../shared/types.ts';
-import { AGENT_STATUSES, MESSAGE_KINDS, MESSAGE_STATUSES, PLANT_STAGES } from '../../../shared/constants.ts';
+import {
+  AGENT_STATUSES, MESSAGE_KINDS, MESSAGE_STATUSES, PLANT_STAGES, TASK_ITEM_STATES, TASK_STATUSES,
+} from '../../../shared/constants.ts';
 import type { HistoryInput } from './timelapse.ts';
 
 /** Where live snapshots go (the Store, or a gate in front of it). */
@@ -11,7 +13,7 @@ export interface Sink { set(s: GardenSnapshot, reset?: boolean): void }
 export const DEFAULT_HOST = 'wss://maincloud.spacetimedb.com';
 export const DEFAULT_DB = 'sprout-mhacks';
 
-const TABLES = ['member', 'agent', 'plant', 'claim', 'message', 'test_run', 'certification', 'activity', 'handoff'];
+const TABLES = ['member', 'agent', 'plant', 'claim', 'message', 'test_run', 'certification', 'activity', 'handoff', 'task', 'task_item'];
 const ACTIVITY_WINDOW = 200;
 
 export type LiveState = { state: 'live' } | { state: 'reconnecting'; attempt: number };
@@ -37,6 +39,7 @@ export interface LiveTables {
   member: Tbl<Row<'member'>>; agent: Tbl<Row<'agent'>>; plant: Tbl<Row<'plant'>>; claim: Tbl<Row<'claim'>>;
   message: Tbl<Row<'message'>>; testRun: Tbl<Row<'testRun'>>; certification: Tbl<Row<'certification'>>; activity: Tbl<Row<'activity'>>;
   handoff?: Tbl<Row<'handoff'>>;
+  task?: Tbl<Row<'task'>>; taskItem?: Tbl<Row<'taskItem'>>;
 }
 
 /** Pure mapping from subscribed rows to the GardenSnapshot the scene renders. Optional fields stay absent. */
@@ -68,6 +71,13 @@ export function buildSnapshot(db: LiveTables, now: number): GardenSnapshot {
       id: Number(h.id), fromHandle: h.fromHandle, toHandle: h.toHandle, task: h.task, notes: h.notes,
       status: h.status as HandoffStatus, createdAt: ms(h.createdAt),
     })) } : {}),
+    ...(db.task ? { tasks: [...db.task.iter()].map((x) => opt({
+      id: Number(x.id), handle: x.handle, title: x.title, status: oneOf(x.status, TASK_STATUSES, 'active') as TaskStatus,
+      bed: x.bed, paths: [...x.paths], blockedReason: x.blockedReason, createdAt: ms(x.createdAt), updatedAt: ms(x.updatedAt), doneAt: optMs(x.doneAt),
+    })) } : {}),
+    ...(db.taskItem ? { taskItems: [...db.taskItem.iter()].map((i) => ({
+      id: Number(i.id), taskId: Number(i.taskId), ord: num(i.ord), text: i.text, state: oneOf(i.state, TASK_ITEM_STATES, 'pending') as TaskItemState,
+    })) } : {}),
   };
 }
 
@@ -97,7 +107,7 @@ export function connectLive(store: Sink, host: string, db: string, timeoutMs = 1
         .withDatabaseName(db)
         .onConnect((cc) => {
           backoff = 1000; first = true; // a (re)connect starts from a clean snapshot: no history replayed as new events
-          for (const t of ['member', 'agent', 'plant', 'claim', 'message', 'testRun', 'certification', 'activity', 'handoff'] as const) {
+          for (const t of ['member', 'agent', 'plant', 'claim', 'message', 'testRun', 'certification', 'activity', 'handoff', 'task', 'taskItem'] as const) {
             const tbl = cc.db[t];
             tbl.onInsert(() => push(cc)); tbl.onUpdate(() => push(cc)); tbl.onDelete(() => push(cc));
           }

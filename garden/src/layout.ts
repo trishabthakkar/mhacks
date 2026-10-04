@@ -87,3 +87,26 @@ export function layoutTaskPlants(l: GardenLayout, tasks: { id: number; bed: stri
   }
   return out.sort((a, b) => a.id - b.id);
 }
+
+export interface PathLayout { x: number; z: number; w: number; d: number }
+const PATH_DEPTH = 2.2, PATH_OVERHANG = 1.2, SPINE_W = 1.8;
+
+/**
+ * Gravel where people walk: a path along the front of each row of beds (through the task pots), plus a spine down
+ * the left side linking every row to the front lane. Grass everywhere else.
+ */
+export function layoutPaths(l: GardenLayout): PathLayout[] {
+  if (!l.beds.length) return [];
+  const rows = new Map<number, BedLayout[]>();
+  for (const b of l.beds) { const top = round(b.z - b.d / 2), r = rows.get(top); if (r) r.push(b); else rows.set(top, [b]); }
+  const left = Math.min(...l.beds.map((b) => b.x - b.w / 2)), spineX = left - BED_GAP / 2 - 0.1;
+  const out = [...rows.keys()].sort((a, b) => a - b).map((top) => {
+    const r = rows.get(top)!;
+    const minX = spineX - SPINE_W / 2, maxX = Math.max(...r.map((b) => b.x + b.w / 2)) + PATH_OVERHANG;
+    const front = Math.max(...r.map((b) => b.z + b.d / 2));
+    return { x: round((minX + maxX) / 2), z: round(front + TASK_FRONT), w: round(maxX - minX), d: PATH_DEPTH };
+  });
+  const z0 = out[0]!.z, z1 = out[out.length - 1]!.z + PATH_DEPTH; // down to the front lane
+  out.push({ x: round(spineX), z: round((z0 + z1) / 2), w: SPINE_W, d: round(z1 - z0) });
+  return out;
+}

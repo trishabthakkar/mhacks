@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { hash2, PALETTE, skyColors } from './palette.ts';
+import type { PathLayout } from '../layout.ts';
 
 export type Quality = 'low' | 'high';
 
@@ -96,7 +97,7 @@ export class Props {
   }
 
   /** Rebuild the static world for a garden of this size. `halfW/halfD` = half extent of the beds. */
-  rebuild(halfW: number, halfD: number, frontZ: number) {
+  rebuild(halfW: number, halfD: number, frontZ: number, paths: PathLayout[] = []) {
     for (const o of [...this.world.children]) { this.world.remove(o); o.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); }); }
     this.radius = Math.max(150, Math.hypot(halfW, halfD) * 2 + 70); // wide enough that the camera never sees past the land
     const R = this.radius, gardenR = Math.hypot(halfW, halfD);
@@ -125,9 +126,16 @@ export class Props {
     meadow.receiveShadow = true; this.world.add(meadow);
 
     // Plaza under the beds: the lanes between beds read as paths. Plus a lane to the shed and the front row.
-    const plaza = mesh(geo.box, mat(PALETTE.plaza), halfW * 2 + 7, 0.1, halfD * 2 + 7, 0, -0.06, 0); plaza.castShadow = false; plaza.receiveShadow = true;
-    const lane = mesh(geo.box, mat(PALETTE.path), halfW * 2 + 7, 0.1, 3.2, 0, -0.055, frontZ + 0.3); lane.castShadow = false; lane.receiveShadow = true;
-    this.world.add(plaza, lane);
+    // Grass between the beds; gravel only where people walk: a path along each row of beds and the front lane.
+    const gravel = mat(PALETTE.path);
+    const strip = (x: number, z: number, w: number, d: number) => { // rounded ends along the long axis
+      const r = Math.min(w, d) / 2, lx = w > d ? (w - d) / 2 : 0, lz = w > d ? 0 : (d - w) / 2;
+      const parts = [mesh(geo.box, gravel, w > d ? w - d : w, 0.1, d - (w > d ? 0 : w), x, -0.055, z),
+        mesh(geo.cyl, gravel, r, 0.1, r, x - lx, -0.055, z - lz), mesh(geo.cyl, gravel, r, 0.1, r, x + lx, -0.055, z + lz)];
+      for (const m of parts) { m.castShadow = false; m.receiveShadow = true; this.world.add(m); }
+    };
+    for (const p of paths) strip(p.x, p.z, p.w, p.d);
+    strip(0, frontZ + 0.3, halfW * 2 + 7, 3.2);
 
     if (this.quality === 'low') { this.buildShed(halfW, halfD); mergeByMaterial(this.world, (m) => m === meadow); return; }
 

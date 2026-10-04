@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /** One cohesive palette for the whole garden: warm, soft, low-poly. */
 export const PALETTE = {
   meadowInner: '#93c46b', meadowOuter: '#7aae56', plaza: '#d8c79b', path: '#c9b787',
-  soil: '#5b4129', soilDark: '#47321f', furrow: '#3f2c1b',
+  soil: '#5b4129', mulch: '#5a4632', soilDark: '#47321f', furrow: '#3f2c1b',
   wood: '#8c5b34', woodDark: '#6e4526', woodLight: '#a8754a',
   stone: '#9a9a96', stoneDark: '#7c7c78',
   leaf: '#4f9a4a', leafDark: '#3f823f', trunk: '#76512f',

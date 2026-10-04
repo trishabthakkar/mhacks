@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GardenSnapshot, PlantStage, PlantView } from '../../../shared/types.ts';
-import { layoutGarden, layoutTaskPlants, type BedLayout, type GardenLayout, type PlantLayout } from '../layout.ts';
+import { layoutGarden, layoutPaths, layoutTaskPlants, type BedLayout, type GardenLayout, type PlantLayout } from '../layout.ts';
 import { bedStyleOf, collapseGenerated, speciesOf } from '../species.ts';
 import { TaskPlants } from './taskPlants.ts';
 import { currentTaskOf, taskModels } from '../tasks.ts';
@@ -240,7 +240,7 @@ export class GardenWorld implements WorldLookup {
       mergeByMaterial(this.bedGroup);
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
-      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ);
+      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, layoutPaths(this.layout));
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;
@@ -265,6 +265,7 @@ export class GardenWorld implements WorldLookup {
       for (const p of plants) g.add(sh(mesh(geo.cyl, mat(PALETTE.stone), 0.62, 0.14, 0.55, p.x, 0.07, p.z), false));
       return sign;
     }
+    g.add(sh(mesh(geo.box, mat(PALETTE.mulch), b.w + 0.7, 0.04, b.d + 0.7, b.x, -0.04, b.z), false)); // bark mulch rim seats the bed in the grass
     const t = 0.28, h = 0.42, g2 = style.kind === 'greenhouse';
     const wood = mat(g2 ? PALETTE.wood : style.border), post = mat(g2 ? PALETTE.woodDark : style.post);
     g.add(sh(mesh(geo.box, mat(PALETTE.soil), b.w - t * 2, 0.34, b.d - t * 2, b.x, 0.17, b.z), false));

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BED_PAD, layoutGarden, layoutTaskPlants, plantSize, SPACING, TASK_FRONT, type LayoutInput } from './layout.ts';
+import { BED_PAD, layoutGarden, layoutPaths, layoutTaskPlants, plantSize, SPACING, TASK_FRONT, type LayoutInput } from './layout.ts';
 
 const sample: LayoutInput[] = [
   { path: 'src/a.ts', bed: 'src', lines: 100 }, { path: 'src/b.ts', bed: 'src', lines: 10 },
@@ -81,5 +81,35 @@ test('task pots keep clear of every bed, including the next row behind them', ()
   for (const t of layoutTaskPlants(l, tasks)) for (const b of l.beds) {
     const dx = Math.max(0, Math.abs(t.x - b.x) - b.w / 2), dz = Math.max(0, Math.abs(t.z - b.z) - b.d / 2);
     assert.ok(Math.hypot(dx, dz) >= 1.5, `task ${t.id} (${t.bed}) is ${Math.hypot(dx, dz).toFixed(2)} from ${b.name}`);
+  }
+});
+
+test('one gravel path per bed row, through the task pots, never over a bed', () => {
+  const plants = ['garden', 'mcp', 'companion', 'spacetimedb', 'docs', 'demo'].flatMap((bed) =>
+    Array.from({ length: 30 }, (_, i) => ({ path: `${bed}/f${i}.ts`, bed, lines: 50 })));
+  const l = layoutGarden(plants);
+  const rows = new Set(l.beds.map((b) => b.z - b.d / 2)).size;
+  const paths = layoutPaths(l);
+  assert.equal(paths.filter((p) => p.w > p.d).length, rows);
+  const tasks = l.beds.map((b, i) => ({ id: i + 1, bed: b.name, status: 'active', updatedAt: 0 }));
+  for (const t of layoutTaskPlants(l, tasks)) {
+    assert.ok(paths.some((p) => Math.abs(t.x - p.x) <= p.w / 2 && Math.abs(t.z - p.z) <= p.d / 2), `task ${t.id} off the path`);
+  }
+  for (const p of paths) for (const b of l.beds) {
+    const apart = Math.abs(p.x - b.x) >= (p.w + b.w) / 2 - 1e-6 || Math.abs(p.z - b.z) >= (p.d + b.d) / 2 - 1e-6;
+    assert.ok(apart, `path at z=${p.z} overlaps ${b.name}`);
+  }
+  assert.deepEqual(layoutPaths(l), paths);
+});
+
+test('a spine path down the side links every row path', () => {
+  const plants = ['garden', 'mcp', 'companion', 'spacetimedb'].flatMap((bed) =>
+    Array.from({ length: 30 }, (_, i) => ({ path: `${bed}/f${i}.ts`, bed, lines: 50 })));
+  const paths = layoutPaths(layoutGarden(plants));
+  const spine = paths.find((p) => p.d > p.w)!;
+  assert.ok(spine, 'no spine');
+  for (const p of paths.filter((x) => x !== spine)) {
+    const touchX = Math.abs(p.x - spine.x) <= (p.w + spine.w) / 2, touchZ = Math.abs(p.z - spine.z) <= (p.d + spine.d) / 2;
+    assert.ok(touchX && touchZ, `row path at z=${p.z} not linked`);
   }
 });

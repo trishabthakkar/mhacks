@@ -50,7 +50,7 @@ export class Labels {
 
   /** Change a label's text (its size is re-measured on the next frame). */
   setText(el: HTMLElement, text: string) {
-    for (const i of this.items) if (i.el === el) { el.textContent = text; i.arrowText = text.split(" · ")[0]!; i.measured = false; // arrows carry the name only }
+    for (const i of this.items) if (i.el === el) { el.textContent = text; i.arrowText = text.split(' · ')[0]!; i.measured = false; } // arrows carry the name only
   }
 
   remove(el: HTMLElement) {

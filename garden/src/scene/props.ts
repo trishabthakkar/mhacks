@@ -96,12 +96,12 @@ export class Props {
   /** Rebuild the static world for a garden of this size. `halfW/halfD` = half extent of the beds. */
   rebuild(halfW: number, halfD: number, frontZ: number) {
     for (const o of [...this.world.children]) { this.world.remove(o); o.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry && m.geometry !== geo.box && m.geometry !== geo.sphere && m.geometry !== geo.cyl && m.geometry !== geo.cone) m.geometry.dispose(); }); }
-    this.radius = Math.max(52, Math.hypot(halfW, halfD) + 30);
+    this.radius = Math.max(150, Math.hypot(halfW, halfD) * 2 + 70); // wide enough that the camera never sees past the land
     const R = this.radius, gardenR = Math.hypot(halfW, halfD);
     this.center.set(0, 0, 0);
 
     // Meadow: a polar grid with vertex colours (soft noise, darker toward the rim) and a gentle rising horizon.
-    const rings = 26, segs = 96, verts: number[] = [], cols: number[] = [], idx: number[] = [];
+    const rings = 40, segs = 112, verts: number[] = [], cols: number[] = [], idx: number[] = [];
     const inC = new THREE.Color(PALETTE.meadowInner), outC = new THREE.Color(PALETTE.meadowOuter), c = new THREE.Color();
     verts.push(0, -0.12, 0); c.copy(inC); cols.push(c.r, c.g, c.b);
     for (let r = 1; r <= rings; r++) for (let s = 0; s < segs; s++) {
@@ -135,20 +135,20 @@ export class Props {
       return { x: Math.cos(a) * r, z: Math.sin(a) * r * 0.85, k: hash2(i, salt + 2) };
     };
     const rMin = gardenR + 9, rMax = R * 0.88;
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 44; i++) {
       const p = place(i, 11, rMin, rMax), s = 0.9 + p.k * 0.9, t = new THREE.Group();
       t.add(mesh(geo.cyl, mat(PALETTE.trunk), 0.28 * s, 1.5 * s, 0.28 * s, 0, 0.75 * s, 0));
       t.add(mesh(geo.cone, mat(PALETTE.leaf), 1.5 * s, 2.4 * s, 1.5 * s, 0, 2.3 * s, 0));
       t.add(mesh(geo.cone, mat(PALETTE.leafDark), 1.15 * s, 2.0 * s, 1.15 * s, 0, 3.4 * s, 0));
       t.position.set(p.x, 0, p.z); this.world.add(t);
     }
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 30; i++) {
       const p = place(i, 31, gardenR + 6, R * 0.9), s = 0.4 + p.k * 0.8;
       const rock = mesh(geo.sphere, mat(p.k > 0.5 ? PALETTE.stone : PALETTE.stoneDark), s * 1.2, s * 0.65, s, p.x, s * 0.25, p.z);
       rock.rotation.y = p.k * 6; this.world.add(rock);
     }
     // Grass tufts (instanced).
-    const tufts = 420, gm = new THREE.InstancedMesh(geo.cone, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }), tufts), dm = new THREE.Object3D();
+    const tufts = 1100, gm = new THREE.InstancedMesh(geo.cone, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }), tufts), dm = new THREE.Object3D();
     for (let i = 0; i < tufts; i++) {
       const p = place(i, 71, gardenR + 3, R * 0.92), s = 0.25 + p.k * 0.35;
       dm.position.set(p.x, s * 0.5 - 0.05, p.z); dm.scale.set(s * 0.5, s, s * 0.5); dm.rotation.y = p.k * 9; dm.updateMatrix();
@@ -213,6 +213,7 @@ export class Props {
   }
   shedClicked() { this.onShedClick?.(); }
 
+  get landRadius() { return this.radius; }
   get shedPosition() { return this.shed.position; }
 
   /** Per-frame: drifting clouds, firefly dance. Allocation-free. */

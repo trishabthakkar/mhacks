@@ -228,6 +228,7 @@ export class GardenWorld implements WorldLookup {
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
       this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ);
+      this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;
     }

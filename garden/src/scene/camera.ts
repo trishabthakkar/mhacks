@@ -31,6 +31,8 @@ export class CameraRig {
   private off = new THREE.Vector3();
   private up = new THREE.Vector3(0, 1, 0);
   calm = false;
+  /** Radius of the meadow; the camera is kept over it so the view never drops off the edge into sky. */
+  private land = 150;
   /** True while a cinematic push-in (botanist) owns the camera. */
   cinema = false;
   private saved?: { pos: THREE.Vector3; target: THREE.Vector3 };
@@ -43,6 +45,8 @@ export class CameraRig {
     addEventListener('keyup', (e) => this.onKey(e, false));
     addEventListener('blur', () => this.keys.clear());
   }
+
+  setLand(r: number) { this.land = r; this.controls.maxDistance = Math.min(this.controls.maxDistance, r * 0.7); }
 
   /** Pixels on the right covered by the shed; the scene is centered in the remaining space. */
   setReserved(px: number, bottom = 0) {
@@ -123,7 +127,7 @@ export class CameraRig {
     // Near rows look bigger than far ones, so deeper gardens need extra room at the bottom.
     const dV = ((halfD * Math.sin(elev) + 1.6 * Math.cos(elev)) * (1.08 + Math.min(0.4, halfD / 70))) / Math.tan(vfov / 2);
     const dist = Math.max(9, Math.max(dH, dV));
-    this.controls.maxDistance = Math.max(90, dist * 1.5);
+    this.controls.maxDistance = Math.max(dist * 1.15, Math.min(Math.max(90, dist * 1.5), this.land * 0.7));
     this.goalTarget.set((box.minX + box.maxX) / 2, 0.4, (box.minZ + box.maxZ) / 2);
     this.goalPos.set(this.goalTarget.x, this.goalTarget.y + Math.sin(elev) * dist, this.goalTarget.z + Math.cos(elev) * dist);
     this.userMoved = false;
@@ -170,5 +174,10 @@ export class CameraRig {
       }
     }
     if (this.camera.position.y < MIN_Y) this.camera.position.y = MIN_Y;
+    // Stay over the land: pan the look-at point and the camera back inside the meadow.
+    const tr = Math.hypot(this.controls.target.x, this.controls.target.z), maxT = this.land * 0.55;
+    if (tr > maxT) { const k = maxT / tr; this.camera.position.x -= this.controls.target.x * (1 - k); this.camera.position.z -= this.controls.target.z * (1 - k); this.controls.target.x *= k; this.controls.target.z *= k; }
+    const cr = Math.hypot(this.camera.position.x, this.camera.position.z), maxC = this.land * 0.92;
+    if (cr > maxC) { const k = maxC / cr; this.camera.position.x *= k; this.camera.position.z *= k; }
   }
 }

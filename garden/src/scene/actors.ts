@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import type { ActivityView, AgentView, GardenSnapshot, MessageView } from '../../../shared/types.ts';
 import { geo, hashString, mat, mesh } from './materials.ts';
 import { idleSpot, tendSpot } from './wander.ts';
+import { CharacterKit, type Character } from './characters.ts';
+import { BOTANIST_MODEL, characterFor } from './characterPick.ts';
+
+const CHAR_SCALE = 2.3; // Kenney characters are ~0.6 units tall; our people are ~1.3
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
@@ -94,10 +98,11 @@ function makeGardener(color: string): Mover & { rig: GardenerRig } {
   ringM.name = 'ring-colour';
   outline.rotation.x = ringM.rotation.x = -Math.PI / 2; outline.position.y = 0.025; ringM.position.y = 0.03;
   m.obj.add(outline, ringM);
-  m.obj.add(mesh(geo.cyl, mat(color), 0.22, 0.5, 0.22, 0, 0.55, 0));
-  m.obj.add(mesh(geo.sphere, mat(SKIN), 0.17, 0.17, 0.17, 0, 0.98, 0));
-  m.obj.add(mesh(geo.cyl, mat('#e9c46a'), 0.3, 0.03, 0.3, 0, 1.11, 0));
-  m.obj.add(mesh(geo.cone, mat('#e9c46a'), 0.16, 0.18, 0.16, 0, 1.21, 0));
+  const proc = new THREE.Group(); proc.name = 'proc'; m.obj.add(proc); // the simple figure, hidden once the animated model loads
+  proc.add(mesh(geo.cyl, mat(color), 0.22, 0.5, 0.22, 0, 0.55, 0));
+  proc.add(mesh(geo.sphere, mat(SKIN), 0.17, 0.17, 0.17, 0, 0.98, 0));
+  proc.add(mesh(geo.cyl, mat('#e9c46a'), 0.3, 0.03, 0.3, 0, 1.11, 0));
+  proc.add(mesh(geo.cone, mat('#e9c46a'), 0.16, 0.18, 0.16, 0, 1.21, 0));
   const legL = limb('#4b4f5c', 0.3, 0.07), legR = limb('#4b4f5c', 0.3, 0.07);
   legL.position.set(-0.1, 0.32, 0); legR.position.set(0.1, 0.32, 0);
   const armL = limb(color, 0.4, 0.055), armR = limb(color, 0.4, 0.055);
@@ -105,7 +110,7 @@ function makeGardener(color: string): Mover & { rig: GardenerRig } {
   armL.add(mesh(geo.sphere, mat(SKIN), 0.06, 0.06, 0.06, 0, -0.42, 0)); armR.add(mesh(geo.sphere, mat(SKIN), 0.06, 0.06, 0.06, 0, -0.42, 0));
   const tools = makeTools();
   for (const t of Object.values(tools)) { t.position.set(0, -0.44, 0.08); armR.add(t); }
-  m.obj.add(legL, legR, armL, armR);
+  proc.add(legL, legR, armL, armR);
   m.rig = { armL, armR, legL, legR, tools, tool: '' };
   return m;
 }
@@ -168,11 +173,12 @@ function makeButterfly(color: string): Mover {
 }
 function makeBotanist(): Mover {
   const m = new Mover(2.6);
-  m.obj.add(mesh(geo.cyl, mat('#f4f1e8'), 0.26, 0.85, 0.26, 0, 0.55, 0));
-  m.obj.add(mesh(geo.sphere, mat(SKIN), 0.18, 0.18, 0.18, 0, 1.12, 0));
-  m.obj.add(mesh(geo.cyl, mat('#6a4c93'), 0.24, 0.1, 0.24, 0, 1.28, 0));
-  m.obj.add(mesh(geo.box, mat('#7ec8e3', { opacity: 0.8 }), 0.22, 0.06, 0.05, 0, 1.14, 0.16));
-  m.obj.add(mesh(geo.box, mat('#8d6e4c'), 0.18, 0.24, 0.02, 0.28, 0.65, 0.1));
+  const proc = new THREE.Group(); proc.name = 'proc'; m.obj.add(proc);
+  proc.add(mesh(geo.cyl, mat('#f4f1e8'), 0.26, 0.85, 0.26, 0, 0.55, 0));
+  proc.add(mesh(geo.sphere, mat(SKIN), 0.18, 0.18, 0.18, 0, 1.12, 0));
+  proc.add(mesh(geo.cyl, mat('#6a4c93'), 0.24, 0.1, 0.24, 0, 1.28, 0));
+  proc.add(mesh(geo.box, mat('#7ec8e3', { opacity: 0.8 }), 0.22, 0.06, 0.05, 0, 1.14, 0.16));
+  proc.add(mesh(geo.box, mat('#8d6e4c'), 0.18, 0.24, 0.02, 0.28, 0.65, 0.1));
   return m;
 }
 
@@ -189,7 +195,9 @@ type Fly = { obj: THREE.Object3D; m: Mover; msg: MessageView; seed: number };
 
 export class Actors {
   private snap: GardenSnapshot = { at: 0, members: [], agents: [], plants: [], claims: [], messages: [], testRuns: [], certifications: [], activity: [] };
-  private gardeners = new Map<string, { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig }>();
+  private gardeners = new Map<string, { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig; body?: Character }>();
+  private kit = new CharacterKit();
+  private botanistBody?: Character;
   private bots = new Map<string, { obj: THREE.Object3D; m: Mover; alert: THREE.Object3D; body: THREE.Object3D; agent: AgentView; rig: BotRig }>();
   private bees = new Map<string, { obj: THREE.Object3D; m: Mover; seed: number; parent: string; handle: string; returning: boolean; bubble: HTMLElement; text: string; hop: number }>();
   private flies = new Map<string, Fly>();
@@ -224,6 +232,7 @@ export class Actors {
     this.botanist.obj.position.copy(this.botHome);
     this.botanist.target.copy(this.botHome);
     scene.add(this.botanist.obj);
+    void this.kit.make(BOTANIST_MODEL).then((c) => { if (c) { this.botanistBody = c; this.wear(this.botanist.obj, c); } });
     const bl = new THREE.Vector3();
     labels.add('Botanist', () => bl.copy(this.botanist.obj.position).setY(1.7), 'label botanist');
   }
@@ -266,7 +275,9 @@ export class Actors {
       const lp = new THREE.Vector3();
       const label = this.labels.add(h, () => lp.copy(m.obj.position).setY(1.6), 'label member');
       label.style.borderColor = this.memberColor(h);
-      return { obj: m.obj, m, label, kneel: 0, rig: m.rig };
+      const entry: { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig; body?: Character } = { obj: m.obj, m, label, kneel: 0, rig: m.rig };
+      void this.kit.make(characterFor(h)).then((c) => { if (c && this.gardeners.get(h) === entry) { entry.body = c; this.wear(m.obj, c, m.rig.tools); } });
+      return entry;
     }, this.scene, (g) => { this.labels.remove(g.label); g.obj.traverse((o) => { if (o.name === 'ring-colour') ((o as THREE.Mesh).material as THREE.Material).dispose(); }); });
 
     // Ended sessions leave dormant rows behind; don't draw a bot for each one.
@@ -456,6 +467,15 @@ export class Actors {
     this.scene.remove(b.obj); this.labels.remove(b.bubble); this.bees.delete(id);
   }
 
+  /** Swap a figure's simple body for an animated model; tools move into the model's right hand. */
+  private wear(obj: THREE.Object3D, c: Character, tools?: Record<string, THREE.Object3D>) {
+    c.root.scale.setScalar(CHAR_SCALE); obj.add(c.root); // Kenney models face +z, like our movers
+    const proc = obj.getObjectByName('proc'); if (proc) proc.visible = false;
+    const hand = c.bone('arm-right');
+    if (hand && tools) for (const t of Object.values(tools)) { hand.add(t); t.scale.setScalar(1 / CHAR_SCALE); t.position.set(-0.02, -0.17, 0.05); }
+    c.play('idle');
+  }
+
   tick(dt: number) {
     this.clock += dt;
     const t = this.clock, now = performance.now(), mo = this.motion;
@@ -501,6 +521,12 @@ export class Actors {
       g.kneel += ((kneel && !g.m.moving ? 1 : 0) - g.kneel) * Math.min(1, dt * 6);
       g.obj.scale.y = 1 - 0.3 * g.kneel;
       g.obj.position.y = g.m.moving ? Math.abs(Math.sin(t * 9)) * 0.06 * mo : 0;
+      if (g.body) { // the animated model does its own walking, tending and waving
+        const waving = ov && now <= ov.until && ov.with && !g.m.moving;
+        g.body.play(g.m.moving ? 'walk' : waving ? 'emote-yes' : work ? 'interact-right' : 'idle');
+        g.body.update(dt * Math.max(0.3, mo));
+        g.obj.scale.y = 1; g.obj.position.y = 0;
+      }
     }
 
     for (const b of this.bots.values()) {
@@ -568,7 +594,16 @@ export class Actors {
     const homePos = this.botHome;
     if (!this.job && this.queue.length) this.job = { j: this.queue.shift()!, phase: 'walk', t: 0 };
     const job = this.job;
-    if (!job) { b.nav = this.world.nav; b.target.copy(homePos); b.step(dt); b.obj.rotation.x = 0; this.shot = null; return; }
+    const body = this.botanistBody;
+    if (body) {
+      body.play(b.moving ? 'walk' : job?.phase === 'hold' ? (job.j.result === 'refused' ? 'emote-no' : 'emote-yes') : 'idle');
+      body.update(dt * Math.max(0.3, this.motion));
+    }
+    if (!job) {
+      b.nav = this.world.nav; b.target.copy(homePos); b.step(dt); b.obj.rotation.x = 0; this.shot = null;
+      if (!b.moving) { const r = b.obj.rotation.y, d = Math.atan2(Math.sin(-r), Math.cos(-r)); b.obj.rotation.y = r + d * Math.min(1, dt * 3); } // at home: turn to face the front
+      return;
+    }
     const p = this.world.plantPos(job.j.path);
     if (job.phase === 'walk') {
       if (p) { this.tmp.copy(p).add(this.off); b.target.copy(this.tmp); } else b.target.copy(homePos);
@@ -587,8 +622,10 @@ export class Actors {
     } else if (job.phase === 'hold') {
       job.t += dt;
       b.obj.lookAt(p ?? b.obj.position);
-      if (job.j.result === 'refused') b.obj.rotation.y += Math.sin(t * 14) * 0.25 * Math.max(0.2, this.motion); // head shake
-      else b.obj.rotation.x = Math.sin(t * 8) * 0.12 * this.motion; // nod
+      if (!body) { // the animated model shakes its head or nods by itself
+        if (job.j.result === 'refused') b.obj.rotation.y += Math.sin(t * 14) * 0.25 * Math.max(0.2, this.motion); // head shake
+        else b.obj.rotation.x = Math.sin(t * 8) * 0.12 * this.motion; // nod
+      }
       const hold = job.j.result === 'refused' ? 4.8 : 4.2;
       if (job.t > hold) {
         if (job.bubble) this.labels.remove(job.bubble);

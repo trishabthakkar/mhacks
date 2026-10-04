@@ -22,6 +22,9 @@ export class GardenBoundary {
   constructor(scene: THREE.Scene) { scene.add(this.group); }
 
   rebuild(f: GardenFence) {
+    // free last layout's GPU objects: picket instances, the fence material, the sign board and its painted texture
+    this.pickets?.dispose(); (this.pickets?.material as THREE.Material | undefined)?.dispose();
+    if (this.board) { const bm = this.board.material as THREE.MeshStandardMaterial; bm.map?.dispose(); bm.dispose(); }
     for (const o of [...this.group.children]) { this.group.remove(o); o.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry && m.geometry !== PICKET_GEO && !Object.values(geo).includes(m.geometry as never)) m.geometry.dispose(); }); }
     this.arch = new THREE.Group(); this.board = undefined; this.signKey = '';
     const white = new THREE.MeshStandardMaterial({ color: '#f6f3ea', flatShading: true, roughness: 0.7 });

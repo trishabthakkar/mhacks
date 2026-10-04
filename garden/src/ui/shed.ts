@@ -1,6 +1,6 @@
 import type { GardenSnapshot } from '../../../shared/types.ts';
 import { sentence } from './sentences.ts';
-import { base, clip, esc, ICON, rel } from './fmt.ts';
+import { base, clip, esc, ICON, rel, safeColor } from './fmt.ts';
 import { groupFeed, shedAttention } from './attention.ts';
 import { inspect } from './inspect.ts';
 import { parsePick, pickKey, type Pick } from '../pick.ts';
@@ -71,7 +71,7 @@ function teamHtml(s: GardenSnapshot, o: ShedOptions, expanded: ReadonlySet<strin
       helpers ? `<button class="badge" data-expand="${esc(m.handle)}" aria-expanded="${expanded.has(m.handle)}">+${helpers} helper${helpers === 1 ? '' : 's'}</button>` : '',
     ].join('');
     const following = o.following === m.handle || (o.following?.startsWith('agent:') && s.agents.some((a) => `agent:${a.sessionId}` === o.following && a.handle === m.handle));
-    return `<li class="person${following ? ' following' : ''}" style="--c:${esc(m.color)}">
+    return `<li class="person${following ? ' following' : ''}" style="--c:${safeColor(m.color)}">
       <div class="top"><button class="name" data-select="member:${esc(m.handle)}" aria-label="Inspect ${esc(m.handle)}">${esc(m.handle)}</button>
         <span class="pill ${st}">${st}</span>
         <button class="icon sm" data-focus="member:${esc(m.handle)}" aria-label="Follow ${esc(m.handle)} with the camera" title="Follow with the camera">🎥</button></div>
@@ -87,7 +87,7 @@ function openNowHtml(s: GardenSnapshot): string {
   const rows: string[] = [];
   for (const c of s.claims) {
     const left = mins(c.expiresAt - s.at);
-    rows.push(`<li><span class="i">🔒</span><button class="link" data-focus="fence:${esc(c.path)}"><b style="color:${esc(color(c.handle))}">${esc(c.handle)}</b> fenced <code>${esc(clip(c.path, 28))}</code></button><span class="t">${left <= 5 ? '⚠ ' : ''}${fmtMin(left)}</span></li>`);
+    rows.push(`<li><span class="i">🔒</span><button class="link" data-focus="fence:${esc(c.path)}"><b style="color:${safeColor(color(c.handle))}">${esc(c.handle)}</b> fenced <code>${esc(clip(c.path, 28))}</code></button><span class="t">${left <= 5 ? '⚠ ' : ''}${fmtMin(left)}</span></li>`);
   }
   const groups = new Map<string, { from: string; to: string; count: number; waiting: number; body: string; sent: number; oldest: number }>();
   for (const m of s.messages) {
@@ -139,6 +139,14 @@ export function shedHtml(s: GardenSnapshot, o: ShedOptions, view: { tab: Tab; fi
     <div class="shed-scroll" tabindex="-1">${attn}${main}<div class="fresh sub" data-fresh>updated just now</div></div>`;
 }
 
+/** Esc inside the shed: leave the inspector first; only then collapse the panel. */
+export const shedEscape = (inspectorOpen: boolean): 'back' | 'collapse' => (inspectorOpen ? 'back' : 'collapse');
+
+/** Background updates wait while the pointer is over the panel (nothing jumps under the cursor); a new selection never waits. */
+export function shouldDefer(o: { hovering: boolean; collapsed: boolean; first: boolean; lastSel: string; sel: string }): boolean {
+  return o.hovering && !o.collapsed && !o.first && o.sel === o.lastSel;
+}
+
 // ---- DOM wrapper ----
 const TAB_KEY = 'sprout.shed.tab';
 let tab: Tab = 'team';
@@ -146,6 +154,7 @@ try { if (localStorage.getItem(TAB_KEY) === 'activity') tab = 'activity'; } catc
 let filter: Filter = 'all';
 const expanded = new Set<string>();
 let lastHtml = '';
+let lastSel = '';
 let lastMaxId = -1; // -1 until the first render, so existing history isn't flagged as new
 let hovering = false;
 let pending: (() => void) | undefined;
@@ -166,7 +175,11 @@ export function initShed(el: HTMLElement, h: ShedHandlers) {
     const [kind, ...rest] = (t.dataset.focus ?? '').split(':');
     if (kind) h.onFocus(kind as FocusKind, rest.join(':'));
   });
-  el.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); h.onToggle(); } });
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    if (shedEscape(!!el.querySelector('[data-back]')) === 'back') h.onSelect(null); else h.onToggle();
+  });
   el.addEventListener('mouseenter', () => { hovering = true; });
   el.addEventListener('mouseleave', () => { hovering = false; pending?.(); pending = undefined; });
 }
@@ -176,8 +189,9 @@ export function renderShed(el: HTMLElement, s: GardenSnapshot, o: ShedOptions) {
   const html = shedHtml(s, o, { tab, filter, expanded, lastMaxId });
   el.classList.toggle('collapsed', o.collapsed);
   if (html === lastHtml) return;
-  if (hovering && !o.collapsed && lastHtml && !o.selected === !lastHtml.includes('data-back')) { pending = () => renderShed(el, s, o); return; }
-  lastHtml = html; updatedAt = Date.now();
+  const sel = o.selected ? pickKey(o.selected) : '';
+  if (shouldDefer({ hovering, collapsed: o.collapsed, first: !lastHtml, lastSel, sel })) { pending = () => renderShed(el, s, o); return; }
+  lastHtml = html; lastSel = sel; updatedAt = Date.now();
   lastMaxId = Math.max(lastMaxId, 0, ...s.activity.map((a) => a.id));
   const sc = el.querySelector<HTMLElement>('.shed-scroll'), scroll = sc?.scrollTop ?? 0;
   el.innerHTML = html;

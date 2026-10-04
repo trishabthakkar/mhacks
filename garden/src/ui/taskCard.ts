@@ -1,6 +1,8 @@
 // One task as an HTML card: the board (P) shows it compact, the 3D hover shows it full. Pure; every agent-written string is escaped.
 import type { TaskModel } from '../tasks.ts';
 
+/** Member colours come from clients: only plain hex colours may go into style attributes. */
+export const safeColor = (c: string) => (/^#[0-9a-f]{3,8}$/i.test(c) ? c : '#888888');
 export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p;
 const ago = (ms: number) => (ms < 15_000 ? 'just now' : ms < 3_600_000 ? `${Math.round(ms / 60_000) || 1} min ago` : `${Math.floor(ms / 3_600_000)}h ago`);
@@ -19,7 +21,7 @@ export function taskCardHtml(m: TaskModel, now: number, o: { compact?: boolean }
     `<li class="live ${a.kind}"><span>${a.kind === 'main' ? '🤖 main' : '✨ spirit'}</span> ${esc(a.action)}${a.path ? ` ${esc(base(a.path))}` : ''} · ${ago(a.agoMs)}</li>`).join('');
   const meta = [esc(m.handle), m.fence ? `fenced ${esc(m.fence.path)} until ${clock(m.fence.expiresAt)}` : '', m.paths.length ? `${m.paths.length} path${m.paths.length === 1 ? '' : 's'}` : '']
     .filter(Boolean).join(' · ');
-  return `<article class="task-card st-${m.status}${o.compact ? ' compact' : ''}" style="--owner:${esc(m.color)}" data-task="${m.id}" data-focus="${esc(m.paths[0] ?? '')}" tabindex="0">
+  return `<article class="task-card st-${m.status}${o.compact ? ' compact' : ''}" style="--owner:${safeColor(m.color)}" data-task="${m.id}" data-focus="${esc(m.paths[0] ?? '')}" tabindex="0">
   <header><h4>${esc(m.title)}</h4><span class="st">${STATUS[m.status] ?? esc(m.status)}</span></header>
   <p class="meta">${meta}</p>
   ${m.total ? `<div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div><p class="prog">${m.done} / ${m.total}</p>` : ''}

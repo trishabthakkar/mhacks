@@ -105,3 +105,25 @@ test('an idle gardener reads "between tasks", not "idle" twice; action names los
   const h2 = shedHtml(full({ agents: [agent('s1', 'trisha', { status: 'blocked', currentAction: 'blocked_edit', currentPath: 'src/a.ts' })] }), opts, view);
   assert.match(h2, /blocked edit/);
 });
+
+import { shedEscape, shouldDefer } from './shed.ts';
+import { safeColor } from './fmt.ts';
+
+test('review fix: a new selection made inside the hovered shed renders at once; same view updates still wait', () => {
+  assert.equal(shouldDefer({ hovering: true, collapsed: false, first: false, lastSel: 'bed:src', sel: 'plant:src/a.ts' }), false);
+  assert.equal(shouldDefer({ hovering: true, collapsed: false, first: false, lastSel: 'bed:src', sel: '' }), false);
+  assert.equal(shouldDefer({ hovering: true, collapsed: false, first: false, lastSel: 'bed:src', sel: 'bed:src' }), true);
+  assert.equal(shouldDefer({ hovering: false, collapsed: false, first: false, lastSel: '', sel: '' }), false);
+});
+
+test('review fix: Esc in the shed goes back from the inspector, else collapses', () => {
+  assert.equal(shedEscape(true), 'back');
+  assert.equal(shedEscape(false), 'collapse');
+});
+
+test('review fix: member colours are whitelisted before going into style attributes', () => {
+  assert.equal(safeColor('#7fb069'), '#7fb069');
+  assert.equal(safeColor('#abc'), '#abc');
+  assert.equal(safeColor('red;background:url(//evil.example/x)'), '#888888');
+  assert.doesNotMatch(shedHtml(full({ members: [{ handle: 'x', color: 'red;background:url(//e/x)', online: true, paused: false, lastSeen: 0 }] }), opts, view), /url\(/);
+});

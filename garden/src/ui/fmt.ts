@@ -1,5 +1,5 @@
 // Small text helpers shared by the shed, inspector and tooltips. Pure.
-export { esc } from './taskCard.ts';
+export { esc, safeColor } from './taskCard.ts';
 export const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p;
 export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 /** Compact relative time: now, 4m, 2h, 3d. */

@@ -3,7 +3,7 @@
 import type { GardenSnapshot } from '../../../shared/types.ts';
 import type { GardenLayout } from '../layout.ts';
 import { attention, taskModels } from '../tasks.ts';
-import { esc, taskCardHtml } from './taskCard.ts';
+import { esc, safeColor, taskCardHtml } from './taskCard.ts';
 
 export interface PlanHandlers { onShowIn3D(path: string): void; onClose(): void }
 let host: HTMLElement | undefined;
@@ -21,7 +21,7 @@ export function boardHtml(s: GardenSnapshot): string {
     const open = mine.filter((m) => m.status !== 'done'), done = mine.filter((m) => m.status === 'done');
     const main = s.agents.find((a) => a.handle === h && a.kind === 'claude' && a.status !== 'dormant');
     const doing = main ? `${esc(main.currentAction)}${main.currentPath ? ` ${esc(main.currentPath.split('/').pop()!)}` : ''}` : online ? 'online' : 'offline';
-    return `<section class="col" data-col="${esc(h)}" style="--owner:${esc(color)}">
+    return `<section class="col" data-col="${esc(h)}" style="--owner:${safeColor(color)}">
   <h3><span class="dot${online ? ' on' : ''}"></span>${esc(title)}<small>${h === '__other' ? '' : doing}</small></h3>
   ${open.length ? open.map((m) => taskCardHtml(m, s.at, { compact: true })).join('') : h === '__other' ? '' : '<p class="none">No task yet</p>'}
   ${done.length ? `<details class="done"><summary>${done.length} certified</summary>${done.map((m) => taskCardHtml(m, s.at, { compact: true })).join('')}</details>` : ''}

@@ -31,7 +31,7 @@ test('first frame is bare soil', () => {
   assert.equal(first.activity.length, 0);
 });
 
-test('fake story has tasks: trisha refactors then blooms, alex is blocked then unblocked', () => {
+test('fake story has tasks: trisha refactors then blooms, manahil is blocked then unblocked', () => {
   const snaps = makeFakeSnapshots(FAKE_STEPS + 1);
   const at = (step: number) => snaps[step]!;
   const trisha = (s: (typeof snaps)[number]) => s.tasks!.find((t) => t.handle === 'trisha')!;
@@ -39,10 +39,10 @@ test('fake story has tasks: trisha refactors then blooms, alex is blocked then u
   assert.equal(trisha(at(2)).title, 'Refactor the API routes');
   assert.equal(trisha(at(2)).status, 'active');
   assert.equal(at(2).taskItems!.filter((i) => i.taskId === trisha(at(2)).id).length, 3);
-  const alex = at(6).tasks!.find((t) => t.handle === 'alex')!;
-  assert.equal(alex.status, 'blocked');
-  assert.match(alex.blockedReason!, /^fenced by trisha/);
-  assert.equal(at(9).tasks!.find((t) => t.handle === 'alex')!.status, 'active');
+  const manahil = at(6).tasks!.find((t) => t.handle === 'manahil')!;
+  assert.equal(manahil.status, 'blocked');
+  assert.match(manahil.blockedReason!, /^fenced by trisha/);
+  assert.equal(at(9).tasks!.find((t) => t.handle === 'manahil')!.status, 'active');
   assert.match(trisha(at(11)).blockedReason!, /^Botanist refused/);
   assert.equal(trisha(at(FAKE_STEPS)).status, 'done');
   assert.equal(trisha(at(FAKE_STEPS)).blockedReason, undefined);

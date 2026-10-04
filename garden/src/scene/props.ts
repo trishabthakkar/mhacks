@@ -6,7 +6,7 @@ export type Quality = 'low' | 'high';
 
 /**
  * The world around the beds: meadow, plaza/paths, trees, rocks, grass, bench, well, the garden shed with its
- * noticeboard, a sky dome with sun and clouds, and a few decorative critters. All procedural and cheap.
+ * noticeboard, and a sky dome with sun and clouds. All procedural and cheap.
  * `low` quality skips the decoration and shadows' extras.
  */
 export class Props {
@@ -17,7 +17,6 @@ export class Props {
   private skyAttr: THREE.BufferAttribute;
   private sunDisc: THREE.Mesh;
   private clouds: THREE.Mesh[] = [];
-  private critters: Array<{ m: THREE.Group; wings: THREE.Object3D[]; seed: number }> = [];
   private fireflies: THREE.Points;
   private notes: THREE.Mesh[] = [];
   private horizon = new THREE.Color(); private top = new THREE.Color(); private tmpC = new THREE.Color();
@@ -47,12 +46,6 @@ export class Props {
         c.scale.set(26 + hash2(i, 1) * 22, 5 + hash2(i, 2) * 3, 12 + hash2(i, 3) * 8);
         c.position.set((hash2(i, 4) - 0.5) * 520, 85 + hash2(i, 5) * 40, -120 - hash2(i, 6) * 160);
         c.renderOrder = -1; this.clouds.push(c); scene.add(c);
-      }
-      for (let i = 0; i < 6; i++) { // decorative butterflies: tiny, grey-white, no glow (message butterflies are bigger and coloured)
-        const m = new THREE.Group(), wm = new THREE.MeshBasicMaterial({ color: 0xe9e6dd, side: THREE.DoubleSide });
-        const w1 = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.12), wm), w2 = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.12), wm);
-        w1.position.x = -0.08; w2.position.x = 0.08; m.add(w1, w2); scene.add(m);
-        this.critters.push({ m, wings: [w1, w2], seed: i * 1.7 });
       }
       const fp = new Float32Array(40 * 3);
       const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.BufferAttribute(fp, 3));
@@ -218,17 +211,10 @@ export class Props {
 
   get shedPosition() { return this.shed.position; }
 
-  /** Per-frame: drifting clouds, wandering critters, firefly dance. Allocation-free. */
+  /** Per-frame: drifting clouds, firefly dance. Allocation-free. */
   update(t: number, dt: number, gardenX: number, gardenZ: number, motion: number) {
     this.skyMesh.position.copy(this.scene.position);
     for (const c of this.clouds) { c.position.x += dt * 1.2 * motion; if (c.position.x > 300) c.position.x = -300; }
-    for (const k of this.critters) {
-      const a = t * 0.35 + k.seed;
-      k.m.position.set(gardenX + Math.cos(a * 1.3) * (10 + k.seed), 1.2 + Math.sin(a * 2.1) * 0.5, gardenZ + Math.sin(a) * (7 + k.seed * 0.6));
-      k.m.rotation.y = -a;
-      const f = Math.sin(t * 16 + k.seed) * 0.8 * Math.max(0.3, motion);
-      k.wings[0]!.rotation.z = f; k.wings[1]!.rotation.z = -f;
-    }
     if (this.fireflies.visible) {
       const p = this.fireflies.geometry.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < p.count; i++) p.setXYZ(i, gardenX + Math.cos(t * 0.3 + i * 2.4) * (4 + (i % 9) * 1.6), 0.6 + (i % 5) * 0.4 + Math.sin(t + i) * 0.2, gardenZ + Math.sin(t * 0.27 + i * 1.7) * (3 + (i % 7) * 1.5));

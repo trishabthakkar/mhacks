@@ -7,7 +7,7 @@ import { MEMBER_COLORS } from './constants.ts';
 export const FAKE_START = Date.UTC(2026, 9, 3, 16, 0, 0);
 const MIN = 60_000;
 export const FAKE_REPO = 'mhacks';
-export const FAKE_HANDLES = ['trisha', 'alex', 'sam', 'jo'] as const;
+export const FAKE_HANDLES = ['seno', 'manahil', 'shriya', 'trisha'] as const;
 
 const FILES: Array<[string, number]> = [
   ['src/api/routes.ts', 120], ['src/api/auth.ts', 80], ['src/db.ts', 60],
@@ -93,33 +93,33 @@ const SCRIPT: Array<(s: State, at: number) => void> = [
     s.agents = s.agents.filter((a) => a.sessionId !== 'sub-trisha-1');
     log(s, at, 'trisha', 'subagent_stop', 'subagent finished', undefined, 'sub-trisha-1');
   },
-  // 5: alex's agent tries to edit the fenced file
+  // 5: manahil's agent tries to edit the fenced file
   (s, at) => {
-    Object.assign(agent(s, 's-alex'), { status: 'blocked', currentPath: 'src/api/routes.ts', currentAction: 'blocked_edit', lastSeen: at });
-    log(s, at, 'alex', 'blocked_edit', 'routes.ts is fenced by trisha', 'src/api/routes.ts', 's-alex');
-    // alex's task, blocked by the fence
-    s.tasks!.push({ id: s.nextId++, handle: 'alex', title: 'Add auth checks', status: 'blocked', bed: 'src', paths: ['src/api/auth.ts'], blockedReason: 'fenced by trisha until 3:00pm', createdAt: at, updatedAt: at });
+    Object.assign(agent(s, 's-manahil'), { status: 'blocked', currentPath: 'src/api/routes.ts', currentAction: 'blocked_edit', lastSeen: at });
+    log(s, at, 'manahil', 'blocked_edit', 'routes.ts is fenced by trisha', 'src/api/routes.ts', 's-manahil');
+    // manahil's task, blocked by the fence
+    s.tasks!.push({ id: s.nextId++, handle: 'manahil', title: 'Add auth checks', status: 'blocked', bed: 'src', paths: ['src/api/auth.ts'], blockedReason: 'fenced by trisha until 3:00pm', createdAt: at, updatedAt: at });
   },
-  // 6: alex messages trisha (sent)
+  // 6: manahil messages trisha (sent)
   (s, at) => {
     const m: MessageView = {
-      id: s.nextId++, fromHandle: 'alex', fromSession: 's-alex', toHandle: 'trisha', kind: 'request',
+      id: s.nextId++, fromHandle: 'manahil', fromSession: 's-manahil', toHandle: 'trisha', kind: 'request',
       body: 'Can I touch src/api/auth.ts while you finish routes.ts?', status: 'sent', sentAt: at,
     };
     s.messages.push(m);
-    log(s, at, 'alex', 'message_sent', `→ trisha (request) #${m.id}`, undefined, 's-alex');
+    log(s, at, 'manahil', 'message_sent', `→ trisha (request) #${m.id}`, undefined, 's-manahil');
   },
   // 7: delivered on trisha's next prompt
   (s, at) => {
     const m = s.messages[0]!; m.status = 'delivered'; m.deliveredAt = at;
-    log(s, at, 'trisha', 'message_delivered', `#${m.id} from alex`, undefined, 's-trisha');
+    log(s, at, 'trisha', 'message_delivered', `#${m.id} from manahil`, undefined, 's-trisha');
   },
   // 8: acked
   (s, at) => {
     const m = s.messages[0]!; m.status = 'acked'; m.ackedAt = at;
-    log(s, at, 'trisha', 'message_acked', `#${m.id} from alex`, undefined, 's-trisha');
-    // alex works elsewhere, unblocked
-    { const a = task(s, 'alex'); a.status = 'active'; delete a.blockedReason; a.updatedAt = at; }
+    log(s, at, 'trisha', 'message_acked', `#${m.id} from manahil`, undefined, 's-trisha');
+    // manahil works elsewhere, unblocked
+    { const a = task(s, 'manahil'); a.status = 'active'; delete a.blockedReason; a.updatedAt = at; }
   },
   // 9: tests fail -> bugs
   (s, at) => {

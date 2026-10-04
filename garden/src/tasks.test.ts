@@ -25,7 +25,7 @@ test('model: live agent lines on the current task only (main + spirit)', () => {
 });
 
 test('model: roadblocks from blocked reason, refusal and bugs', () => {
-  assert.match(taskModels(snaps[6]!).find((t) => t.handle === 'alex')!.roadblocks.join('|'), /fenced by trisha/);
+  assert.match(taskModels(snaps[6]!).find((t) => t.handle === 'manahil')!.roadblocks.join('|'), /fenced by trisha/);
   const r = taskModels(snaps[11]!).find((t) => t.handle === 'trisha')!.roadblocks.join('|');
   assert.match(r, /Botanist refused/);
   assert.match(r, /bug/);

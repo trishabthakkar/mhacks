@@ -20,7 +20,7 @@ test('board: member without a task says so; orphan tasks go to Other', () => {
 });
 
 test('board: needs-attention strip lists blocked and refused', () => {
-  assert.match(boardHtml(snaps[6]!), /class="attn[^"]*"[\s\S]*alex blocked/);
+  assert.match(boardHtml(snaps[6]!), /class="attn[^"]*"[\s\S]*manahil blocked/);
   assert.match(boardHtml(snaps[11]!), /Botanist refused/);
 });
 

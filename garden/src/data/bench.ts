@@ -9,7 +9,7 @@ function rng(seed: number) {
 }
 
 const STAGES: PlantStage[] = ['seed', 'sprout', 'growing', 'growing', 'growing', 'bud', 'bloom', 'dormant'];
-const NAMES = ['kai', 'mei', 'ola', 'pat'];
+const NAMES = ['seno', 'manahil', 'shriya', 'trisha'];
 
 /** A synthetic garden of `n` plants across ~n/30 beds, with mixed stages, bugs, claims and agents. */
 export function makeBenchSnapshot(n: number, seed = 7, at = Date.UTC(2026, 9, 3, 16, 0, 0)): GardenSnapshot {
@@ -31,7 +31,7 @@ export function makeBenchSnapshot(n: number, seed = 7, at = Date.UTC(2026, 9, 3,
   }));
   return {
     at, members, agents, plants,
-    claims: [{ id: 1, path: 'dir0/', handle: 'kai', createdAt: at, expiresAt: at + 3_600_000 }],
+    claims: [{ id: 1, path: 'dir0/', handle: 'seno', createdAt: at, expiresAt: at + 3_600_000 }],
     messages: [], testRuns: [], certifications: [], activity: [],
   };
 }

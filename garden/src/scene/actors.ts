@@ -5,6 +5,7 @@ import { geo, hashString, mat, mesh } from './materials.ts';
 import { idleSpot, tendSpot } from './wander.ts';
 import { CharacterKit, type Character } from './characters.ts';
 import { BOTANIST_MODEL, characterFor } from './characterPick.ts';
+import { applyOutfit, outfitModel } from './outfits.ts';
 
 const CHAR_SCALE = 2.3; // Kenney characters are ~0.6 units tall; our people are ~1.3
 import type { Labels, Particles } from './effects.ts';
@@ -289,7 +290,7 @@ export class Actors {
       const label = this.labels.add(h, () => lp.copy(m.obj.position).setY(1.6), 'label member');
       label.style.borderColor = this.memberColor(h);
       const entry: { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig; body?: Character } = { obj: m.obj, m, label, kneel: 0, rig: m.rig };
-      void this.kit.make(characterFor(h)).then((c) => { if (c && this.gardeners.get(h) === entry) { entry.body = c; this.wear(m.obj, c, m.rig.tools); } });
+      void this.kit.make(outfitModel(h) ?? characterFor(h)).then((c) => { if (c && this.gardeners.get(h) === entry) { applyOutfit(c.root, h); entry.body = c; this.wear(m.obj, c, m.rig.tools); } });
       return entry;
     }, this.scene, (g) => { this.labels.remove(g.label); g.obj.traverse((o) => { if (o.name === 'ring-colour') ((o as THREE.Mesh).material as THREE.Material).dispose(); }); });
 

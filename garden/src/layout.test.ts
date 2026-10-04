@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BED_PAD, layoutGarden, layoutTaskPlants, plantSize, SPACING, type LayoutInput } from './layout.ts';
+import { BED_PAD, layoutGarden, layoutTaskPlants, plantSize, SPACING, TASK_FRONT, type LayoutInput } from './layout.ts';
 
 const sample: LayoutInput[] = [
   { path: 'src/a.ts', bed: 'src', lines: 100 }, { path: 'src/b.ts', bed: 'src', lines: 10 },
@@ -59,7 +59,7 @@ test('task plants sit on the path in front of their bed, deterministic, no overl
   assert.deepEqual(a, b);
   const mcp = l.beds.find((x) => x.name === 'mcp')!;
   for (const t of a.filter((x) => x.bed === 'mcp')) {
-    assert.ok(Math.abs(t.z - (mcp.z + mcp.d / 2 + 1.2)) < 1e-6);
+    assert.ok(Math.abs(t.z - (mcp.z + mcp.d / 2 + TASK_FRONT)) < 1e-6);
     for (const p of l.plants) assert.ok(Math.hypot(p.x - t.x, p.z - t.z) > 1, 'no overlap');
   }
   assert.equal(a.find((x) => x.id === 3)!.bed, l.beds[0]!.name); // unknown bed → first bed
@@ -69,4 +69,17 @@ test('at most 6 done task plants are kept (newest)', () => {
   const l = layoutGarden([{ path: 'a/x.ts', bed: 'a', lines: 1 }]);
   const tasks = Array.from({ length: 9 }, (_, i) => ({ id: i + 1, bed: 'a', status: 'done', updatedAt: i }));
   assert.deepEqual(layoutTaskPlants(l, tasks).map((t) => t.id).sort((x, y) => x - y), [4, 5, 6, 7, 8, 9]);
+});
+
+test('task pots keep clear of every bed, including the next row behind them', () => {
+  // wide beds force several rows
+  const plants = ['garden', 'mcp', 'companion', 'spacetimedb', 'docs', 'demo'].flatMap((bed) =>
+    Array.from({ length: 30 }, (_, i) => ({ path: `${bed}/f${i}.ts`, bed, lines: 50 })));
+  const l = layoutGarden(plants);
+  assert.ok(new Set(l.beds.map((b) => b.z)).size >= 2, 'expected more than one row');
+  const tasks = l.beds.map((b, i) => ({ id: i + 1, bed: b.name, status: 'active', updatedAt: 0 }));
+  for (const t of layoutTaskPlants(l, tasks)) for (const b of l.beds) {
+    const dx = Math.max(0, Math.abs(t.x - b.x) - b.w / 2), dz = Math.max(0, Math.abs(t.z - b.z) - b.d / 2);
+    assert.ok(Math.hypot(dx, dz) >= 1.5, `task ${t.id} (${t.bed}) is ${Math.hypot(dx, dz).toFixed(2)} from ${b.name}`);
+  }
 });

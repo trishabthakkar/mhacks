@@ -174,7 +174,7 @@ export class GardenWorld implements WorldLookup {
     return claim ? this.gates.get(claim.path) : undefined;
   }
   /** Front edge of the garden where gardeners wait, and half the garden's width. */
-  get homeFrame() { return { halfW: Math.max(6, this.layout.width / 2), frontZ: Math.max(4, this.layout.depth / 2) + 2.4 }; }
+  get homeFrame() { return { halfW: Math.max(6, this.layout.width / 2), frontZ: Math.max(4, this.layout.depth / 2) + 3.6 }; }
   gardenerPos(handle: string) { return this.actors.gardenerPos(handle); }
   get botFocus() { return this.actors.focus; }
   setMotion(m: number) { this.actors.motion = m; this.fx.reducedMotion = m < 0.5; }

@@ -2,6 +2,9 @@
 export const SPACING = 1.7;
 export const BED_PAD = 1.0;
 export const BED_GAP = 2.4;
+/** Between rows of beds: room for the task pots in front of each bed and a clear path behind them. */
+export const ROW_GAP = 5.0;
+export const TASK_FRONT = 1.7;
 export const MAX_ROW_WIDTH = 30;
 export const ROOT_BED = '(root)';
 
@@ -37,7 +40,7 @@ export function layoutGarden(input: LayoutInput[]): GardenLayout {
     const rows = Math.ceil(items.length / cols);
     const w = cols * SPACING + BED_PAD * 2;
     const d = rows * SPACING + BED_PAD * 2;
-    if (cx > 0 && cx + w > MAX_ROW_WIDTH) { cz += rowDepth + BED_GAP; cx = 0; rowDepth = 0; }
+    if (cx > 0 && cx + w > MAX_ROW_WIDTH) { cz += rowDepth + ROW_GAP; cx = 0; rowDepth = 0; }
     placed.push({ bed: { name, x: cx + w / 2, z: cz + d / 2, w, d, greenhouse: name === 'tests' }, items, cols });
     cx += w + BED_GAP;
     maxX = Math.max(maxX, cx - BED_GAP);
@@ -80,7 +83,7 @@ export function layoutTaskPlants(l: GardenLayout, tasks: { id: number; bed: stri
   for (const [bed, ids] of byBed) {
     const b = l.beds.find((x) => x.name === bed)!;
     const step = Math.min(TASK_GAP, b.w / ids.length);
-    ids.forEach((id, i) => out.push({ id, bed, x: round(b.x - (step * (ids.length - 1)) / 2 + step * i), z: round(b.z + b.d / 2 + 1.2) }));
+    ids.forEach((id, i) => out.push({ id, bed, x: round(b.x - (step * (ids.length - 1)) / 2 + step * i), z: round(b.z + b.d / 2 + TASK_FRONT) }));
   }
   return out.sort((a, b) => a.id - b.id);
 }

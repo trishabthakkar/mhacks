@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Pick } from '../pick.ts';
 import type { ActivityView, AgentView, GardenSnapshot, MessageView } from '../../../shared/types.ts';
 import { geo, hashString, mat, mesh } from './materials.ts';
-import { idleSpot, tendSpot } from './wander.ts';
+import { idleSpot, roamSpot, tendSpot, type Spot } from './wander.ts';
 import { CharacterKit, type Character } from './characters.ts';
 import { BOTANIST_MODEL, characterFor } from './characterPick.ts';
 import { applyOutfit, outfitModel } from './outfits.ts';
@@ -22,6 +22,8 @@ export interface WorldLookup {
   fenceGate(path: string): THREE.Vector3 | undefined;
   extent: number;
   homeFrame: { halfW: number; frontZ: number };
+  /** Places an idle gardener strolls between (bed fronts, the pond, task pots, the arch, the shed). */
+  roamSpots: Spot[];
   nav: Nav;
   releaseBloom(path: string): void;
   wobblePlant(path: string, seconds: number): void;
@@ -231,7 +233,7 @@ export class Actors {
   private botHome = new THREE.Vector3();
   get botanistHome() { return this.botHome; }
   private tmp = new THREE.Vector3();
-  private tgt = new THREE.Vector3(); private tgt2 = new THREE.Vector3();
+  private tgt = new THREE.Vector3(); private tgt2 = new THREE.Vector3(); private roamLook = new THREE.Vector3();
   private static OFF_GARDENER = new THREE.Vector3(-0.75, 0, 0.55);
   private static OFF_BOT_HOME = new THREE.Vector3(0.9, 0, 0.9);
   private static OFF_BOT_WORK = new THREE.Vector3(0.6, 0, 0.45);
@@ -518,13 +520,18 @@ export class Actors {
       // People move: a working gardener tends the plant from one side then another; an idle one strolls along the lane.
       // Calm mode keeps everyone on one spot.
       const seed = hashString(h) % 97, wt = mo < 0.5 ? 0 : t;
-      let target: THREE.Vector3 = this.home(h), kneel = false, plant: THREE.Vector3 | undefined;
+      let target: THREE.Vector3 = this.home(h), kneel = false, plant: THREE.Vector3 | undefined, roam: THREE.Vector3 | undefined;
       if (ov && now <= ov.until) target = ov.pos;
       else if (agent?.currentPath && (agent.status === 'working' || agent.status === 'blocked')) {
         const p = this.world.plantPos(agent.currentPath);
         if (p && agent.status === 'working') { const o = tendSpot(wt, seed); target = this.tgt.set(p.x + o.x, 0, p.z + o.z); kneel = true; plant = p; }
         else if (p) target = this.tgt.copy(p).add(Actors.OFF_GARDENER);
-      } else if (agent?.status !== 'waiting') { const o = idleSpot(wt, seed); target = this.tgt.copy(this.home(h)).add(this.tgt2.set(o.x, 0, o.z)); }
+      } else if (agent?.status !== 'waiting') {
+        // Nothing to do: wander the garden, stopping to look at things (calm mode stays near home).
+        const r = mo >= 0.5 && this.bots.get(h)?.asleep !== false ? roamSpot(t, seed, this.world.roamSpots) : undefined;
+        if (r) { target = this.tgt.set(r.x + ((seed % 3) - 1) * 0.8, 0, r.z + ((seed >> 2) % 2) * 0.5); roam = this.roamLook.set(r.fx, 0, r.fz); } // side by side if two visit the same spot
+        else { const o = idleSpot(wt, seed); target = this.tgt.copy(this.home(h)).add(this.tgt2.set(o.x, 0, o.z)); }
+      }
       g.m.nav = this.world.nav; g.m.target.copy(target); g.m.step(dt);
       // Tool in hand matches what the agent is doing; limbs swing while walking.
       const act = agent && agent.status === 'working' ? agent.currentAction : '';
@@ -547,6 +554,7 @@ export class Actors {
         if (ov && now <= ov.until && ov.with) { look = this.gardenerPos(ov.with); if (look) rg.armR.rotation.x = -1.3 + Math.sin(t * 6) * 0.4 * mo; }
         else if (agent?.status === 'waiting') look = this.bots.get(h)?.obj.position;
         else if (plant) look = plant; // face the plant being tended
+        else if (roam) look = roam; // look at what they came to see
         if (look) g.obj.rotation.y = Math.atan2(look.x - g.obj.position.x, look.z - g.obj.position.z);
       }
       g.kneel += ((kneel && !g.m.moving ? 1 : 0) - g.kneel) * Math.min(1, dt * 6);

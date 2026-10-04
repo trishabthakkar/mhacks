@@ -9,6 +9,7 @@ import { hoverText } from '../ui/inspect.ts';
 import { isClick, pickAt, pickColumn, samePick, type Pick, type PickScene } from '../pick.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
+import type { Spot } from './wander.ts';
 import { Labels, Particles } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField, plantHeight } from './plantField.ts';
@@ -216,6 +217,15 @@ export class GardenWorld implements WorldLookup {
     return claim ? this.gates.get(claim.path) : undefined;
   }
   /** Front edge of the garden where gardeners wait, and half the garden's width. */
+  private fixedSpots: Spot[] = []; private potSpots: Spot[] = []; private allSpots: Spot[] = []; private potKey = '';
+  get roamSpots() { return this.allSpots; }
+  /** Task pots move as tasks come and go: refresh their visit spots (cheap; only rebuilt when they change). */
+  private refreshPotSpots() {
+    const pots: Spot[] = []; this.tasks.forEachPos((x, z) => pots.push({ x, z: z + 0.9, fx: x, fz: z }));
+    const key = pots.map((p) => `${p.x.toFixed(1)},${p.z.toFixed(1)}`).join(';');
+    if (key === this.potKey) return;
+    this.potKey = key; this.potSpots = pots; this.allSpots = [...this.fixedSpots, ...pots];
+  }
   get homeFrame() { return { halfW: Math.max(6, this.layout.width / 2), frontZ: Math.max(4, this.layout.depth / 2) + 3.6 }; }
   gardenerPos(handle: string) { return this.actors.gardenerPos(handle); }
   get botFocus() { return this.actors.focus; }
@@ -242,6 +252,7 @@ export class GardenWorld implements WorldLookup {
     this.actors.sync(u.snapshot);
     const models = taskModels(u.snapshot);
     this.tasks.sync(models, layoutTaskPlants(this.layout, models), this.time);
+    this.refreshPotSpots();
     const notes: Array<'fence' | 'request' | 'handoff' | 'bloom' | 'refused'> = [];
     for (const _c of u.snapshot.claims) notes.push('fence');
     for (const m of u.snapshot.messages) if (m.status !== 'acked') notes.push('request');
@@ -291,7 +302,18 @@ export class GardenWorld implements WorldLookup {
       const hf = this.homeFrame;
       const fence = gardenFence(this.layout, hf.frontZ); this.gardenRect = fence.rect;
       this.boundary.rebuild(fence); this.fitShadow(fence.rect);
+      // where idle gardeners stroll: in front of each bed, the pond's near rim, inside the arch, the shed door
+      const cx = (fence.rect.minX + fence.rect.maxX) / 2, cz = (fence.rect.minZ + fence.rect.maxZ) / 2;
+      const pd = Math.hypot(cx - ps.x, cz - ps.z) || 1, rim = ps.r + 0.9;
+      this.fixedSpots = [
+        ...this.layout.beds.map((b) => ({ x: b.x, z: b.z + b.d / 2 + 0.9, fx: b.x, fz: b.z })),
+        { x: ps.x + ((cx - ps.x) / pd) * rim, z: ps.z + ((cz - ps.z) / pd) * rim, fx: ps.x, fz: ps.z },
+        { x: fence.gate.x, z: fence.rect.maxZ - 1.5, fx: fence.gate.x, fz: fence.rect.maxZ },
+      ];
       this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, withPondLink(layoutPaths(this.layout), pondLink(this.layout)), [(({ x, z, r }) => ({ x, z, r: r * 1.5 }))(pondSpot(this.layout))], fence.rect);
+      const shed = this.props.shed.position, sr = this.props.shed.rotation.y;
+      this.fixedSpots.push({ x: shed.x + Math.sin(sr) * 2, z: shed.z + Math.cos(sr) * 2, fx: shed.x, fz: shed.z });
+      this.potKey = '\u0000'; this.refreshPotSpots();
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;

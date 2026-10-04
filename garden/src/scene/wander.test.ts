@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { idleSpot, tendSpot } from './wander.ts';
+import { idleSpot, roamSpot, tendSpot } from './wander.ts';
 
 const key = (p: { x: number; z: number }) => `${p.x.toFixed(3)},${p.z.toFixed(3)}`;
 
@@ -47,4 +47,31 @@ test('idle gardeners stroll near home, mostly sideways along the lane', () => {
 test('spots are deterministic', () => {
   assert.deepEqual(tendSpot(12.3, 4), tendSpot(12.3, 4));
   assert.deepEqual(idleSpot(12.3, 4), idleSpot(12.3, 4));
+});
+
+const spots = Array.from({ length: 6 }, (_, i) => ({ x: i * 3, z: 0, fx: i * 3, fz: -1 }));
+test('roamSpot: deterministic, never the same spot twice in a row, holds 6–12 s at each', () => {
+  assert.deepEqual(roamSpot(42, 7, spots), roamSpot(42, 7, spots));
+  let prev = roamSpot(0, 7, spots), changes = 0, last = 0, minHold = Infinity, maxHold = 0;
+  for (let t = 0.25; t < 600; t += 0.25) {
+    const s = roamSpot(t, 7, spots);
+    if (s !== prev) {
+      if (changes) { minHold = Math.min(minHold, t - last); maxHold = Math.max(maxHold, t - last); }
+      changes++; last = t; prev = s;
+    }
+  }
+  assert.ok(changes > 30 && minHold >= 5.75 && maxHold <= 12.25, `${changes} ${minHold} ${maxHold}`);
+});
+test('roamSpot: two people are mostly at different spots; no spots gives undefined', () => {
+  let same = 0;
+  for (let t = 0; t < 300; t += 1) if (roamSpot(t, 1, spots) === roamSpot(t, 2, spots)) same++;
+  assert.ok(same < 120, String(same));
+  assert.equal(roamSpot(5, 1, []), undefined);
+  const one = [{ x: 1, z: 1, fx: 0, fz: 0 }];
+  assert.equal(roamSpot(100, 3, one), one[0]);
+});
+test('roamSpot: stays cheap an hour in', () => {
+  const t0 = performance.now();
+  for (let i = 0; i < 2000; i++) roamSpot(3600 + i, i % 9, spots);
+  assert.ok(performance.now() - t0 < 500);
 });

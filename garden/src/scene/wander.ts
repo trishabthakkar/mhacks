@@ -19,3 +19,20 @@ export function idleSpot(t: number, seed: number): { x: number; z: number } {
   const k = Math.floor((t + seed * 2.11) / IDLE_HOLD);
   return { x: (hash2(k, seed) * 2 - 1) * 1.5, z: (hash2(k, seed + 9) * 2 - 1) * 0.5 };
 }
+
+/** A place an idle gardener visits: stand at (x, z), face (fx, fz). */
+export interface Spot { x: number; z: number; fx: number; fz: number }
+const ROAM_PAIR = 18; // two stops per 18 s: the first lasts 6–12 s, the second the rest (also 6–12 s)
+
+/**
+ * Where an idle gardener is visiting at time t: a walk between places around the garden. O(1): stops come in pairs,
+ * even stops pick from even-numbered spots and odd stops from odd ones, so the next stop is never the current spot.
+ */
+export function roamSpot(t: number, seed: number, spots: Spot[]): Spot | undefined {
+  const n = spots.length;
+  if (n < 2) return spots[0];
+  const tt = Math.max(0, t + seed * 3.1), k = Math.floor(tt / ROAM_PAIR);
+  const j = 2 * k + (tt - k * ROAM_PAIR >= 6 + 6 * hash2(k, seed) ? 1 : 0), odd = j % 2;
+  const count = odd ? Math.floor(n / 2) : Math.ceil(n / 2);
+  return spots[odd + 2 * Math.min(count - 1, Math.floor(hash2(j, seed + 17) * count))];
+}

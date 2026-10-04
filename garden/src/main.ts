@@ -30,6 +30,7 @@ pauseBtn.addEventListener('click', () => { fake?.toggle(); refresh(); });
 const toasts = document.getElementById('toasts')!;
 const cueEl = document.getElementById('cue')!;
 const helpEl = document.getElementById('help')!;
+const guideEl = document.getElementById('guide')!;
 const timelineEl = document.getElementById('timeline')!;
 let source: 'live' | 'fake' = q.get('source') === 'fake' ? 'fake' : 'live';
 let layout: GardenLayout = { beds: [], plants: [], width: 0, depth: 0 };
@@ -255,15 +256,26 @@ store.subscribe((u) => {
   if (cueOn && u.newActivity.length) renderCue(cueEl);
   requestAnimationFrame(refresh);
 });
-let helpReturn: HTMLElement | null = null;
-function setHelp(on: boolean) {
-  if (on === !helpEl.hidden) return;
-  helpEl.hidden = !on;
-  if (on) { helpReturn = document.activeElement as HTMLElement | null; helpEl.querySelector<HTMLElement>('.help-card')?.focus(); }
-  else { helpReturn?.focus?.(); helpReturn = null; }
+// Two small dialogs: keys (?) and the guide to what everything means (G). Opening one closes the other.
+let dialogReturn: HTMLElement | null = null;
+function setDialog(el: HTMLElement, cardSel: string, on: boolean) {
+  if (on === !el.hidden) return;
+  if (on) for (const other of [helpEl, guideEl]) if (other !== el) other.hidden = true;
+  el.hidden = !on;
+  if (on) { dialogReturn ??= document.activeElement as HTMLElement | null; el.querySelector<HTMLElement>(cardSel)?.focus(); }
+  else { dialogReturn?.focus?.(); dialogReturn = null; }
 }
-helpEl.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); helpEl.querySelector<HTMLElement>('.help-card')?.focus(); } }); // the dialog has nothing else to tab to
-helpEl.addEventListener('click', () => setHelp(false));
+const setHelp = (on: boolean) => setDialog(helpEl, '.help-card', on);
+const setGuide = (on: boolean) => setDialog(guideEl, '.guide-card', on);
+for (const [el, sel] of [[helpEl, '.help-card'], [guideEl, '.guide-card']] as const) {
+  el.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); el.querySelector<HTMLElement>(sel)?.focus(); } }); // nothing else to tab to
+  el.addEventListener('click', () => setDialog(el, sel, false));
+}
+document.getElementById('keys')?.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-open]');
+  if (b?.dataset.open === 'help') setHelp(helpEl.hidden);
+  else if (b?.dataset.open === 'guide') setGuide(guideEl.hidden);
+});
 setInterval(() => tickFreshness(shed), 1000);
 document.body.classList.toggle('shed-collapsed', collapsed);
 
@@ -272,7 +284,9 @@ addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
   if (k === '?' || k === '/') { setHelp(helpEl.hidden); return; }
+  if (k === 'g') { setGuide(guideEl.hidden); return; }
   if (k === 'escape' && !helpEl.hidden) { setHelp(false); return; }
+  if (k === 'escape' && !guideEl.hidden) { setGuide(false); return; }
   if (k === 'c') { setCue(!cueOn); return; }
   if (k === 't') { if (replaying) exitTimelapse(); else void enterTimelapse(); return; }
   if (replaying && (k === ',' || k === '.')) { timelineEl.querySelector<HTMLElement>(k === ',' ? '[data-tl=slower]' : '[data-tl=faster]')?.click(); return; }

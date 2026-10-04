@@ -81,8 +81,10 @@
       .cue-steps { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; } .cue-say { text-align:center; font-size:14px; margin-top:6px; }
       button.cue { font:inherit; font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--ctl); background:#fff; cursor:pointer; }
       button.cue.done { background:#d8f3dc; border-color:#74c69d; } button.cue.partial { background:#fff3c4; border-color:#d9b94a; } button.cue.cur { outline:3px solid #2a6df4; outline-offset:1px; font-weight:700; } button.cue.reset { opacity:.6; }
-      #help { position:fixed; inset:0; z-index:12; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; } #help[hidden] { display:none; }
-      .help-card { background:var(--card); border-radius:16px; padding:18px 26px; max-width:min(980px, 94vw); max-height:90vh; overflow:auto; } .help-cols { display:grid; grid-template-columns:minmax(260px, 1fr) minmax(300px, 1.4fr); gap:28px; } .help-card h3 { margin:12px 0 4px; font-size:14px; text-transform:uppercase; letter-spacing:.04em; opacity:.7; } .help-card .legend-dl { grid-template-columns:11.5em 1fr; } .help-card .legend-dl dt { font-family:inherit; font-size:14px; } .help-card .legend-dl dd { font-size:14px; } .help-card code { font-size:12px; } @media (max-width: 760px) { .help-cols { grid-template-columns:1fr; } } .help-card h2 { margin:0 0 8px; } .help-card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 18px; margin:0; } .help-card dt { font-weight:700; font-family:ui-monospace,Menlo,monospace; font-size:13px; } .help-card dd { margin:0; }
+      #help, #guide { position:fixed; inset:0; z-index:12; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; } #help[hidden], #guide[hidden] { display:none; }
+      .guide-card { background:var(--card); border-radius:16px; padding:18px 26px; width:min(860px, 94vw); max-height:90vh; overflow:auto; } .guide-card h2 { margin:0 0 10px; } .guide-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px 26px; } .guide-card h3 { margin:0 0 4px; font-size:13px; text-transform:uppercase; letter-spacing:.05em; opacity:.65; } .guide-card ul { list-style:none; margin:0; padding:0; } .guide-card li { display:flex; gap:8px; align-items:baseline; font-size:15px; line-height:1.35; padding:3px 0; } .guide-card li i { font-style:normal; flex:none; width:1.4em; } .guide-card li b { margin-right:6px; } .guide-card .sub { margin-top:12px; }
+      #keys button { all:unset; cursor:pointer; font-weight:700; padding:1px 7px; border:1px solid var(--line); border-radius:999px; background:#fff; } #keys button:focus-visible { outline:3px solid #2a6df4; }
+      .help-card { background:var(--card); border-radius:16px; padding:18px 26px; max-width:520px; max-height:90vh; overflow:auto; } .help-card h2 { margin:0 0 8px; } .help-card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 18px; margin:0; } .help-card dt { font-weight:700; font-family:ui-monospace,Menlo,monospace; font-size:13px; } .help-card dd { margin:0; }
       body.no-badge #status, body.no-badge .conn.demo { display:none; }
       #status button { font:inherit; margin-left:8px; padding:0 10px; border-radius:999px; border:1px solid var(--ctl); background:#fff; cursor:pointer; }
       @media (pointer: coarse) { button, .chip, button.icon, #timeline button, .plan-bar button { min-height:44px; min-width:44px; } .plan-bar input { min-height:44px; } button.who, button.link { min-height:44px; } }
@@ -98,47 +100,47 @@
     <main id="app" aria-label="Garden view"></main>
     <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
     <p id="sr-summary" class="sr-only"></p>
-    <div id="keys" aria-label="Keyboard shortcuts">Drag to look around · <b>?</b> keys &amp; legend · <b>P</b> board · <b>S</b> shed · <b>D</b> director · <b>T</b> timelapse</div>
+    <div id="keys" aria-label="Keyboard shortcuts"><button data-open="help">? Keys</button> <button data-open="guide">G Guide</button> · <b>P</b> board · <b>S</b> shed · <b>D</b> director · <b>T</b> timelapse</div>
     <aside id="shed" aria-label="Garden shed noticeboard"></aside>
     <div id="plan" hidden role="region" aria-label="Garden plan"></div>
     <div id="banner" role="status" hidden></div>
     <div id="empty" hidden><b>No files planted yet</b><br/>Run <code>sprout join</code> in your repo and the garden fills in.</div>
     <div id="timeline" hidden role="group" aria-label="Timelapse controls"></div>
     <div id="cue" hidden role="region" aria-label="Demo cue strip"></div>
-    <div id="help" hidden role="dialog" aria-modal="true" aria-label="Keys and what everything in the garden means"><div class="help-card" tabindex="-1"><div class="help-cols"><section><h2>Keys</h2>
+    <div id="help" hidden role="dialog" aria-modal="true" aria-label="Keyboard shortcuts"><div class="help-card" tabindex="-1"><h2>Keys</h2>
       <dl><dt>Drag / wheel</dt><dd>orbit / zoom</dd><dt>Arrows, Q E, + -</dt><dd>pan, turn, zoom</dd><dt>1 2 3</dt><dd>overview, top-down, low camera</dd>
       <dt>F</dt><dd>reframe everything</dd><dt>D</dt><dd>director camera (follows the action)</dd><dt>P</dt><dd>team board (tasks per person, what needs attention)</dd>
       <dt>S</dt><dd>garden shed panel</dd><dt>C</dt><dd>demo cue strip</dd><dt>H</dt><dd>hide all UI (screenshots)</dd>
       <dt>L</dt><dd>text labels with stage on every plant</dd><dt>B</dt><dd>show every plant in full (large gardens)</dd>
       <dt>M</dt><dd>calm mode (gentler motion)</dd><dt>K</dt><dd>high contrast</dd><dt>Space, ← →</dt><dd>pause, step (demo data only)</dd>
-      <dt>T</dt><dd>seasons timelapse (replay the weekend); Space play, , . speed</dd><dt>? or Esc</dt><dd>this help</dd></dl>
-      <p class="sub">Hover a tall task plant for its card. Click a name in the shed to follow that person.</p></section>
-      <section><h2>What you're seeing</h2>
-      <h3>The place</h3>
-      <dl class="legend-dl"><dt>Raised bed</dt><dd>a top-level folder of the repo; <code>tests</code> is the glass greenhouse</dd>
-      <dt>Small plant</dt><dd>a file (bigger = more lines); quiet files shrink to grass tufts</dd>
-      <dt>Faded grey plant</dt><dd>nobody has touched it for hours (dormant)</dd>
-      <dt>Shed</dt><dd>noticeboard: who's online, fences, recent events (click it)</dd></dl>
-      <h3>People and agents</h3>
-      <dl class="legend-dl"><dt>Gardener</dt><dd>a teammate; the name tag shows their current task</dd>
-      <dt>Robot</dt><dd>that person's Claude Code session, walking to the file it's reading or editing</dd>
-      <dt>Spirit ✨</dt><dd>a subagent Claude sent off to help; its bubble says what it's doing. It hops back and pops when done</dd></dl>
-      <h3>Tasks</h3>
-      <dl class="legend-dl"><dt>Tall plant in a pot</dt><dd>a task an agent named; pot colour = owner, signpost = title</dd>
-      <dt>Buds</dt><dd>its checklist: green not started, glowing yellow in progress, white done</dd>
-      <dt>✋ and drooping</dt><dd>stuck: blocked by a fence, refused by the botanist, or failing tests</dd>
-      <dt>Big flower on top</dt><dd>certified done by the botanist</dd></dl>
-      <h3>Working together</h3>
-      <dl class="legend-dl"><dt>Low fence</dt><dd>someone claimed those files so others stay out (avoids merge conflicts); pulses red before it expires</dd>
-      <dt>Robot stopped at a fence</dt><dd>an agent tried to edit fenced files and was blocked</dd>
-      <dt>Butterfly 🦋</dt><dd>a message between agents: circling = not seen yet, landing = delivered on their next prompt, pollen burst = acknowledged</dd>
-      <dt>Watering can + seed tag</dt><dd>a handoff: one person offering a task, which the other must accept</dd></dl>
-      <h3>Proof of work</h3>
-      <dl class="legend-dl"><dt>Bugs on leaves 🐛</dt><dd>that person's tests failed on files they touched (⚠️ at 3+); they vanish when tests pass</dd>
-      <dt>Botanist</dt><dd>checks "done" claims: nods and the plant blooms only with a real change plus passing tests after it, otherwise shakes its head and says what's missing</dd>
-      <dt>Rain</dt><dd>someone committed files in that folder</dd></dl></section></div>
-      <p class="sub">Click anywhere to close.</p></div></div>
-    <div id="toasts" aria-live="polite"></div>
+      <dt>T</dt><dd>seasons timelapse (replay the weekend); Space play, , . speed</dd><dt>G</dt><dd>guide: what everything in the garden means</dd><dt>? or Esc</dt><dd>these keys</dd></dl><p class="sub">Press G for the guide to what everything means. Click anywhere to close.</p></div></div>
+    <div id="guide" hidden role="dialog" aria-modal="true" aria-label="Guide: what everything in the garden means"><div class="guide-card" tabindex="-1">
+      <h2>What you're seeing</h2>
+      <div class="guide-grid">
+        <section><h3>The place</h3><ul>
+          <li><i aria-hidden="true">🟫</i><span><b>Bed</b> a folder</span></li>
+          <li><i aria-hidden="true">🌱</i><span><b>Small plant</b> a file (bigger = longer)</span></li>
+          <li><i aria-hidden="true">🍂</i><span><b>Faded plant</b> untouched for hours</span></li></ul></section>
+        <section><h3>People</h3><ul>
+          <li><i aria-hidden="true">🧑‍🌾</i><span><b>Gardener</b> a teammate; tag shows their task</span></li>
+          <li><i aria-hidden="true">🤖</i><span><b>Robot</b> their Claude Code, at the file it's using</span></li>
+          <li><i aria-hidden="true">✨</i><span><b>Spirit</b> a helper agent; bubble says what it's doing</span></li></ul></section>
+        <section><h3>Tasks</h3><ul>
+          <li><i aria-hidden="true">🪴</i><span><b>Tall potted plant</b> a task; pot colour = owner</span></li>
+          <li><i aria-hidden="true">🟢</i><span><b>Buds</b> checklist: green to do, yellow doing, white done</span></li>
+          <li><i aria-hidden="true">✋</i><span><b>Drooping</b> the task is stuck</span></li>
+          <li><i aria-hidden="true">🌸</i><span><b>Big flower</b> proven done</span></li></ul></section>
+        <section><h3>Teamwork</h3><ul>
+          <li><i aria-hidden="true">🚧</i><span><b>Fence</b> "I'm editing these, please wait"</span></li>
+          <li><i aria-hidden="true">🦋</i><span><b>Butterfly</b> a message; circling = unread, landed = read</span></li>
+          <li><i aria-hidden="true">🪣</i><span><b>Watering can</b> handing a task to someone</span></li></ul></section>
+        <section><h3>Proof</h3><ul>
+          <li><i aria-hidden="true">🐛</i><span><b>Bugs</b> tests are failing</span></li>
+          <li><i aria-hidden="true">🧑‍🔬</i><span><b>Botanist</b> checks "done": blooms only with a real change and passing tests</span></li>
+          <li><i aria-hidden="true">🌧️</i><span><b>Rain</b> a commit</span></li></ul></section>
+      </div>
+      <p class="sub">Hover a tall plant for its details · P opens the team board · Click anywhere to close.</p></div></div>
+<div id="toasts" aria-live="polite"></div>
     <div id="status" role="status"></div>
     <div id="fps" hidden></div>
     <script type="module" src="/src/main.ts"></script>

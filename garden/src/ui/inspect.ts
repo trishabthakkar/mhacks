@@ -1,5 +1,6 @@
 // Pure: the shed inspector's content for whatever was clicked in the 3D garden, and the one-line hover tooltip.
 // Returns null when the subject no longer exists (the caller then clears the selection). Every string is escaped.
+import { botLine } from '../bots.ts';
 import type { ActivityView, GardenSnapshot } from '../../../shared/types.ts';
 import type { Pick } from '../pick.ts';
 import { normalizeBed } from '../layout.ts';
@@ -131,7 +132,7 @@ export function hoverText(p: Pick, s: GardenSnapshot): string | null {
       return `${clip(base(pv.path), 30)} · ${pv.stage}${pv.bugs ? ` · ${pv.bugs} 🐛` : ''}${pv.lastTouchedBy ? ` · ${pv.lastTouchedBy} ${ago(s.at - pv.lastActivity)}` : ''}`;
     }
     case 'bed': { const n = s.plants.filter((x) => normalizeBed(x.bed) === p.key).length; return n ? `${clip(p.key, 30)} · ${n} files` : null; }
-    case 'member': return s.members.some((m) => m.handle === p.key) ? `${p.key} · ${memberStatus(s, p.key)}` : null;
+    case 'member': return s.members.some((m) => m.handle === p.key) ? `${p.key} · ${memberStatus(s, p.key)} · ${botLine(s, p.key)}` : null;
     case 'task': {
       const t = (s.tasks ?? []).find((x) => x.id === p.key); if (!t) return null;
       const items = (s.taskItems ?? []).filter((i) => i.taskId === t.id);

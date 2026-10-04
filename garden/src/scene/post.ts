@@ -7,6 +7,14 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+/** Objects the AO pass must not see as solid. */
+export function skipsAO(o: THREE.Object3D): boolean {
+  const x = o as THREE.Object3D & { isSprite?: boolean; isPoints?: boolean; isLine?: boolean; material?: THREE.Material | THREE.Material[] };
+  if (x.isSprite || x.isPoints || x.isLine) return true;
+  const m = Array.isArray(x.material) ? x.material[0] : x.material;
+  return !!m && m.transparent && !m.depthWrite;
+}
+
 export class Post {
   ok = false;
   private composer?: EffectComposer;
@@ -20,6 +28,9 @@ export class Post {
         this.ao = new GTAOPass(scene, cam, size.x, size.y);
         this.ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1, thickness: 1, scale: 1, samples: 12 });
         this.ao.blendIntensity = 0.85;
+        // three's GTAO only hides points and lines from its depth/normal pass; sprites and see-through overlays would print dark squares
+        const pass = this.ao as unknown as { overrideVisibility(): void; _visibilityCache: Map<THREE.Object3D, boolean> };
+        pass.overrideVisibility = () => scene.traverse((o) => { pass._visibilityCache.set(o, o.visible); if (skipsAO(o)) o.visible = false; });
         c.addPass(this.ao);
       }
       if (o.bloom) c.addPass(new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.35, 0.5, 1.0));

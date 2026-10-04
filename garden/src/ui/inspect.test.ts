@@ -90,7 +90,8 @@ test('escapes hostile text everywhere', () => {
 
 test('hover text is one short plain line', () => {
   assert.equal(hoverText({ kind: 'plant', key: 'src/api/routes.ts' }, snap()), 'routes.ts · growing · 2 🐛 · trisha 2m ago');
-  assert.equal(hoverText({ kind: 'member', key: 'seno' }, snap()), 'seno · offline');
+  assert.equal(hoverText({ kind: 'member', key: 'seno' }, snap()), 'seno · offline · Claude asleep · no session yet');
+  assert.equal(hoverText({ kind: 'member', key: 'trisha' }, snap()), 'trisha · working · Claude working on routes.ts');
   assert.equal(hoverText({ kind: 'plant', key: 'gone.ts' }, snap()), null);
 });
 

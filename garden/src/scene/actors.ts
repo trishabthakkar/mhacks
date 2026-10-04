@@ -11,6 +11,7 @@ const CHAR_SCALE = 2.3; // Kenney characters are ~0.6 units tall; our people are
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
+import { botFor, botHandleOf } from '../bots.ts';
 import { spiritText } from './spiritText.ts';
 
 export interface WorldLookup {
@@ -130,17 +131,27 @@ export function iconMat(glyph: string): THREE.SpriteMaterial {
   }
   return m;
 }
+/** A pale "z" with a dark outline, readable on grass and gravel. */
+let zBase: THREE.SpriteMaterial | undefined;
+function zMat(): THREE.SpriteMaterial {
+  if (zBase) return zBase;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  g.font = 'bold 50px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 6; g.strokeStyle = 'rgba(30,40,60,0.85)'; g.strokeText('z', 32, 34); g.fillStyle = '#eef4ff'; g.fillText('z', 32, 34);
+  return (zBase = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+}
 const ICON: Record<string, string> = { idle: '💤', working: '⚙️', blocked: '✋', dormant: '', needs_review: '👀', waiting: '' };
 
-interface BotRig { wheelL: THREE.Object3D; wheelR: THREE.Object3D; tip: THREE.Mesh; icon: THREE.Sprite; iconFor: string }
+interface BotRig { wheelL: THREE.Object3D; wheelR: THREE.Object3D; tip: THREE.Mesh; icon: THREE.Sprite; iconFor: string; eyes: THREE.Mesh[]; zs: THREE.Sprite[] }
 function makeBot(color: string): { m: Mover; alert: THREE.Object3D; body: THREE.Object3D; rig: BotRig } {
   const m = new Mover(3.6);
   const body = mesh(geo.box, mat('#cfd6dc'), 0.34, 0.3, 0.34, 0, 0.32, 0);
   m.obj.add(body);
   m.obj.add(mesh(geo.box, mat(color), 0.36, 0.06, 0.36, 0, 0.4, 0));
   m.obj.add(mesh(geo.sphere, mat('#e6ecef'), 0.13, 0.13, 0.13, 0, 0.62, 0));
-  m.obj.add(mesh(geo.sphere, mat('#222', {}), 0.03, 0.03, 0.03, 0.05, 0.64, 0.11));
-  m.obj.add(mesh(geo.sphere, mat('#222', {}), 0.03, 0.03, 0.03, -0.05, 0.64, 0.11));
+  const eyes = [mesh(geo.sphere, mat('#222', {}), 0.03, 0.03, 0.03, 0.05, 0.64, 0.11), mesh(geo.sphere, mat('#222', {}), 0.03, 0.03, 0.03, -0.05, 0.64, 0.11)];
+  m.obj.add(...eyes);
   m.obj.add(mesh(geo.cyl, mat('#888'), 0.012, 0.18, 0.012, 0, 0.8, 0));
   const tip = new THREE.Mesh(geo.sphere, new THREE.MeshStandardMaterial({ color: 0xff5a5a, emissive: 0xff2a2a, emissiveIntensity: 0.2 }));
   tip.scale.setScalar(0.035); tip.position.y = 0.9; m.obj.add(tip);
@@ -153,7 +164,9 @@ function makeBot(color: string): { m: Mover; alert: THREE.Object3D; body: THREE.
   alert.add(mesh(geo.box, mat('#ffd23f', { emissive: 0x553d00 }), 0.05, 0.05, 0.05, 0, 0.9, 0));
   alert.visible = false;
   m.obj.add(alert);
-  return { m, alert, body, rig: { wheelL, wheelR, tip, icon, iconFor: '' } };
+  // asleep: three z's drift up and fade (each its own material, so each can fade on its own)
+  const zs = [0, 1, 2].map((i) => { const z = new THREE.Sprite(zMat().clone()); z.scale.setScalar(0.3 + i * 0.06); z.visible = false; m.obj.add(z); return z; });
+  return { m, alert, body, rig: { wheelL, wheelR, tip, icon, iconFor: '', eyes, zs } };
 }
 function makeSpirit(color: string): Mover {
   const m = new Mover(4.5);
@@ -200,7 +213,8 @@ export class Actors {
   private gardeners = new Map<string, { obj: THREE.Object3D; m: Mover; label: HTMLElement; kneel: number; rig: GardenerRig; body?: Character }>();
   private kit = new CharacterKit();
   private botanistBody?: Character;
-  private bots = new Map<string, { obj: THREE.Object3D; m: Mover; alert: THREE.Object3D; body: THREE.Object3D; agent: AgentView; rig: BotRig }>();
+  /** One bot per member (keyed by handle), always drawn; it sleeps when its Claude isn't doing anything. */
+  private bots = new Map<string, { obj: THREE.Object3D; m: Mover; alert: THREE.Object3D; body: THREE.Object3D; agent?: AgentView; asleep: boolean; rig: BotRig }>();
   private bees = new Map<string, { obj: THREE.Object3D; m: Mover; seed: number; parent: string; handle: string; returning: boolean; bubble: HTMLElement; text: string; hop: number }>();
   private flies = new Map<string, Fly>();
   private meet = new Map<string, { pos: THREE.Vector3; until: number; with?: string }>();
@@ -265,12 +279,18 @@ export class Actors {
   /** Every clickable character: gardeners by handle, then the botanist. */
   forEachPerson(cb: (pick: Pick, pos: THREE.Vector3) => void) {
     for (const [handle, g] of this.gardeners) cb({ kind: 'member', key: handle }, g.obj.position);
+    for (const [handle, b] of this.bots) cb({ kind: 'member', key: handle }, b.obj.position);
     cb({ kind: 'botanist' }, this.botanist.obj.position);
   }
   gardenerPos(handle: string): THREE.Vector3 | undefined { return this.gardeners.get(handle)?.obj.position; }
   /** Where a bot (main session) or spirit (subagent) is right now. */
-  agentPos(sessionId: string): THREE.Vector3 | undefined { return this.bots.get(sessionId)?.obj.position ?? this.bees.get(sessionId)?.obj.position; }
-  private claudeAgent(handle: string) { return this.snap.agents.find((a) => a.handle === handle && a.kind === 'claude'); }
+  agentPos(sessionId: string): THREE.Vector3 | undefined {
+    const bot = this.bots.get(botHandleOf(this.snap, sessionId) ?? '');
+    return this.bees.get(sessionId)?.obj.position ?? (this.snap.agents.some((a) => a.sessionId === sessionId && a.kind === 'claude') ? bot?.obj.position : undefined);
+  }
+  private botPos(sessionId: string) { return this.bots.get(botHandleOf(this.snap, sessionId) ?? '')?.obj.position; }
+  /** The member's Claude session the garden shows (the busiest one); may be idle or ended. */
+  private claudeAgent(handle: string) { return botFor(this.snap, handle).agent; }
 
   clearTransient() {
     this.meet.clear(); this.queue = []; this.shot = null; this.world.showLock(null);
@@ -306,15 +326,13 @@ export class Actors {
       const text = cur ? `${name} · ${cur.title.length > 18 ? `${cur.title.slice(0, 17)}…` : cur.title}` : name;
       if (g.label.dataset.text !== text) { g.label.dataset.text = text; this.labels.setText(g.label, text); }
     }
-    const claudes = snap.agents.filter((a) => a.kind === 'claude' && a.status !== 'dormant');
-    reconcile(this.bots, claudes.map((a) => a.sessionId), (id) => {
-      const a = claudes.find((x) => x.sessionId === id)!;
-      const b = makeBot(this.memberColor(a.handle));
-      b.m.obj.position.copy(this.home(a.handle)).add(new THREE.Vector3(0.8, 0, 0.8));
+    reconcile(this.bots, snap.members.map((m) => m.handle), (h) => {
+      const b = makeBot(this.memberColor(h));
+      b.m.obj.position.copy(this.home(h)).add(Actors.OFF_BOT_HOME);
       b.m.target.copy(b.m.obj.position);
-      return { obj: b.m.obj, m: b.m, alert: b.alert, body: b.body, agent: a, rig: b.rig };
-    }, this.scene, (b) => (b.rig.tip.material as THREE.Material).dispose());
-    for (const a of claudes) { const b = this.bots.get(a.sessionId); if (b) b.agent = a; }
+      return { obj: b.m.obj, m: b.m, alert: b.alert, body: b.body, asleep: true, rig: b.rig };
+    }, this.scene, (b) => { (b.rig.tip.material as THREE.Material).dispose(); for (const z of b.rig.zs) z.material.dispose(); });
+    for (const [h, b] of this.bots) { const f = botFor(snap, h); b.agent = f.agent; b.asleep = f.asleep; }
 
     // Spirits: one per subagent, hopping between its owner's task plant and the file it's on; a finished one flies home and pops.
     const subs = snap.agents.filter((a) => a.kind === 'subagent' && a.status !== 'dormant');
@@ -323,7 +341,7 @@ export class Actors {
       let b = this.bees.get(a.sessionId);
       if (!b) {
         const m = makeSpirit(this.memberColor(a.handle));
-        const start = this.world.taskPlantPos(a.handle) ?? this.bots.get(a.parentSessionId ?? '')?.obj.position ?? this.home(a.handle);
+        const start = this.world.taskPlantPos(a.handle) ?? this.botPos(a.parentSessionId ?? '') ?? this.home(a.handle);
         m.obj.position.copy(start).setY(0.6);
         this.scene.add(m.obj);
         const bp = new THREE.Vector3();
@@ -376,8 +394,7 @@ export class Actors {
         const until = performance.now() + 5500;
         this.meet.set(a.handle, { pos: gate.clone().add(new THREE.Vector3(0.5, 0, 0.3)), until, with: owner });
         if (owner) this.meet.set(owner, { pos: gate.clone().add(new THREE.Vector3(-0.5, 0, 0.3)), until, with: a.handle });
-        const bot = this.claudeAgent(a.handle);
-        const target = bot && this.bots.get(bot.sessionId);
+        const target = this.bots.get(a.handle);
         const bp = new THREE.Vector3();
         this.labels.add(owner ? `Fenced by ${owner}: asking instead of editing` : 'Fenced: asking instead of editing',
           () => (target ? bp.copy(target.obj.position) : bp.copy(gate)).setY(1.5), 'bubble', 5500);
@@ -528,7 +545,7 @@ export class Actors {
       if (!g.m.moving) {
         let look: THREE.Vector3 | undefined;
         if (ov && now <= ov.until && ov.with) { look = this.gardenerPos(ov.with); if (look) rg.armR.rotation.x = -1.3 + Math.sin(t * 6) * 0.4 * mo; }
-        else if (agent?.status === 'waiting') look = this.bots.get(agent.sessionId)?.obj.position;
+        else if (agent?.status === 'waiting') look = this.bots.get(h)?.obj.position;
         else if (plant) look = plant; // face the plant being tended
         if (look) g.obj.rotation.y = Math.atan2(look.x - g.obj.position.x, look.z - g.obj.position.z);
       }
@@ -543,9 +560,31 @@ export class Actors {
       }
     }
 
-    for (const b of this.bots.values()) {
-      const a = b.agent;
-      const gp = this.gardenerPos(a.handle) ?? this.home(a.handle);
+    for (const [h, b] of this.bots) {
+      const a = b.agent, asleep = b.asleep || !a;
+      const tip = b.rig.tip.material as THREE.MeshStandardMaterial;
+      if (asleep) {
+        // Asleep: rolls home, settles low with its head bowed, eyes shut, slow breathing and drifting z's.
+        b.m.nav = this.world.nav; b.m.target.copy(this.home(h)).add(Actors.OFF_BOT_HOME); b.m.step(dt);
+        if (b.m.moving) { b.rig.wheelL.rotateY(dt * 10); b.rig.wheelR.rotateY(dt * 10); }
+        const settled = !b.m.moving;
+        b.alert.visible = false; b.rig.icon.visible = false; b.rig.iconFor = '';
+        tip.emissiveIntensity = 0;
+        b.body.position.y = 0.18; b.body.scale.y = 1 + 0.03 * Math.sin(t * 1.4) * mo;
+        b.obj.rotation.x = settled ? 0.25 : 0;
+        for (const e of b.rig.eyes) e.scale.y = 0.03 * 0.25;
+        b.rig.zs.forEach((z, i) => {
+          z.visible = settled;
+          const ph = mo < 0.5 ? i / 3 : (t / 2.5 + i / 3) % 1;
+          z.position.set(0.15 + ph * 0.25, 0.75 + ph * 0.7, 0); z.material.opacity = mo < 0.5 ? 0.8 : 1 - ph;
+        });
+        b.obj.scale.setScalar(1);
+        continue;
+      }
+      b.obj.rotation.x = 0; b.body.scale.y = 1;
+      for (const e of b.rig.eyes) e.scale.y = 0.03;
+      for (const z of b.rig.zs) z.visible = false;
+      const gp = this.gardenerPos(h) ?? this.home(h);
       let target: THREE.Vector3 = this.tgt.copy(gp).add(Actors.OFF_BOT_HOME);
       if (a.currentPath && (a.status === 'working' || a.status === 'blocked' || a.status === 'waiting')) {
         const p = this.world.plantPos(a.currentPath);
@@ -554,7 +593,7 @@ export class Actors {
       b.m.nav = this.world.nav; b.m.target.copy(target); b.m.step(dt);
       b.alert.visible = a.status === 'waiting';
       if (b.m.moving) { b.rig.wheelL.rotateY(dt * 10); b.rig.wheelR.rotateY(dt * 10); }
-      (b.rig.tip.material as THREE.MeshStandardMaterial).emissiveIntensity = a.status === 'working' ? 0.4 + 0.6 * Math.abs(Math.sin(t * 6)) : 0.12 + 0.1 * Math.sin(t * 2);
+      tip.emissiveIntensity = a.status === 'working' ? 0.4 + 0.6 * Math.abs(Math.sin(t * 6)) : 0.12 + 0.1 * Math.sin(t * 2);
       if (b.rig.iconFor !== a.status) {
         b.rig.iconFor = a.status;
         const glyph = ICON[a.status] ?? '';
@@ -562,13 +601,13 @@ export class Actors {
         if (glyph) b.rig.icon.material = iconMat(glyph);
       }
       if (b.rig.icon.visible) b.rig.icon.position.y = 1.2 + Math.sin(t * 2.2) * 0.04 * mo;
-      b.body.position.y = (a.status === 'idle' || a.status === 'dormant' ? 0.22 : 0.32) + (a.status === 'working' ? Math.sin(t * 8) * 0.025 * mo : 0);
-      b.obj.scale.setScalar(a.status === 'dormant' ? 0.8 : 1);
+      b.body.position.y = 0.32 + (a.status === 'working' ? Math.sin(t * 8) * 0.025 * mo : 0);
+      b.obj.scale.setScalar(1);
     }
 
     for (const [id, b] of this.bees) {
       if (b.returning) {
-        const home = this.world.taskPlantPos(b.handle) ?? this.bots.get(b.parent)?.obj.position;
+        const home = this.world.taskPlantPos(b.handle) ?? this.botPos(b.parent) ?? this.bots.get(b.handle)?.obj.position;
         if (!home) { this.dropBee(id, b); continue; }
         b.m.target.copy(home).setY(0.6);
         if (b.obj.position.distanceToSquared(b.m.target) < 0.25) { this.fx.burst(b.obj.position, 0xfff1a8, 10, 0.8, 1.5); this.dropBee(id, b); continue; }

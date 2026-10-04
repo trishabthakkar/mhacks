@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ActivityView, AgentView, GardenSnapshot, MessageView } from '../../../shared/types.ts';
-import { geo, mat, mesh } from './materials.ts';
+import { geo, hashString, mat, mesh } from './materials.ts';
+import { idleSpot, tendSpot } from './wander.ts';
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
@@ -206,7 +207,7 @@ export class Actors {
   private botHome = new THREE.Vector3();
   get botanistHome() { return this.botHome; }
   private tmp = new THREE.Vector3();
-  private tgt = new THREE.Vector3();
+  private tgt = new THREE.Vector3(); private tgt2 = new THREE.Vector3();
   private static OFF_GARDENER = new THREE.Vector3(-0.75, 0, 0.55);
   private static OFF_BOT_HOME = new THREE.Vector3(0.9, 0, 0.9);
   private static OFF_BOT_WORK = new THREE.Vector3(0.6, 0, 0.45);
@@ -261,6 +262,7 @@ export class Actors {
     reconcile(this.gardeners, snap.members.filter((m) => m.online).map((m) => m.handle), (h) => {
       const m = makeGardener(this.memberColor(h));
       m.obj.position.copy(this.home(h)); m.target.copy(m.obj.position);
+      m.obj.rotation.order = 'YXZ'; // so leaning in (x) is relative to where they face
       const lp = new THREE.Vector3();
       const label = this.labels.add(h, () => lp.copy(m.obj.position).setY(1.6), 'label member');
       label.style.borderColor = this.memberColor(h);
@@ -462,12 +464,16 @@ export class Actors {
       const ov = this.meet.get(h);
       if (ov && now > ov.until) this.meet.delete(h);
       const agent = this.claudeAgent(h);
-      let target: THREE.Vector3 = this.home(h), kneel = false;
+      // People move: a working gardener tends the plant from one side then another; an idle one strolls along the lane.
+      // Calm mode keeps everyone on one spot.
+      const seed = hashString(h) % 97, wt = mo < 0.5 ? 0 : t;
+      let target: THREE.Vector3 = this.home(h), kneel = false, plant: THREE.Vector3 | undefined;
       if (ov && now <= ov.until) target = ov.pos;
       else if (agent?.currentPath && (agent.status === 'working' || agent.status === 'blocked')) {
         const p = this.world.plantPos(agent.currentPath);
-        if (p) { target = this.tgt.copy(p).add(Actors.OFF_GARDENER); kneel = agent.status === 'working'; }
-      }
+        if (p && agent.status === 'working') { const o = tendSpot(wt, seed); target = this.tgt.set(p.x + o.x, 0, p.z + o.z); kneel = true; plant = p; }
+        else if (p) target = this.tgt.copy(p).add(Actors.OFF_GARDENER);
+      } else if (agent?.status !== 'waiting') { const o = idleSpot(wt, seed); target = this.tgt.copy(this.home(h)).add(this.tgt2.set(o.x, 0, o.z)); }
       g.m.nav = this.world.nav; g.m.target.copy(target); g.m.step(dt);
       // Tool in hand matches what the agent is doing; limbs swing while walking.
       const act = agent && agent.status === 'working' ? agent.currentAction : '';
@@ -476,12 +482,20 @@ export class Actors {
       if (tool !== rg.tool) { const old = rg.tools[rg.tool]; if (old) old.visible = false; const nw = rg.tools[tool]; if (nw) nw.visible = true; rg.tool = tool; }
       const swing = g.m.moving ? Math.sin(t * 9) * 0.7 * Math.max(0.3, mo) : 0;
       rg.armL.rotation.x = swing; rg.legL.rotation.x = -swing * 0.8; rg.legR.rotation.x = swing * 0.8;
-      rg.armR.rotation.x = g.m.moving ? -swing : tool ? -1.0 + Math.sin(t * 7) * 0.3 * mo : 0;
+      // Working with a tool: hammer chops, the can pours (tilts), the glass leans in, the clipboard jots.
+      const work = !g.m.moving && tool !== '';
+      rg.armR.rotation.x = g.m.moving ? -swing
+        : tool === 'hammer' ? -2.2 + Math.abs(Math.sin(t * 7)) * 1.5 * Math.max(0.3, mo)
+        : tool === 'can' ? -1.25 + Math.sin(t * 2) * 0.12 * mo
+        : tool ? -1.0 + Math.sin(t * 7) * 0.3 * mo : 0;
+      const can = rg.tools.can; if (can) can.rotation.x = work && tool === 'can' ? 0.5 + Math.sin(t * 2) * 0.25 * mo : 0;
+      g.obj.rotation.x = work && tool === 'glass' ? 0.22 : 0;
       // Stopped at the gate: face the other person and wave. Waiting on permission: look at the bot.
       if (!g.m.moving) {
         let look: THREE.Vector3 | undefined;
         if (ov && now <= ov.until && ov.with) { look = this.gardenerPos(ov.with); if (look) rg.armR.rotation.x = -1.3 + Math.sin(t * 6) * 0.4 * mo; }
         else if (agent?.status === 'waiting') look = this.bots.get(agent.sessionId)?.obj.position;
+        else if (plant) look = plant; // face the plant being tended
         if (look) g.obj.rotation.y = Math.atan2(look.x - g.obj.position.x, look.z - g.obj.position.z);
       }
       g.kneel += ((kneel && !g.m.moving ? 1 : 0) - g.kneel) * Math.min(1, dt * 6);

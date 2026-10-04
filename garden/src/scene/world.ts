@@ -22,6 +22,7 @@ import { Props, type Quality } from './props.ts';
 import { GardenBoundary } from './boundary.ts';
 import { ContactShadows } from './contactShadows.ts';
 import { SWAY } from './sway.ts';
+import { Post } from './post.ts';
 import { paintSign } from './signTexture.ts';
 import { gardenFence, signLine, type Rect } from '../boundary.ts';
 
@@ -107,6 +108,7 @@ export class GardenWorld implements WorldLookup {
   private pulse = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 40), new THREE.MeshBasicMaterial({ color: 0xff7a59, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
   private baseHemi = 1.2; private baseSun = 2.7;
   private contact!: ContactShadows;
+  private post?: Post;
   private dim = 1;
   private clock = new THREE.Clock();
   /** Scene time in seconds; advances with real frames or with advance() (deterministic, for tests and hidden panes). */
@@ -191,6 +193,10 @@ export class GardenWorld implements WorldLookup {
       });
       gl.domElement.addEventListener('pointermove', (e) => { this.hoverAt = { x: e.clientX, y: e.clientY }; this.hoverDirty = true; });
       gl.domElement.addEventListener('pointerleave', () => { this.hoverAt = undefined; this.setHover(null, 0, 0); });
+    }
+    if (gl && this.quality !== 'low') {
+      const qp = new URLSearchParams(location.search);
+      this.post = new Post(gl, this.scene, this.camera, { ao: qp.get('ao') !== '0', bloom: qp.get('bloom') !== '0' });
     }
     this.resize(); addEventListener('resize', () => this.resize());
 
@@ -640,7 +646,7 @@ export class GardenWorld implements WorldLookup {
 
   private resize() {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
-    if (this.available) this.renderer.setSize(w, h);
+    if (this.available) { this.renderer.setSize(w, h); this.post?.setSize(w, h); }
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     const r = this.reservedPx();
     this.rig.setReserved(r, this.reservedBottom);
@@ -741,7 +747,7 @@ export class GardenWorld implements WorldLookup {
     this.rig.update(dt);
     this.controls.update();
     this.labels.update(this.host.clientWidth, this.host.clientHeight, this.rig.reservedRight, this.rig.reservedBottom);
-    if (render && this.available) this.renderer.render(this.scene, this.camera);
+    if (render && this.available) { if (this.post) this.post.render(); else this.renderer.render(this.scene, this.camera); }
     this.frames++; this.fpsT += dt;
     if (this.fpsT >= 0.5) { this.fps = Math.round(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }
   }

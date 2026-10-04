@@ -53,3 +53,16 @@ export function lampSpots(f: GardenFence, paths: Box[], shed: { x: number; z: nu
   }
   return out;
 }
+
+const mix = (a: string, b: string, k: number) => {
+  const p = (h: string, i: number) => parseInt(h.slice(i, i + 2), 16);
+  return `#${[1, 3, 5].map((i) => Math.round(p(a, i) + (p(b, i) - p(a, i)) * k).toString(16).padStart(2, '0')).join('')}`;
+};
+/**
+ * Sky/ground fill and light strengths for a lamp level (0 day … 1 night). Night is cool blue moonlight, so the warm
+ * lamps read by contrast instead of the garden just going a darker green.
+ */
+export function nightLight(lv: number, daySun = 2.7): { sky: string; ground: string; hemi: number; sun: number } {
+  const k = Math.min(1, Math.max(0, lv));
+  return { sky: mix('#d4e9ff', '#6c82c8', k), ground: mix('#6b7a55', '#26324a', k), hemi: 1.2 + (0.75 - 1.2) * k, sun: daySun + (0.55 - daySun) * k };
+}

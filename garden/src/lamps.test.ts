@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { layoutGarden, layoutPaths } from './layout.ts';
 import { gardenFence } from './boundary.ts';
 import { pondSpot } from './pond.ts';
-import { lampLevel, lampSpots } from './lamps.ts';
+import { lampLevel, lampSpots, nightLight } from './lamps.ts';
 
 const files = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `d${i % 5}/f${i}.ts`, bed: `d${i % 5}`, lines: 50 }));
 const garden = (n: number) => {
@@ -44,4 +44,16 @@ test('lampSpots: a sparse scatter, not a runway (≤ 16 lamps for a normal garde
     const L = lampSpots(f, layoutPaths(l), shed, { beds: l.beds, pond: pondSpot(l) });
     assert.ok(L.length <= max, `${n} files: ${L.length} lamps`);
   }
+});
+
+test('night light: day colours by day, cool blue moonlight at night', () => {
+  const day = nightLight(0), night = nightLight(1);
+  assert.equal(day.sky, '#d4e9ff'); assert.equal(day.ground, '#6b7a55');
+  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [r, g, b] = rgb(night.sky) as [number, number, number];
+  assert.ok(b > r && b > g, `night sky light should be blue, got ${night.sky}`);
+  assert.ok(rgb(night.ground)[2]! > rgb(night.ground)[1]!, `night ground bounce should be cool, got ${night.ground}`);
+  assert.ok(night.hemi < day.hemi && night.sun < day.sun);
+  const mid = nightLight(0.5);
+  assert.ok(mid.hemi < day.hemi && mid.hemi > night.hemi);
 });

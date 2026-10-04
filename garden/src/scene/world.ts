@@ -11,7 +11,7 @@ import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import type { Spot } from './wander.ts';
 import { GardenLamps } from './lamps.ts';
-import { lampLevel, lampSpots } from '../lamps.ts';
+import { lampLevel, lampSpots, nightLight } from '../lamps.ts';
 import { Labels, Particles } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField, plantHeight } from './plantField.ts';
@@ -276,7 +276,9 @@ export class GardenWorld implements WorldLookup {
     (this.scene.background as THREE.Color | null) ? (this.scene.background as THREE.Color).copy(c) : (this.scene.background = c.clone());
     (this.scene.fog as THREE.Fog).color.copy(c);
     const daySun = hour > 17.5 || hour < 7 ? 2.1 : 2.7;
-    this.baseHemi = 1.2 + (0.6 - 1.2) * lv; this.baseSun = daySun + (0.5 - daySun) * lv;
+    const nl = nightLight(lv, daySun); // cool blue moonlight at night, so warm lamps read by contrast
+    this.baseHemi = nl.hemi; this.baseSun = nl.sun;
+    this.hemi.color.set(nl.sky); this.hemi.groundColor.set(nl.ground);
     this.sun.color.set(hour > 17.5 && hour < 20.5 ? '#ffc58a' : '#fff0d0').lerp(this.moon, lv);
   }
 

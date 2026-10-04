@@ -362,6 +362,15 @@ if (q.get('present') === '1') {
   document.body.classList.add('present');
   world.director = true;
 }
+// Projector loop: after a minute with no input the camera slowly circles; any input stops it.
+if (q.get('present') === '1') {
+  let lastInput = performance.now();
+  for (const ev of ['pointerdown', 'wheel', 'keydown', 'touchstart'] as const) addEventListener(ev, () => { lastInput = performance.now(); world.controls.autoRotate = false; }, { passive: true });
+  setInterval(() => {
+    world.controls.autoRotate = performance.now() - lastInput > 60_000 && !world.reducedMotion && !world.calm && !world.follow;
+    world.controls.autoRotateSpeed = 0.35;
+  }, 1000);
+}
 // Keep the scene centered in the space the shed leaves free, whatever its size does.
 new ResizeObserver(() => { if (!world.rig.userMoved) world.refit(); }).observe(shed);
 void start().then(() => { world.frameGarden(true); if (q.get('mode') === 'timelapse') void enterTimelapse(q.get('present') === '1' || q.get('autoplay') === '1'); if (q.get('scenario') && source === 'fake') runScenario(q.get('scenario')!); if (shot) setTimeout(() => applyShot(shot, world, () => setPlan(true)), 400); });

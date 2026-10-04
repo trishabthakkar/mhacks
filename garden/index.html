@@ -33,10 +33,13 @@
       .dot { width:10px; height:10px; border-radius:50%; border:2px solid; display:inline-block; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
       @media (max-width: 899px) {
         #keys { display:none; }
-        #status { bottom:auto; top:12px; left:12px; } #fps { bottom:auto; top:48px; }
+        #status { bottom:auto !important; top:12px; left:12px; } #fps { bottom:auto !important; top:48px; }
       }
       #status { position:fixed; left:12px; bottom:12px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:3px 12px; font-size:12px; }
-      #keys { position:fixed; left:12px; top:12px; max-width:calc(100vw - 360px); line-height:1.5; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
+      #keys { line-height:1.5; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:12px; }
+      #topbar { position:fixed; left:12px; top:12px; z-index:9; display:flex; gap:8px; align-items:center; flex-wrap:wrap; max-width:calc(100vw - 370px); }
+      #topbar #banner { padding:4px 12px; } body.hide-ui #topbar { display:none; }
+      @media (max-width: 899px) { #topbar { top:52px; max-width:calc(100vw - 24px); } }
       #fps { position:fixed; left:12px; bottom:44px; font:12px monospace; background:#000a; color:#0f0; padding:2px 6px; }
       #plan { position:fixed; inset:0; background:#f6f1df; padding:12px 16px; display:flex; flex-direction:column; z-index:5; } #plan[hidden] { display:none; }
       .plan-bar { display:flex; gap:8px; align-items:center; padding-bottom:8px; flex-wrap:wrap; } .plan-bar input { padding:5px 10px; border-radius:8px; border:1px solid var(--ctl); min-width:180px; font:inherit; }
@@ -53,7 +56,7 @@
       .small { font-size:.42px; fill:#3b3a30; } .stage { font-size:.4px; fill:#3b3a30; } .stage.b { font-weight:800; fill:#a02c6a; }
       .plant { stroke:#3b3a30; stroke-width:.06; } .plant.seed { fill:#8b6a45; } .plant.sprout { fill:#a8d88a; } .plant.growing { fill:#5fa04a; }
       .plant.bud { fill:#c9d86b; } .plant.bloom { fill:#f48fb1; } .plant.dormant { fill:#bdb9a4; }
-      #banner { position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:9; background:#fff7d6; border:1px solid #d9b94a; border-radius:999px; padding:6px 16px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.15); max-width:min(90vw,640px); text-align:center; } #banner[hidden] { display:none; }
+      #banner { background:#fff7d6; border:1px solid #d9b94a; border-radius:999px; padding:6px 16px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.15); max-width:min(90vw,640px); text-align:center; } #banner[hidden] { display:none; }
       #banner button { font:inherit; margin-left:8px; padding:2px 10px; border-radius:999px; border:1px solid var(--ink); background:var(--ink); color:#fff; cursor:pointer; }
       .spin { display:inline-block; width:11px; height:11px; border:2px solid #b8962e; border-top-color:transparent; border-radius:50%; animation:spin .9s linear infinite; vertical-align:-1px; } @keyframes spin { to { transform:rotate(360deg); } }
       #empty { position:fixed; left:50%; top:46%; transform:translate(-50%,-50%); background:var(--card); border:1px dashed var(--ink); border-radius:14px; padding:16px 24px; text-align:center; font-size:15px; max-width:80vw; } #empty[hidden] { display:none; }
@@ -90,10 +93,9 @@
     <main id="app" aria-label="Garden view"></main>
     <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
     <p id="sr-summary" class="sr-only"></p>
-    <div id="keys" aria-label="Keyboard shortcuts"><button data-open="help">? Keys</button> <button data-open="guide">G Guide</button> · <b>P</b> board · <b>S</b> shed · <b>D</b> director · <b>T</b> timelapse</div>
+    <div id="topbar"><div id="keys" aria-label="Keyboard shortcuts"><button data-open="help">? Keys</button> <button data-open="guide">G Guide</button> · <b>P</b> board · <b>S</b> shed · <b>D</b> director · <b>T</b> timelapse</div><div id="banner" role="status" hidden></div></div>
     <aside id="shed" aria-label="Garden shed noticeboard"></aside>
     <div id="plan" hidden role="region" aria-label="Garden plan"></div>
-    <div id="banner" role="status" hidden></div>
     <div id="empty" hidden><b>No files planted yet</b><br/>Run <code>sprout join</code> in your repo and the garden fills in.</div>
     <div id="timeline" hidden role="group" aria-label="Timelapse controls"></div>
     <div id="cue" hidden role="region" aria-label="Demo cue strip"></div>

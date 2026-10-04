@@ -127,7 +127,7 @@ await step('5. A: session + prompt → agent + activity rows', async () => {
 });
 
 await step('6. A claims its folder via MCP', async () => {
-  const r = await tool(A, 'claim_files', { paths: [`${DIR}/`] });
+  const r = await tool(A, 'claim_files', { paths: [`${DIR}/`], task: 'E2E rehearsal task' });
   if (r.isError) throw new Error(r.text);
   has(r.text, 'Fenced', 'claim text');
   await until('claim row', () => [...conn.db.claim.iter()].find((c) => c.handle === A));
@@ -144,7 +144,7 @@ await step('7. B: edit inside the fence is BLOCKED by the hook', async () => {
 });
 
 await step('8. B: claim_files on the same folder is refused with the owner named', async () => {
-  const r = await tool(B, 'claim_files', { paths: [`${DIR}/`] });
+  const r = await tool(B, 'claim_files', { paths: [`${DIR}/`], task: 'E2E rehearsal task' });
   eq(r.isError, true, 'isError'); has(r.text, A, 'owner named'); has(r.text, 'post_finding', 'next step');
 });
 

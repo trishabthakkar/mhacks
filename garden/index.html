@@ -12,6 +12,7 @@
       html, body { margin:0; height:100%; overflow:hidden; font-family: ui-rounded, "Avenir Next", system-ui, sans-serif; color:var(--ink); background:#cfe6ee; }
       #app { position:fixed; inset:0; }
       #app canvas { display:block; }
+      #app::after { content:''; position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(20,30,20,.28) 100%); } /* soft vignette */
       .labels { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
       .edgearrow { position:absolute; left:0; top:0; background:var(--card); border:2px solid var(--line); border-radius:999px; padding:1px 10px; font-size:12px; font-weight:700; white-space:nowrap; opacity:.9; }
       .label, .bubble { transition:opacity .18s; transform-origin:50% 100%; }

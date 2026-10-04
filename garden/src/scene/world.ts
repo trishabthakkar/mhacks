@@ -39,8 +39,8 @@ export class GardenWorld implements WorldLookup {
   private actors: Actors;
   private tasks!: TaskPlants;
   private hoverEl = document.createElement('div');
-  private sun = new THREE.DirectionalLight(0xfff0d0, 2.2);
-  private hemi = new THREE.HemisphereLight(0xdff2ff, 0x6b8a4a, 1.1);
+  private sun = new THREE.DirectionalLight(0xffe9c4, 2.6); // warm late-morning sun
+  private hemi = new THREE.HemisphereLight(0xcfe8ff, 0x7a8a4a, 1.3); // cool sky fill, warm ground bounce
   nav = new Nav([]);
   private props!: Props;
   readonly quality: Quality = new URLSearchParams(location.search).get('quality') === 'low' ? 'low' : 'high';
@@ -66,7 +66,7 @@ export class GardenWorld implements WorldLookup {
   private spotRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 40), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0, depthWrite: false }));
   private lockMesh = new THREE.Group();
   private pulse = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 40), new THREE.MeshBasicMaterial({ color: 0xff7a59, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
-  private baseHemi = 1.1; private baseSun = 2.2;
+  private baseHemi = 1.3; private baseSun = 2.6;
   private dim = 1;
   private clock = new THREE.Clock();
   /** Scene time in seconds; advances with real frames or with advance() (deterministic, for tests and hidden panes). */
@@ -103,6 +103,7 @@ export class GardenWorld implements WorldLookup {
       gl.setPixelRatio(Math.min(devicePixelRatio, 2));
       gl.shadowMap.enabled = true;
       gl.shadowMap.type = THREE.PCFSoftShadowMap;
+      gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 0.92; // filmic: richer colour, soft highlights
       host.appendChild(gl.domElement);
     }
     const labelHost = document.createElement('div'); labelHost.className = 'labels'; host.appendChild(labelHost);
@@ -127,6 +128,7 @@ export class GardenWorld implements WorldLookup {
     this.lockMesh.add(shackle); this.lockMesh.scale.setScalar(0.6); this.lockMesh.visible = false; this.scene.add(this.lockMesh);
     this.sun.position.set(18, 26, 12); this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.03; // no shadow acne (moire spokes on the meadow)
     const sc = this.sun.shadow.camera; sc.left = sc.bottom = -35; sc.right = sc.top = 35; sc.far = 90;
 
     this.camera.position.set(0, 18, 22);
@@ -217,7 +219,7 @@ export class GardenWorld implements WorldLookup {
     (this.scene.background as THREE.Color | null) ? (this.scene.background as THREE.Color).copy(c) : (this.scene.background = c.clone());
     (this.scene.fog as THREE.Fog).color.copy(c);
     const night = hour < 5 || hour > 20.5;
-    this.baseHemi = night ? 0.9 : 1.1; this.baseSun = night ? 0.8 : hour > 17.5 ? 1.8 : 2.2;
+    this.baseHemi = night ? 1.0 : 1.3; this.baseSun = night ? 0.9 : hour > 17.5 ? 2.1 : 2.6;
     this.sun.color.set(hour > 17.5 && hour < 20.5 ? '#ffc58a' : '#fff0d0');
   }
 
@@ -500,7 +502,7 @@ export class GardenWorld implements WorldLookup {
   /** Big gardens need a farther camera, a deeper far plane and fog that starts later. */
   private scaleToDistance(dist: number) {
     const fog = this.scene.fog as THREE.Fog;
-    fog.near = Math.max(40, dist * 0.9); fog.far = Math.max(120, dist * 3.2);
+    fog.near = Math.max(40, dist * 1.1); fog.far = Math.max(110, dist * 2.6); // fades the meadow's rim into the sky
     const far = Math.max(400, dist * 5);
     if (this.camera.far !== far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
   }

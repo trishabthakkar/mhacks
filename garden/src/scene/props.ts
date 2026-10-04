@@ -110,7 +110,9 @@ export class Props {
     for (let r = 1; r <= rings; r++) for (let s = 0; s < segs; s++) {
       const rr = (r / rings) * R, a = (s / segs) * Math.PI * 2, rim = Math.max(0, (rr - R * 0.72) / (R * 0.28));
       verts.push(Math.cos(a) * rr, -0.12 + rim * rim * 5, Math.sin(a) * rr);
-      c.copy(inC).lerp(outC, Math.min(1, rr / R)).offsetHSL(0, 0, (hash2(r, s) - 0.5) * 0.05);
+      const px = Math.cos(a) * rr, pz = Math.sin(a) * rr; // soft patches by position (per-vertex noise made radial streaks)
+      const patch = Math.sin(px * 0.19 + 1.3) * Math.sin(pz * 0.23 + 0.4) + 0.5 * Math.sin(px * 0.07 - pz * 0.09);
+      c.copy(inC).lerp(outC, Math.min(1, rr / R)).offsetHSL(0, 0, patch * 0.025);
       cols.push(c.r, c.g, c.b);
     }
     for (let s = 0; s < segs; s++) idx.push(0, 1 + ((s + 1) % segs), 1 + s);
@@ -120,18 +122,18 @@ export class Props {
     }
     const mg = new THREE.BufferGeometry();
     mg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); mg.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); mg.setIndex(idx); mg.computeVertexNormals();
-    this.meadowMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 });
+    this.meadowMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }); // smooth: flat shading made starburst spokes on the polar grid
     const meadow = new THREE.Mesh(mg, this.meadowMat);
     this.setSeason(this.season); // keep the timelapse tint across layout rebuilds
     meadow.receiveShadow = true; this.world.add(meadow);
 
     // Plaza under the beds: the lanes between beds read as paths. Plus a lane to the shed and the front row.
     // Grass between the beds; gravel only where people walk: a path along each row of beds and the front lane.
-    const gravel = mat(PALETTE.path);
+    const gravel = mat(PALETTE.path), cap = new THREE.CylinderGeometry(1, 1, 1, 28); // smooth path ends
     const strip = (x: number, z: number, w: number, d: number) => { // rounded ends along the long axis
       const r = Math.min(w, d) / 2, lx = w > d ? (w - d) / 2 : 0, lz = w > d ? 0 : (d - w) / 2;
       const parts = [mesh(geo.box, gravel, w > d ? w - d : w, 0.1, d - (w > d ? 0 : w), x, -0.055, z),
-        mesh(geo.cyl, gravel, r, 0.1, r, x - lx, -0.055, z - lz), mesh(geo.cyl, gravel, r, 0.1, r, x + lx, -0.055, z + lz)];
+        mesh(cap, gravel, r, 0.1, r, x - lx, -0.055, z - lz), mesh(cap, gravel, r, 0.1, r, x + lx, -0.055, z + lz)];
       for (const m of parts) { m.castShadow = false; m.receiveShadow = true; this.world.add(m); }
     };
     for (const p of paths) strip(p.x, p.z, p.w, p.d);

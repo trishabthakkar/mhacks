@@ -1,15 +1,15 @@
 import * as THREE from 'three';
 import type { PlantStage } from '../../../shared/types.ts';
 import { speciesOf, type Species } from '../species.ts';
-import { flowerColor, geo } from './materials.ts';
+import { flowerColor, geo, hashString } from './materials.ts';
 
 type Role = 'body' | 'petal' | 'center' | 'bug';
-interface Part { mesh: 0 | 1; slot: number; base: THREE.Matrix4; role: Role; idx: number }
+interface Part { mesh: 0 | 1; slot: number; base: THREE.Matrix4; role: Role; idx: number } // idx -1: pot/soil, not the plant
 
 export interface PlantInst {
   path: string; x: number; z: number; size: number; stage: PlantStage; bugs: number; full: boolean;
   born: number; phase: number; openAt?: number; wobbleUntil?: number; key: string;
-  species: Species; bloom: THREE.Color; parts: Part[]; bugParts: Part[];
+  species: Species; bloom: THREE.Color; owner: THREE.Color | null; parts: Part[]; bugParts: Part[];
 }
 
 const SPH = 0, CYL = 1;
@@ -24,8 +24,11 @@ const C = {
   cactus: new THREE.Color('#5e9c58'), cactusD: new THREE.Color('#9c9a84'), cactusBloom: new THREE.Color('#ff7eb6'),
   shrub: new THREE.Color('#3f7a3c'), berry: new THREE.Color('#d1262b'), berryG: new THREE.Color('#8db35a'),
   pebble: new THREE.Color('#a3a39e'), pebbleD: new THREE.Color('#86867f'), moss: new THREE.Color('#79a65a'),
+  pot: new THREE.Color('#c4643f'), potRim: new THREE.Color('#a8502f'),
   clover: new THREE.Color('#7f9f6e'), cloverHead: new THREE.Color('#f3efe2'), white: new THREE.Color('#ffffff'),
 };
+/** Pebble tones for images (picked per file, so a folder of images reads as a mixed stone pile). */
+const PEBBLES = ['#a3a39e', '#c9a77c', '#7d8a99', '#b8735a', '#d9cdb8'].map((c) => new THREE.Color(c));
 /** Ground-cover tuft colour per species (quiet plants in big gardens still read as their kind). */
 const TUFT: Record<Species, THREE.Color> = {
   flower: C.tuft, sunflower: new THREE.Color('#9bb64a'), fern: C.fern, cactus: new THREE.Color('#4f8f5a'),
@@ -50,7 +53,7 @@ export class PlantField {
   private mat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.85, metalness: 0 });
   private mT = new THREE.Matrix4(); private mA = new THREE.Matrix4(); private mB = new THREE.Matrix4(); private mO = new THREE.Matrix4();
   private q = new THREE.Quaternion(); private e = new THREE.Euler(); private p = new THREE.Vector3(); private s = new THREE.Vector3();
-  private col = new THREE.Color();
+  private col = new THREE.Color(); private tint = new THREE.Color();
   private dirtyColor: [boolean, boolean] = [false, false];
   private zero = new THREE.Matrix4().makeScale(0, 0, 0);
 
@@ -118,11 +121,13 @@ export class PlantField {
     this.release(inst.parts);
     const { size: s, stage, species: sp } = inst, d = stage === 'dormant';
     if (!inst.full) { // ground cover: one tuft, coloured by species
-      this.add(inst, SPH, d ? C.tuftD : TUFT[sp], 'body', 0, 0.35 * s, (sp === 'cactus' ? 0.3 : 0.14) * s, 0.35 * s, 0, 0.1, 0);
+      const tc = d ? C.tuftD : inst.owner ? this.tint.copy(TUFT[sp]).lerp(inst.owner, 0.35) : TUFT[sp]; // owner tint: who works where
+      this.add(inst, SPH, tc, 'body', 0, 0.35 * s, (sp === 'cactus' ? 0.3 : 0.14) * s, 0.35 * s, 0, 0.1, 0);
       return;
     }
     if (sp === 'clover') { this.buildHedge(inst); return; }
-    this.add(inst, SPH, C.soil, 'body', 0, 0.5 * s, 0.2 * s, 0.5 * s, 0, 0.04, 0);
+    if (sp === 'cactus') this.add(inst, CYL, C.pot, 'body', -1, 0.3 * s, 0.32 * s, 0.3 * s, 0, 0.1 * s, 0); // config grows in a pot
+    else this.add(inst, SPH, C.soil, 'body', -1, 0.5 * s, 0.2 * s, 0.5 * s, 0, 0.04, 0);
     if (stage === 'seed') return;
     if (sp === 'fern') this.buildFern(inst, s, d);
     else if (sp === 'cactus') this.buildCactus(inst, s, d);
@@ -141,7 +146,7 @@ export class PlantField {
       const a = (i / leaves) * Math.PI * 2 + 0.5, y = h * (0.3 + 0.6 * ((i % 3) / 3));
       this.add(inst, SPH, leafC, 'body', i, 0.3 * s * k, 0.06 * s, 0.14 * s * k, Math.cos(a) * 0.25 * s * k, y, Math.sin(a) * 0.25 * s * k, -a, 0.35);
     }
-    if (stage === 'bud') this.add(inst, SPH, C.bud, 'body', 0, 0.17 * s * k, 0.24 * s * k, 0.17 * s * k, 0, h + 0.1 * s, 0);
+    if (stage === 'bud') this.add(inst, SPH, inst.owner ? this.tint.copy(C.bud).lerp(inst.owner, 0.5) : C.bud, 'body', 0, 0.17 * s * k, 0.24 * s * k, 0.17 * s * k, 0, h + 0.1 * s, 0);
     if (stage !== 'bloom') return;
     const n = sun ? 12 : 7, r = sun ? 0.3 : 0.2, pc = sun ? C.sunPetal : inst.bloom;
     for (let i = 0; i < n; i++) {
@@ -172,22 +177,24 @@ export class PlantField {
 
   /** Config: a squat cactus with two arms once grown; a small pink cactus flower on bloom. */
   private buildCactus(inst: PlantInst, s: number, d: boolean) {
-    const stage = inst.stage, col = d ? C.cactusD : C.cactus, h = (0.2 + 0.55 * STEM_H[stage]) * s, r = 0.17 * s;
-    this.add(inst, CYL, col, 'body', 0, r, h, r, 0, h / 2, 0);
-    this.add(inst, SPH, col, 'body', 1, r, r * 0.8, r, 0, h, 0);
+    const stage = inst.stage, col = d ? C.cactusD : C.cactus, h = (0.2 + 0.55 * STEM_H[stage]) * s, r = 0.17 * s, y0 = 0.26 * s;
+    this.add(inst, CYL, C.potRim, 'body', -1, 0.33 * s, 0.06 * s, 0.33 * s, 0, y0, 0);
+    this.add(inst, SPH, C.soil, 'body', -1, 0.27 * s, 0.04 * s, 0.27 * s, 0, y0 + 0.02 * s, 0);
+    this.add(inst, CYL, col, 'body', 0, r, h, r, 0, y0 + h / 2, 0);
+    this.add(inst, SPH, col, 'body', 1, r, r * 0.8, r, 0, y0 + h, 0);
     if (stage !== 'sprout') for (const side of [-1, 1]) {
-      const ay = h * (side < 0 ? 0.45 : 0.6), ar = 0.075 * s;
+      const ay = y0 + h * (side < 0 ? 0.45 : 0.6), ar = 0.075 * s;
       this.add(inst, CYL, col, 'body', 2, ar, 0.16 * s, ar, side * 0.2 * s, ay, 0, 0, Math.PI / 2);
       this.add(inst, CYL, col, 'body', 3, ar, 0.24 * s, ar, side * 0.28 * s, ay + 0.12 * s, 0);
       this.add(inst, SPH, col, 'body', 4, ar, ar, ar, side * 0.28 * s, ay + 0.24 * s, 0);
     }
-    if (stage === 'bud') this.add(inst, SPH, C.cactusBloom, 'body', 0, 0.06 * s, 0.08 * s, 0.06 * s, 0, h + r * 0.8, 0);
+    if (stage === 'bud') this.add(inst, SPH, C.cactusBloom, 'body', 0, 0.06 * s, 0.08 * s, 0.06 * s, 0, y0 + h + r * 0.8, 0);
     if (stage !== 'bloom') return;
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * Math.PI * 2;
-      this.add(inst, SPH, C.cactusBloom, 'petal', i, 0.09 * s, 0.035 * s, 0.05 * s, Math.cos(a) * 0.08 * s, h + r * 0.8, Math.sin(a) * 0.08 * s, -a, 0.3);
+      this.add(inst, SPH, C.cactusBloom, 'petal', i, 0.09 * s, 0.035 * s, 0.05 * s, Math.cos(a) * 0.08 * s, y0 + h + r * 0.8, Math.sin(a) * 0.08 * s, -a, 0.3);
     }
-    this.add(inst, SPH, C.center, 'center', 0, 0.045 * s, 0.04 * s, 0.045 * s, 0, h + r * 0.85, 0);
+    this.add(inst, SPH, C.center, 'center', 0, 0.045 * s, 0.04 * s, 0.045 * s, 0, y0 + h + r * 0.85, 0);
   }
 
   /** Shell scripts: a round bush of leaf balls; green berries as the bud, red berries on bloom. */
@@ -211,7 +218,7 @@ export class PlantField {
     const stage = inst.stage, n = stage === 'sprout' ? 2 : stage === 'growing' ? 3 : 5;
     for (let i = 0; i < n; i++) {
       const a = i * 2.3 + 0.4, rr = (0.12 + 0.08 * (i % 2)) * s, k = 1 - i * 0.09;
-      this.add(inst, SPH, i % 2 ? C.pebbleD : C.pebble, 'body', i, 0.2 * s * k, 0.11 * s * k, 0.16 * s * k, Math.cos(a) * rr, 0.12 * s, Math.sin(a) * rr, a);
+      this.add(inst, SPH, PEBBLES[(hashString(inst.path) + i * 2) % PEBBLES.length]!, 'body', i, 0.2 * s * k, 0.11 * s * k, 0.16 * s * k, Math.cos(a) * rr, 0.12 * s, Math.sin(a) * rr, a);
     }
     if (stage === 'sprout') return;
     this.add(inst, SPH, d ? C.tuftD : C.moss, 'body', 0, 0.16 * s, 0.07 * s, 0.14 * s, -0.12 * s, 0.17 * s, 0.1 * s);
@@ -251,13 +258,14 @@ export class PlantField {
     const wasStage = inst?.stage, bugsBefore = inst?.bugs ?? 0;
     if (!inst) {
       const species = speciesOf(path);
-      inst = { path, x, z, size, stage, bugs: 0, full, born: now, phase: (path.length * 2.399) % 6.28, key: '', species, bloom: new THREE.Color(), parts: [], bugParts: [] };
+      inst = { path, x, z, size, stage, bugs: 0, full, born: now, phase: (path.length * 2.399) % 6.28, key: '', species, bloom: new THREE.Color(), owner: null, parts: [], bugParts: [] };
       this.plants.set(path, inst);
     }
     inst.x = x; inst.z = z;
     const key = `${stage}|${size.toFixed(2)}|${full}|${bloom ?? ''}`;
     if (key !== inst.key) {
       inst.key = key; inst.stage = stage; inst.size = size; inst.full = full;
+      inst.owner = bloom ? (inst.owner ?? new THREE.Color()).set(bloom) : null;
       if (inst.species === 'flower') { if (bloom) inst.bloom.set(bloom); else inst.bloom.copy(flowerColor(path)); }
       else inst.bloom.copy(BLOOM[inst.species]);
       this.build(inst);

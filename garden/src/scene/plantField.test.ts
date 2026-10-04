@@ -51,8 +51,8 @@ test('dormant plants are faded (no saturated green)', () => {
   const f = field();
   for (const p of ['a.ts', 'a.md', 'a.json', 'a.sh', 'a.test.ts']) {
     plant(f, p, 'dormant');
-    const hsl = { h: 0, s: 0, l: 0 };
-    for (const part of f.get(p)!.parts.slice(1)) assert.ok(f.colorOf(part).getHSL(hsl).s < 0.3, `${p} ${f.colorOf(part).getHexString()}`);
+    const hsl = { h: 0, s: 0, l: 0 }; // the pot and soil (idx -1) don't fade
+    for (const part of f.get(p)!.parts.filter((x) => x.idx >= 0)) assert.ok(f.colorOf(part).getHSL(hsl).s < 0.3, `${p} ${f.colorOf(part).getHexString()}`);
   }
 });
 
@@ -68,4 +68,39 @@ test('ground cover differs by species', () => {
   const f = field();
   f.upsert('a.png', 0, 0, 1, 'growing', 0, false, 0, true); f.upsert('a.ts', 0, 0, 1, 'growing', 0, false, 0, true);
   assert.notEqual(f.colorOf(f.get('a.png')!.parts[0]!).getHex(), f.colorOf(f.get('a.ts')!.parts[0]!).getHex());
+});
+
+const tuft = (f: PlantField, path: string, owner?: string) => f.colorOf(f.upsert(path, 0, 0, 1, 'growing', 0, false, 0, true, owner).inst.parts[0]!);
+
+test('buds hint at who last touched the file', () => {
+  const a = field(), b = field();
+  plant(a, 'a.ts', 'bud'); plant(b, 'a.ts', 'bud', '#e63946');
+  const bud = (f: PlantField) => f.colorOf(f.get('a.ts')!.parts.at(-1)!);
+  assert.ok(bud(b).r > bud(a).r + 0.1, `${bud(a).getHexString()} vs ${bud(b).getHexString()}`);
+});
+
+test('quiet ground cover is tinted with the owner colour', () => {
+  assert.notEqual(tuft(field(), 'a.ts').getHex(), tuft(field(), 'a.ts', '#3a6df0').getHex());
+  assert.ok(tuft(field(), 'a.ts', '#3a6df0').b > tuft(field(), 'a.ts').b);
+});
+
+test('pebbles come in several stone tones, stable per file', () => {
+  const tones = new Set<number>();
+  for (const p of ['a.png', 'b.png', 'c.jpg', 'd.svg', 'e.gif', 'f.webp']) {
+    const f = field(); plant(f, p, 'growing');
+    const c = f.colorOf(f.get(p)!.parts[1]!).getHex();
+    tones.add(c);
+    const g = field(); plant(g, p, 'growing');
+    assert.equal(g.colorOf(g.get(p)!.parts[1]!).getHex(), c);
+  }
+  assert.ok(tones.size >= 3);
+});
+
+test('cactus grows in a terracotta pot', () => {
+  const f = field();
+  plant(f, 'a.json', 'growing'); plant(f, 'a.ts', 'growing');
+  const pot = f.colorOf(f.get('a.json')!.parts[0]!), soil = f.colorOf(f.get('a.ts')!.parts[0]!);
+  assert.notEqual(pot.getHex(), soil.getHex());
+  const hsl = { h: 0, s: 0, l: 0 }; pot.getHSL(hsl);
+  assert.ok(hsl.h < 0.08 && hsl.s > 0.3, pot.getHexString());
 });

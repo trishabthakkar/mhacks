@@ -157,6 +157,18 @@ export class Props {
       gm.setMatrixAt(i, dm.matrix); gm.setColorAt(i, c.set(PALETTE.leaf).lerp(this.tmpC.set(PALETTE.meadowInner), p.k));
     }
     gm.castShadow = false; gm.frustumCulled = false; this.world.add(gm);
+    // Wildflowers in small patches on the meadow (decoration only: never inside the beds, so never mistaken for files).
+    const WILD = ['#f4a6c1', '#f7d154', '#fbf7ee', '#b9a3e3', '#f29e7c'], patches = 70, per = 9;
+    const fm = new THREE.InstancedMesh(geo.sphere, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.8 }), patches * per);
+    for (let i = 0; i < patches; i++) {
+      const p = place(i, 91, gardenR + 4, R * 0.85), tone = WILD[Math.floor(p.k * WILD.length)]!;
+      for (let j = 0; j < per; j++) {
+        const a = hash2(i * per + j, 93) * Math.PI * 2, r = 0.3 + hash2(i * per + j, 94) * 1.6, s = 0.11 + hash2(i * per + j, 95) * 0.07;
+        dm.position.set(p.x + Math.cos(a) * r, 0.16 + s * 0.3, p.z + Math.sin(a) * r); dm.scale.set(s, s * 0.7, s); dm.rotation.set(0, 0, 0); dm.updateMatrix();
+        fm.setMatrixAt(i * per + j, dm.matrix); fm.setColorAt(i * per + j, c.set(j % 4 === 3 ? '#fbf7ee' : tone));
+      }
+    }
+    fm.castShadow = false; fm.frustumCulled = false; this.world.add(fm);
 
     // Bench and well near the front-left.
     const bench = new THREE.Group();

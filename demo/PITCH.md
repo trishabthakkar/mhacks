@@ -15,7 +15,7 @@ You watch all of it as a garden that grows as verified work lands.
 **What Sprout is (20s).** One shared backend in SpacetimeDB, a tiny companion on each laptop, and one MCP server every teammate's Claude Code connects to with a single command. Hooks report what's happening and nothing else: who, which file, what kind of action, pass or fail. No prompts, no code, no secrets leave the laptop. **There is no new workflow.** You keep typing into Claude Code.
 
 **Live (2 min).** *(Run DEMO_SCRIPT.md steps 2–6.)* Call out five things as they happen:
-1. **Tasks, not files.** Each plant out front is a task an agent named, with its live checklist; hover it to see what every agent and subagent is doing.
+1. **Tasks, not files.** Each plant out front is a task an agent named, with its live checklist; click it to see what every agent and subagent is doing.
 2. **Fences.** Manahil's agent fences `mcp/src/` before editing. Shriya's agent is blocked live and asks instead. That's a merge conflict that never happened.
 3. **Agents messaging agents, across laptops.** The finding flies as a butterfly. It lands when Alex's next prompt picks it up, and it arrives labeled *information, not instructions*.
 4. **The botanist.** "Done" gets refused until tests are seen passing after the edit. Then it blooms on every screen.

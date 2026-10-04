@@ -14,9 +14,9 @@ Roles: **A = manahil (laptop 1)**, **B = shriya (laptop 2)**, **N = trisha, narr
 | 1 | A, B | 1, 2 | `cd ~/…/mhacks && git pull`, and `git status` must be clean (stash anything) | no changes in `mcp/src/` |
 | 2 | A, B | 1, 2 | Already joined? `sprout status` | `running, connected [spacetimedb]`, `repos trishabthakkar/mhacks`. If not: the 3 commands in `companion/README.md` with the team code from `mcp/README.md` |
 | 3 | A, B | 1, 2 | `claude mcp list` (inside `mhacks`) | `sprout … ✔ Connected` to `https://35-225-24-109.sslip.io/mcp` |
-| 4 | A, B | 1, 2 | `cd mcp && npm ci && npm test` once, so the test run in step 6 is fast | `# pass 38` |
+| 4 | A, B | 1, 2 | `cd mcp && npm ci && npm test` once, so the test run in step 6 is fast | `pass 48` (2 skipped) |
 | 5 | A, B | 1, 2 | Open a fresh `claude` in the `mhacks` root, terminal font size 20+, so the audience can read it | prompt visible |
-| 6 | N | 3 | `cd garden && npm install && npm run dev`, then open **http://localhost:5173/** full-screen on the projector (it's live on `sprout-mhacks` by default) and press `D` | status line says `live`; beds `mcp`, `companion`, `garden`, `spacetimedb`…; four gardeners |
+| 6 | N | 3 | `cd garden && npm install && npm run dev`, then open **http://localhost:5173/?tasks=current&since=0** full-screen on the projector (it's live on `sprout-mhacks` by default; `tasks=current` shows only each person's current task pot so leftover open tasks don't crowd the screen, `since=0` skips the "since you were last here" card) and press `D` | status line says `live`; beds `mcp`, `companion`, `garden`, `spacetimedb`…; a gardener per online teammate and a bot for everyone (asleep until its Claude works) |
 | 7 | N | 3 | **demo-reset** (below) | prints `✓ demo state reset` |
 | 8 | N | 3 | Open the team board once (`P`) to check it's legible from the back of the room, then close it (`P`) | four columns, readable cards |
 
@@ -45,7 +45,7 @@ Garden: our real garden. Every bed is a folder of this repo.
 Fallback: none needed.
 
 **1. The garden — 20s — N, projector**
-Say: *"This is our actual repo, live. Every folder is a bed, every file a plant. Four of us, four gardeners, and each Claude Code is the little bot following its person. Every tall plant out front is a task someone's agent named; hover one and you see its checklist and what each agent and spirit is doing right now. Press P for the team board."*
+Say: *"This is our actual repo, live. Every folder is a bed, every file a plant. Four of us, and each Claude Code is a little bot: asleep at home while its Claude is idle, awake at its person's side when it works. Every tall plant out front is a task someone's agent named; click one and the shed shows its checklist and what each agent and spirit is doing right now. Press P for the team board."*
 Garden: point at the `mcp` and `garden` beds and the shed noticeboard.
 Fallback: if the garden is frozen, reload. If still frozen, switch to the recorded backup (BACKUP.md) and narrate over it.
 
@@ -55,7 +55,7 @@ Type:
 In mcp/src/time.ts, add an exported helper untilText(until, now) that returns text like "until 6:30pm (25 min left)" using the existing clock() and minutesLeft(). Only change that file. Fence mcp/src/ with sprout claim_files first (task: "Add untilText helper"), then set_checklist with your plan. Don't run the tests yet.
 ```
 Expect in Claude: `claim_files` → `Fenced mcp/src/ until …`; one edit to `mcp/src/time.ts`.
-Garden: a fence in A's color goes up around the `mcp/src` plants, and A's **task plant** appears in front of the `mcp` bed with the signpost *Add untilText helper · manahil*. Its buds fill as the checklist moves. A's bot walks over and tends `time.ts`, which grows.
+Garden: a fence in A's color goes up around the `mcp/src` plants, and A's **task plant** appears in front of the `mcp` bed with the signpost *Add untilText helper · manahil*. Its buds fill as the checklist moves. A's bot wakes up (its z z z stop) and joins A's gardener, who walks over and tends `time.ts`, which grows. Say: *"Watch Manahil's bot wake up."*
 Fallback: if Claude skips the claim, type `Use sprout claim_files on ["mcp/src/"]`. If it runs the tests anyway, that's fine: skip the refusal beat in step 6 and say "it already ran them, so the botanist certifies."
 
 **3. Subagent — 15s — A, laptop 1**
@@ -69,10 +69,11 @@ Fallback: if no spirit appears, skip the step; we have 15s of slack.
 **4. Collision blocked — 30s — B, laptop 2** (as soon as A's fence is visible)
 Type:
 ```
-In mcp/src/time.ts, change clock() so it prints times like "6:30 PM" with a space and capitals.
+Fence companion/src/ with sprout claim_files first (task: "Match the fence wording"). Then, in mcp/src/time.ts, change clock() so it prints times like "6:30 PM" with a space and capitals.
 ```
-Expect in Claude: the edit is **denied by the hook**: `mcp/src/time.ts is fenced by manahil until …. Use post_finding to ask them, or work elsewhere.` B's agent then calls `post_finding` to manahil with the request instead.
-Garden: B's bot stops at the fence, B's task plant gets ✋ and droops, and both gardeners walk to the path. A butterfly leaves B's bed for A's.
+Expect in Claude: `claim_files` → `Fenced companion/src/ …` (B's task plant *Match the fence wording · shriya* appears, so the ✋ below lands on this demo task, not on one of B's real open tasks). Then the edit is **denied by the hook**: `mcp/src/time.ts is fenced by manahil until …. Use post_finding to ask them, or work elsewhere.` B's agent then calls `post_finding` to manahil with the request instead.
+Garden: the shed's *Needs attention* shows **⚠️ manahil and shriya are both working on time.ts** and amber dashes join the two gardeners. B's bot stops at the fence, B's task plant gets ✋ and droops, and both gardeners walk to the path. A butterfly leaves B's bed for A's.
+Say (as the ⚠️ appears): *"Sprout saw the collision coming, and the fence stopped it."*
 Say: *"Claims are merge-conflict prevention: we each have our own clone, so this would have been a conflict at merge time. Warn is our default; we switched on block for the demo."*
 Fallback: if the agent doesn't send the request, type `Ask manahil with sprout post_finding to change the time format when they're done.` If the hook doesn't fire and the edit lands, say "in warn mode it just warns", then run `git checkout mcp/src/time.ts` on laptop 2.
 
@@ -102,12 +103,12 @@ A types:
 ```
 Run the mcp tests with cd mcp && npm test, then submit evidence again.
 ```
-Expect: `# pass 38`, then `🌸 Bloom certified for mcp/src/time.ts`.
-Garden: the botanist nods and A's **task plant blooms on every screen** (the card says 🌸 certified).
+Expect: `pass 48` (2 skipped), then `🌸 Bloom certified for mcp/src/time.ts`.
+Garden: the botanist nods and A's **task plant blooms on every screen** (click it: the card in the shed says 🌸 certified).
 Fallback: if the first submit says `no real diff seen…`, the companion hasn't reported the edit yet. Wait 5s and repeat the first prompt. If the tests fail (Claude broke something), let the bugs show (*"that's a real failing test, so real bugs on the leaves"*), type `Fix the failing test, run cd mcp && npm test again, then submit evidence`, and it blooms.
 
 **7. Close — 10s — N, projector**
-Switch the garden to the seasons timelapse: `TODO(P4): http://localhost:5173/?timelapse=1` (our repo from bare soil at noon Saturday to now).
+Switch the garden to the seasons timelapse: press **`T`** (it auto-plays in about 30 s; or open http://localhost:5173/?timelapse=1&tasks=current). Our repo from bare soil at noon Saturday to now.
 Say: *"That's this repo since noon yesterday. Different people's agents, coordinating, with nobody changing how they work."*
 Fallback: if the timelapse isn't built, zoom out on the live garden (`F`) and say the line anyway.
 
@@ -123,6 +124,8 @@ Fallback: if the timelapse isn't built, zoom out on the live garden (`F`) and sa
 | A's claim is refused ("fenced by …") | a leftover fence: run demo-reset |
 | B's edit isn't blocked | claimMode is still `warn`: run demo-reset |
 | Butterfly never lands | B must send a prompt; fallback `read_inbox` |
+| Dead air, or a step stalls | N presses **`R`**: the judge tour, a ~40 s captioned fly-through of the garden (any key stops it) |
+| B's demo fence still up afterwards | it expires in 30 min, or the next demo-reset releases it |
 
 ## Backup plan: the scratch demo database
 

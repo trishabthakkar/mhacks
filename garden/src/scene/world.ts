@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GardenSnapshot, PlantStage } from '../../../shared/types.ts';
-import { layoutGarden, type GardenLayout } from '../layout.ts';
+import { layoutGarden, layoutTaskPlants, type GardenLayout } from '../layout.ts';
+import { TaskPlants } from './taskPlants.ts';
+import { currentTaskOf, taskModels } from '../tasks.ts';
+import { taskCardHtml } from '../ui/taskCard.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
@@ -30,6 +33,8 @@ export class GardenWorld implements WorldLookup {
   private labels: Labels;
   private fx: Particles;
   private actors: Actors;
+  private tasks!: TaskPlants;
+  private hoverEl = document.createElement('div');
   private sun = new THREE.DirectionalLight(0xfff0d0, 2.2);
   private hemi = new THREE.HemisphereLight(0xdff2ff, 0x6b8a4a, 1.1);
   nav = new Nav([]);
@@ -96,6 +101,7 @@ export class GardenWorld implements WorldLookup {
     this.fx = new Particles(this.scene);
     this.actors = new Actors(this.scene, this, this.labels, this.fx);
     this.actors.motion = this.reducedMotion ? 0.25 : 1;
+    this.tasks = new TaskPlants(this.scene, this.labels); this.hoverEl.hidden = true; host.appendChild(this.hoverEl);
     this.fx.reducedMotion = this.reducedMotion;
 
     this.scene.fog = new THREE.Fog('#cfe6ee', 40, 120);
@@ -129,6 +135,19 @@ export class GardenWorld implements WorldLookup {
         ray.setFromCamera(ndc, this.camera);
         if (this.props.hitShed(ray)) this.props.shedClicked();
       });
+      gl.domElement.addEventListener('pointermove', (e) => {
+        const r = gl.domElement.getBoundingClientRect();
+        ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+        ray.setFromCamera(ndc, this.camera);
+        const id = this.tasks.pick(ray);
+        const m = id !== undefined && this.snap ? taskModels(this.snap).find((x) => x.id === id) : undefined;
+        if (!m) { this.hoverEl.hidden = true; return; }
+        this.hoverEl.hidden = false;
+        this.hoverEl.innerHTML = taskCardHtml(m, this.snap.at);
+        const card = this.hoverEl.firstElementChild as HTMLElement; card.classList.add('hover');
+        card.style.left = `${Math.min(innerWidth - 380, e.clientX + 16)}px`; card.style.top = `${Math.max(8, e.clientY - 40)}px`;
+      });
+      gl.domElement.addEventListener('pointerleave', () => { this.hoverEl.hidden = true; });
     }
     this.resize(); addEventListener('resize', () => this.resize());
 
@@ -138,6 +157,7 @@ export class GardenWorld implements WorldLookup {
 
   // ---- WorldLookup ----
   plantPos(path: string) { return this.plantXZ.get(path); }
+  taskPlantPos(handle: string) { const t = this.snap ? currentTaskOf(this.snap, handle) : undefined; return t ? this.tasks.posOf(t.id) : undefined; }
   bedCenter(bed: string) { const b = this.layout.beds.find((x) => x.name === bed); return b ? new THREE.Vector3(b.x, 0, b.z) : undefined; }
   bedOfPath(path: string) { return this.layout.plants.find((p) => p.path === path)?.bed; }
   private gates = new Map<string, THREE.Vector3>(); // claim path -> gate point, rebuilt with the fences
@@ -167,6 +187,8 @@ export class GardenWorld implements WorldLookup {
     this.syncPlants(u.reset);
     this.syncFences();
     this.actors.sync(u.snapshot);
+    const models = taskModels(u.snapshot);
+    this.tasks.sync(models, layoutTaskPlants(this.layout, models), this.time);
     const notes: Array<'fence' | 'request' | 'handoff' | 'bloom' | 'refused'> = [];
     for (const _c of u.snapshot.claims) notes.push('fence');
     for (const m of u.snapshot.messages) if (m.status !== 'acked') notes.push('request');
@@ -500,6 +522,7 @@ export class GardenWorld implements WorldLookup {
       if (!this.rig.userMoved && !this.calm) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
     this.field.update(t, mo);
+    this.tasks.update(t, mo);
     this.tickFences(t, mo);
     this.props.update(t, dt, 0, 0, mo);
     // Camera: follow a member, or director mode follows the latest action.

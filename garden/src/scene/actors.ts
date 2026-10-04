@@ -3,9 +3,11 @@ import type { ActivityView, AgentView, GardenSnapshot, MessageView } from '../..
 import { geo, mat, mesh } from './materials.ts';
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
+import { currentTaskOf } from '../tasks.ts';
 
 export interface WorldLookup {
   plantPos(path: string): THREE.Vector3 | undefined;
+  taskPlantPos(handle: string): THREE.Vector3 | undefined;
   bedCenter(bed: string): THREE.Vector3 | undefined;
   bedOfPath(path: string): string | undefined;
   fenceGate(path: string): THREE.Vector3 | undefined;
@@ -269,7 +271,9 @@ export class Actors {
     for (const m of snap.members) { const l = byColor.get(m.color.toLowerCase()); if (l) l.push(m.handle); else byColor.set(m.color.toLowerCase(), [m.handle]); }
     for (const [handle, g] of this.gardeners) {
       const group = byColor.get(this.memberColor(handle).toLowerCase()) ?? [];
-      const text = group.length > 1 ? `${SHAPES[group.indexOf(handle) % SHAPES.length]} ${handle}` : handle;
+      const cur = currentTaskOf(this.snap, handle);
+      const name = group.length > 1 ? `${SHAPES[group.indexOf(handle) % SHAPES.length]} ${handle}` : handle;
+      const text = cur ? `${name} · ${cur.title.length > 26 ? `${cur.title.slice(0, 25)}…` : cur.title}` : name;
       if (g.label.dataset.text !== text) { g.label.dataset.text = text; this.labels.setText(g.label, text); }
     }
     const claudes = snap.agents.filter((a) => a.kind === 'claude' && a.status !== 'dormant');

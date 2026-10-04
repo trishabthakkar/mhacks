@@ -11,10 +11,10 @@ export function lampLevel(hour: number): number {
   return h >= 12 ? smooth(18.5, 20, h) : 1 - smooth(5.5, 6.5, h);
 }
 
-const POST_STEP = 6, PATH_STEP = 4, MAX_PATH = 60;
+const POST_STEP = 18, PATH_STEP = 10, MAX_PATH = 4;
 
 /**
- * Lanterns on the fence every ~6 m (none in the gate gap), a pair on the arch, low path lights alongside the gravel
+ * Lanterns on the fence every ~18 m (none in the gate gap), a pair on the arch, low path lights alongside the gravel
  * strips (never in a bed or the pond), and one by the shed door. `real` marks the few that get an actual light
  * (arch, shed, the back-left corner post): the rest only glow.
  */
@@ -39,7 +39,7 @@ export function lampSpots(f: GardenFence, paths: Box[], shed: { x: number; z: nu
     x < minX + 0.3 || x > maxX - 0.3 || z < minZ + 0.3 || z > maxZ - 0.3 ||
     (avoid.beds ?? []).some((b) => Math.abs(x - b.x) < b.w / 2 + 0.3 && Math.abs(z - b.z) < b.d / 2 + 0.3) ||
     (!!avoid.pond && Math.hypot(x - avoid.pond.x, z - avoid.pond.z) < avoid.pond.r * 1.4) ||
-    out.some((l) => Math.hypot(l.x - x, l.z - z) < 1.5);
+    out.some((l) => Math.hypot(l.x - x, l.z - z) < 4);
   const total = paths.reduce((a, p) => a + Math.max(p.w, p.d), 0);
   const step = Math.max(PATH_STEP, total / MAX_PATH);
   let k = 0;

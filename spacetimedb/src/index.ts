@@ -1,9 +1,9 @@
 import { ScheduleAt, Timestamp } from 'spacetimedb';
 import { t, SenderError, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
-import spacetimedb, { sweepTimer, expireClaimsTimer, SeedFile } from './schema.ts';
+import spacetimedb, { sweepTimer, expireClaimsTimer, SeedFile, TaskItemIn } from './schema.ts';
 import {
   AGENT_STATUSES, DEFAULT_CLAIM_MODE, DEFAULT_CLAIM_TTL_MIN, MAX_BUGS, MAX_COMMAND, MAX_DETAIL,
-  MAX_MESSAGE_BODY, MEMBER_COLORS, MESSAGE_KINDS,
+  MAX_MESSAGE_BODY, MAX_TASK_ITEMS, MAX_TASK_PATHS, MEMBER_COLORS, MESSAGE_KINDS, TASK_ITEM_STATES,
 } from '../../shared/constants.ts';
 import { checkEvidence } from '../../shared/botanist.ts';
 import {
@@ -110,6 +110,47 @@ function removeClaims(ctx: Ctx, claims: { id: bigint; path: string; handle: stri
   }
 }
 
+type TaskRow = NonNullable<ReturnType<typeof findTask>>;
+function findTask(ctx: Ctx, id: bigint) { return ctx.db.task.id.find(id); }
+
+/** The member's most recently updated task that isn't done. */
+function currentTask(ctx: Ctx, handle: string): TaskRow | undefined {
+  let best: TaskRow | undefined;
+  for (const x of ctx.db.task.iter()) {
+    if (x.handle !== handle || x.status === 'done') continue;
+    if (!best || x.updatedAt.microsSinceUnixEpoch > best.updatedAt.microsSinceUnixEpoch) best = x;
+  }
+  return best;
+}
+
+/** Not-done tasks of this member that cover `path`; falls back to the current task so a bloom always lands somewhere. */
+function tasksFor(ctx: Ctx, handle: string, path: string): TaskRow[] {
+  const hit = [...ctx.db.task.iter()].filter((x) => x.handle === handle && x.status !== 'done' && x.paths.some((p) => claimMatches(p, path)));
+  if (hit.length) return hit;
+  const ct = currentTask(ctx, handle);
+  return ct ? [ct] : [];
+}
+
+/** Update a task (always touches updatedAt). A status change to active/done clears blockedReason unless the patch sets one. */
+function patchTask(ctx: Ctx, x: TaskRow, patch: Partial<TaskRow>): TaskRow {
+  const next = { ...x, ...patch, updatedAt: ctx.timestamp };
+  const changed = patch.status !== undefined && patch.status !== x.status;
+  if (changed && (patch.status === 'active' || patch.status === 'done') && !('blockedReason' in patch)) next.blockedReason = undefined;
+  ctx.db.task.id.update(next);
+  return next;
+}
+
+const mergePaths = (a: string[], b: string[]) => [...new Set([...a, ...b])].slice(0, MAX_TASK_PATHS);
+
+function insertTask(ctx: Ctx, handle: string, title: string, paths: string[]): TaskRow {
+  const row = ctx.db.task.insert({
+    id: 0n, handle, title, status: 'active', bed: paths.length ? bedOf(paths[0]!) : '(root)', paths,
+    blockedReason: undefined, createdAt: ctx.timestamp, updatedAt: ctx.timestamp, doneAt: undefined,
+  });
+  log(ctx, handle, 'task_started', { path: paths[0], detail: title });
+  return row;
+}
+
 // ---------------- lifecycle ----------------
 
 export const init = spacetimedb.init((ctx) => {
@@ -147,7 +188,7 @@ export const heartbeat = spacetimedb.reducer({ handle: t.string() }, (ctx, args)
 });
 
 /**
- * Removes a member and everything live they own: agents, fences, messages to/from them, open handoffs.
+ * Removes a member and everything live they own: agents, fences, messages to/from them, open handoffs, tasks + items.
  * History (activity, diffs, test runs, reviews, certifications) stays for the timelapse; plants stay but forget them.
  * Idempotent. Any later event from that handle auto-joins them again, so stop their companion/sim first.
  */
@@ -161,6 +202,11 @@ export const removeMember = spacetimedb.reducer({ handle: t.string() }, (ctx, ar
   }
   for (const h of [...ctx.db.handoff.iter()]) {
     if ((h.fromHandle === handle || h.toHandle === handle) && h.status === 'offered') ctx.db.handoff.id.delete(h.id);
+  }
+  for (const x of [...ctx.db.task.iter()]) {
+    if (x.handle !== handle) continue;
+    for (const i of [...ctx.db.taskItem.iter()]) if (i.taskId === x.id) ctx.db.taskItem.id.delete(i.id);
+    ctx.db.task.id.delete(x.id);
   }
   for (const p of [...ctx.db.plant.iter()]) {
     if (p.lastTouchedBy === handle) ctx.db.plant.path.update({ ...p, lastTouchedBy: undefined });
@@ -240,6 +286,17 @@ export const ingestActivity = spacetimedb.reducer(
       }
     }
 
+    // Task state.
+    {
+      const ct = currentTask(ctx, handle);
+      if (ct && kind === 'blocked_edit' && (a.detail ?? '').startsWith('fenced by')) {
+        patchTask(ctx, ct, { status: 'blocked', blockedReason: cap(a.detail!, LIM.blocked) });
+      } else if (ct && path && (kind === 'edit' || kind === 'create' || kind === 'file_change')) {
+        const unblock = ct.status === 'blocked' && (ct.blockedReason ?? '').startsWith('fenced by');
+        patchTask(ctx, ct, { paths: mergePaths(ct.paths, [path]), bed: ct.paths.length ? ct.bed : bedOf(path), ...(unblock ? { status: 'active' } : {}) });
+      }
+    }
+
     // Plant state.
     if (!path) return;
     const p = ctx.db.plant.path.find(path);
@@ -284,6 +341,9 @@ export const reportStatus = spacetimedb.reducer(
       throw new SenderError(`status must be one of ${AGENT_STATUSES.join(', ')}`);
     }
     ensureMember(ctx, handle);
+    const ts = status === 'working' ? 'active' : status === 'blocked' ? 'blocked' : status === 'needs_review' ? 'needs_review' : undefined;
+    const ct = ts ? currentTask(ctx, handle) : undefined;
+    if (ct && ts && ct.status !== ts) patchTask(ctx, ct, { status: ts, ...(ts === 'blocked' ? { blockedReason: 'reported blocked' } : {}) });
     if (a.sessionId) {
       upsertAgent(ctx, reqText(a.sessionId, 'sessionId', LIM.session), handle, { status, currentAction: status });
       return;
@@ -496,10 +556,15 @@ export const submitEvidence = spacetimedb.reducer({ handle: t.string(), path: t.
     ctx.db.plant.path.update({ ...p, stage: 'bloom', lastBloomAt: ctx.timestamp, bugs: 0, lastActivity: ctx.timestamp });
     ctx.db.certification.insert({ id: 0n, path, handle, task, result: 'bloom', reason: 'Bloom certified', at: ctx.timestamp });
     log(ctx, handle, 'certify_bloom', { path, detail: task ? `bloom: ${task}` : 'bloom certified' });
+    for (const x of tasksFor(ctx, handle, path)) {
+      patchTask(ctx, x, { status: 'done', doneAt: ctx.timestamp });
+      log(ctx, handle, 'task_done', { path, detail: x.title });
+    }
   } else {
     const reason = cap(verdict.missing.join('; '), LIM.reason);
     ctx.db.certification.insert({ id: 0n, path, handle, task, result: 'refused', reason, at: ctx.timestamp });
     log(ctx, handle, 'certify_refused', { path, detail: reason });
+    for (const x of tasksFor(ctx, handle, path)) patchTask(ctx, x, { blockedReason: cap(`Botanist refused: ${reason}`, LIM.blocked) });
   }
 });
 
@@ -508,6 +573,45 @@ export const submitReview = spacetimedb.reducer({ handle: t.string(), path: t.st
   const path = reqPath(a.path);
   ensureMember(ctx, handle);
   ctx.db.review.insert({ id: 0n, path, handle, ok: a.ok, at: ctx.timestamp });
+});
+
+// ---------------- tasks ----------------
+
+export const startTask = spacetimedb.reducer(
+  { handle: t.string(), title: t.string(), paths: t.array(t.string()) },
+  (ctx, a) => {
+    const handle = reqHandle(a.handle);
+    const title = reqText(a.title, 'task title', LIM.taskTitle);
+    if (a.paths.length > MAX_TASK_PATHS) throw new SenderError(`a task takes at most ${MAX_TASK_PATHS} paths`);
+    const paths = [...new Set(a.paths.map(reqPath))];
+    if (!touchMember(ctx, handle)) return;
+    const key = title.toLowerCase();
+    const same = [...ctx.db.task.iter()].find((x) => x.handle === handle && x.status !== 'done' && x.title.toLowerCase() === key);
+    if (same) {
+      patchTask(ctx, same, {
+        status: 'active', paths: mergePaths(same.paths, paths),
+        bed: same.paths.length ? same.bed : (paths[0] ? bedOf(paths[0]) : same.bed),
+      });
+      return;
+    }
+    insertTask(ctx, handle, title, paths);
+  }
+);
+
+export const setTaskItems = spacetimedb.reducer({ handle: t.string(), items: t.array(TaskItemIn) }, (ctx, a) => {
+  const handle = reqHandle(a.handle);
+  if (a.items.length > MAX_TASK_ITEMS) throw new SenderError(`a checklist takes at most ${MAX_TASK_ITEMS} items`);
+  const items = a.items
+    .map((i) => ({ text: cap(i.text.trim(), LIM.taskTitle), state: (TASK_ITEM_STATES as readonly string[]).includes(i.state) ? i.state : 'pending' }))
+    .filter((i) => i.text);
+  if (!touchMember(ctx, handle)) return;
+  let cur = currentTask(ctx, handle);
+  if (!cur) {
+    if (!items.length) return;
+    cur = insertTask(ctx, handle, (items.find((i) => i.state === 'in_progress') ?? items[0]!).text, []);
+  } else cur = patchTask(ctx, cur, {});
+  for (const old of [...ctx.db.taskItem.iter()]) if (old.taskId === cur.id) ctx.db.taskItem.id.delete(old.id);
+  items.forEach((i, ord) => ctx.db.taskItem.insert({ id: 0n, taskId: cur!.id, ord, text: i.text, state: i.state }));
 });
 
 // ---------------- config ----------------

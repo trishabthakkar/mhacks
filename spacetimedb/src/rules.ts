@@ -4,6 +4,7 @@ import type { Timestamp } from 'spacetimedb';
 
 export const LIM = {
   handle: 32, session: 128, path: 300, repo: 120, commit: 64, task: 200, notes: 400, reason: 300, action: 40,
+  taskTitle: 80, blocked: 120,
 } as const;
 
 export const cap = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s);

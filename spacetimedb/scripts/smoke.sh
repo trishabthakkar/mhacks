@@ -286,6 +286,44 @@ eq "plant forgets member"  "SELECT last_touched_by FROM plant WHERE path = 'src/
 eq "history kept"          "SELECT COUNT(*) AS n FROM activity" "$N"
 call remove_member '"ghost"' && ok "removeMember is idempotent"
 
+echo "-- tasks"
+call join_member '"tk"' '""'
+call seed_repo '[{"path":"tk/a.ts","lines":10},{"path":"tk/b.ts","lines":10}]'
+reject "title too long" "longer than 80" start_task '"tk"' "\"$(printf 'x%.0s' $(seq 1 81))\"" '[]'
+call start_task '"tk"' '"Build the thing"' '["tk/"]'
+eq  "startTask inserts active"        "SELECT status FROM task WHERE handle = 'tk'" active
+eq  "bed from first path"             "SELECT bed FROM task WHERE handle = 'tk'" tk
+call start_task '"tk"' '"build the THING"' '["tk/a.ts"]'
+eq  "same title (any case) reuses"    "SELECT COUNT(*) AS n FROM task WHERE handle = 'tk'" 1
+has "paths merged"                    "SELECT paths FROM task WHERE handle = 'tk'" "tk/a.ts"
+call set_task_items '"tk"' '[{"text":"Read","state":"completed"},{"text":"Write","state":"in_progress"},{"text":"Test","state":"bogus"}]'
+eq  "items inserted"                  "SELECT COUNT(*) AS n FROM task_item" 3
+has "unknown state → pending"         "SELECT state FROM task_item WHERE text = 'Test'" pending
+call set_task_items '"tk"' '[{"text":"Only","state":"pending"}]'
+eq  "items replaced, not appended"    "SELECT COUNT(*) AS n FROM task_item" 1
+call ingest_activity '"tk"' "$(some '"s-tk"')" '"blocked_edit"' "$(some '"tk/b.ts"')" "$NONE" "$(some '"fenced by alex until 7:00pm"')" "$NONE"
+eq  "block-mode blocked_edit → blocked" "SELECT status FROM task WHERE handle = 'tk'" blocked
+has "blocked reason kept"             "SELECT blocked_reason FROM task WHERE handle = 'tk'" "fenced by alex"
+call ingest_activity '"tk"' "$(some '"s-tk"')" '"edit"' "$(some '"tk/b.ts"')" "$(some 12)" "$NONE" "$NONE"
+eq  "edit lifts a fence block"        "SELECT status FROM task WHERE handle = 'tk'" active
+call ingest_activity '"tk"' "$(some '"s-tk"')" '"blocked_edit"' "$(some '"tk/b.ts"')" "$NONE" "$(some '"warned"')" "$NONE"
+eq  "warn-mode blocked_edit keeps status" "SELECT status FROM task WHERE handle = 'tk'" active
+call report_status '"tk"' "$NONE" '"needs_review"'
+eq  "reportStatus moves the task"     "SELECT status FROM task WHERE handle = 'tk'" needs_review
+call submit_evidence '"tk"' '"tk/b.ts"' '"t"'
+has "refusal becomes a roadblock"     "SELECT blocked_reason FROM task WHERE handle = 'tk'" "Botanist refused"
+call record_diff '"tk"' '["tk/b.ts"]' "$NONE"
+call record_test_run '"tk"' '"tk/repo"' '"npm test"' 0
+call submit_evidence '"tk"' '"tk/b.ts"' '"t"'
+eq  "bloom on a dir-claimed file → done" "SELECT status FROM task WHERE handle = 'tk'" done
+has "task_done logged"                "SELECT detail FROM activity WHERE kind = 'task_done'" "Build the thing"
+call set_task_items '"tk"' '[{"text":"Plan it","state":"in_progress"}]'
+eq  "items with no current task create one" "SELECT COUNT(*) AS n FROM task WHERE handle = 'tk'" 2
+has "new task titled by in-progress item"   "SELECT title FROM task WHERE status = 'active'" "Plan it"
+call remove_member '"tk"'
+eq  "removeMember drops tasks"        "SELECT COUNT(*) AS n FROM task WHERE handle = 'tk'" 0
+eq  "removeMember drops items"        "SELECT COUNT(*) AS n FROM task_item" 0
+
 if [ "$SLOW" = 1 ]; then
   echo "-- slow: expiry + sweep (~3.5 min)"
   call claim_files '"jo"' '["tests/"]' "$(some 1)"

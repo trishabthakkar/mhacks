@@ -142,6 +142,35 @@ export const SweepTimer = __t.object("SweepTimer", {
 });
 export type SweepTimer = __Infer<typeof SweepTimer>;
 
+export const Task = __t.object("Task", {
+  id: __t.u64(),
+  handle: __t.string(),
+  title: __t.string(),
+  status: __t.string(),
+  bed: __t.string(),
+  paths: __t.array(__t.string()),
+  blockedReason: __t.option(__t.string()),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+  doneAt: __t.option(__t.timestamp()),
+});
+export type Task = __Infer<typeof Task>;
+
+export const TaskItem = __t.object("TaskItem", {
+  id: __t.u64(),
+  taskId: __t.u64(),
+  ord: __t.u32(),
+  text: __t.string(),
+  state: __t.string(),
+});
+export type TaskItem = __Infer<typeof TaskItem>;
+
+export const TaskItemIn = __t.object("TaskItemIn", {
+  text: __t.string(),
+  state: __t.string(),
+});
+export type TaskItemIn = __Infer<typeof TaskItemIn>;
+
 export const TestRun = __t.object("TestRun", {
   id: __t.u64(),
   handle: __t.string(),

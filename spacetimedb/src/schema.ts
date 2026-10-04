@@ -161,10 +161,38 @@ export const expireClaimsTimer = table(
   { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt() }
 );
 
+export const task = table(
+  { public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    handle: t.string(),
+    title: t.string(),
+    status: t.string(), // TASK_STATUSES
+    bed: t.string(),
+    paths: t.array(t.string()),
+    blockedReason: t.option(t.string()),
+    createdAt: t.timestamp(),
+    updatedAt: t.timestamp(),
+    doneAt: t.option(t.timestamp()),
+  }
+);
+
+export const taskItem = table(
+  { public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    taskId: t.u64(),
+    ord: t.u32(),
+    text: t.string(),
+    state: t.string(), // TASK_ITEM_STATES
+  }
+);
+
 export const SeedFile = t.object('SeedFile', { path: t.string(), lines: t.u32() });
+export const TaskItemIn = t.object('TaskItemIn', { text: t.string(), state: t.string() });
 
 const spacetimedb = schema({
-  member, agent, plant, claim, message, handoff, testRun, diff, review, certification, activity, config,
+  member, agent, plant, claim, message, handoff, testRun, diff, review, certification, activity, config, task, taskItem,
   sweepTimer, expireClaimsTimer,
 });
 export default spacetimedb;

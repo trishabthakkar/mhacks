@@ -51,6 +51,8 @@ import RespondHandoffReducer from "./respond_handoff_reducer";
 import SeedRepoReducer from "./seed_repo_reducer";
 import SetConfigReducer from "./set_config_reducer";
 import SetPausedReducer from "./set_paused_reducer";
+import SetTaskItemsReducer from "./set_task_items_reducer";
+import StartTaskReducer from "./start_task_reducer";
 import SubmitEvidenceReducer from "./submit_evidence_reducer";
 import SubmitReviewReducer from "./submit_review_reducer";
 
@@ -68,6 +70,8 @@ import MemberRow from "./member_table";
 import MessageRow from "./message_table";
 import PlantRow from "./plant_table";
 import ReviewRow from "./review_table";
+import TaskRow from "./task_table";
+import TaskItemRow from "./task_item_table";
 import TestRunRow from "./test_run_table";
 
 /** Type-only namespace exports for generated type groups. */
@@ -195,6 +199,28 @@ const tablesSchema = __schema({
       { name: 'review_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ReviewRow),
+  task: __table({
+    name: 'task',
+    indexes: [
+      { accessor: 'id', name: 'task_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'task_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TaskRow),
+  taskItem: __table({
+    name: 'task_item',
+    indexes: [
+      { accessor: 'id', name: 'task_item_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'task_item_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TaskItemRow),
   testRun: __table({
     name: 'test_run',
     indexes: [
@@ -227,6 +253,8 @@ const reducersSchema = __reducers(
   __reducerSchema("seed_repo", SeedRepoReducer),
   __reducerSchema("set_config", SetConfigReducer),
   __reducerSchema("set_paused", SetPausedReducer),
+  __reducerSchema("set_task_items", SetTaskItemsReducer),
+  __reducerSchema("start_task", StartTaskReducer),
   __reducerSchema("submit_evidence", SubmitEvidenceReducer),
   __reducerSchema("submit_review", SubmitReviewReducer),
 );

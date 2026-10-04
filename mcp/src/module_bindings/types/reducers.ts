@@ -23,6 +23,8 @@ import RespondHandoffReducer from "../respond_handoff_reducer";
 import SeedRepoReducer from "../seed_repo_reducer";
 import SetConfigReducer from "../set_config_reducer";
 import SetPausedReducer from "../set_paused_reducer";
+import SetTaskItemsReducer from "../set_task_items_reducer";
+import StartTaskReducer from "../start_task_reducer";
 import SubmitEvidenceReducer from "../submit_evidence_reducer";
 import SubmitReviewReducer from "../submit_review_reducer";
 
@@ -43,6 +45,8 @@ export type RespondHandoffParams = __Infer<typeof RespondHandoffReducer>;
 export type SeedRepoParams = __Infer<typeof SeedRepoReducer>;
 export type SetConfigParams = __Infer<typeof SetConfigReducer>;
 export type SetPausedParams = __Infer<typeof SetPausedReducer>;
+export type SetTaskItemsParams = __Infer<typeof SetTaskItemsReducer>;
+export type StartTaskParams = __Infer<typeof StartTaskReducer>;
 export type SubmitEvidenceParams = __Infer<typeof SubmitEvidenceReducer>;
 export type SubmitReviewParams = __Infer<typeof SubmitReviewReducer>;
 

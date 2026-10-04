@@ -66,3 +66,9 @@ export function bedStyleOf(name: string): BedStyle {
   const p = BED_PALETTE[hashName(name) % BED_PALETTE.length]!;
   return { kind: name === 'tests' ? 'greenhouse' : name === ROOT_BED ? 'stones' : 'raised', border: p.border, post: p.post };
 }
+
+/** A small, stable colour shift per file (hue ±0.025, lightness ±0.05) so no two plants are the same green. */
+export function plantJitter(path: string): { dh: number; dl: number } {
+  const h = hashName(path);
+  return { dh: ((h & 0xffff) / 0xffff - 0.5) * 0.05, dl: ((h >>> 16) / 0xffff - 0.5) * 0.1 };
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BED_PALETTE, bedStyleOf, collapseGenerated, speciesOf } from './species.ts';
+import { BED_PALETTE, bedStyleOf, collapseGenerated, plantJitter, speciesOf } from './species.ts';
 import type { PlantView } from '../../shared/types.ts';
 
 test('code files are flowers', () => {
@@ -96,4 +96,15 @@ test('bed style is deterministic, from the fixed palette, and varies across fold
     assert.ok(BED_PALETTE.some((p) => p.border === bedStyleOf(n).border), n);
   }
   assert.ok(new Set(names.map((n) => bedStyleOf(n).border)).size >= 3);
+});
+
+test('plant jitter is small, stable per file, and varies between files', () => {
+  const seen = new Set<string>();
+  for (const p of ['a.ts', 'b.ts', 'src/c.ts', 'd/e/f.ts', 'g.md', 'h.json']) {
+    const j = plantJitter(p);
+    assert.deepEqual(plantJitter(p), j);
+    assert.ok(Math.abs(j.dh) <= 0.03 && Math.abs(j.dl) <= 0.06, `${p} ${JSON.stringify(j)}`);
+    seen.add(`${j.dh.toFixed(3)},${j.dl.toFixed(3)}`);
+  }
+  assert.ok(seen.size >= 5);
 });

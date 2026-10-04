@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PlantStage } from '../../../shared/types.ts';
-import { speciesOf, type Species } from '../species.ts';
+import { plantJitter, speciesOf, type Species } from '../species.ts';
 import { flowerColor, geo, hashString } from './materials.ts';
 
 type Role = 'body' | 'petal' | 'center' | 'bug';
@@ -9,7 +9,7 @@ interface Part { mesh: 0 | 1; slot: number; base: THREE.Matrix4; role: Role; idx
 export interface PlantInst {
   path: string; x: number; z: number; size: number; stage: PlantStage; bugs: number; full: boolean;
   born: number; phase: number; openAt?: number; wobbleUntil?: number; key: string;
-  species: Species; bloom: THREE.Color; owner: THREE.Color | null; parts: Part[]; bugParts: Part[];
+  species: Species; jit: { dh: number; dl: number }; bloom: THREE.Color; owner: THREE.Color | null; parts: Part[]; bugParts: Part[];
 }
 
 const SPH = 0, CYL = 1;
@@ -54,6 +54,8 @@ export class PlantField {
   private mT = new THREE.Matrix4(); private mA = new THREE.Matrix4(); private mB = new THREE.Matrix4(); private mO = new THREE.Matrix4();
   private q = new THREE.Quaternion(); private e = new THREE.Euler(); private p = new THREE.Vector3(); private s = new THREE.Vector3();
   private col = new THREE.Color(); private tint = new THREE.Color();
+  /** Foliage colour for one leaf: this plant's jitter, alternate leaves a shade lighter (two-tone). */
+  private leafTone(inst: PlantInst, base: THREE.Color, i: number) { return this.tint.copy(base).offsetHSL(inst.jit.dh, 0, inst.jit.dl + (i % 2 ? 0.06 : -0.02)); }
   private dirtyColor: [boolean, boolean] = [false, false];
   private zero = new THREE.Matrix4().makeScale(0, 0, 0);
 
@@ -144,9 +146,9 @@ export class PlantField {
     const leafC = d ? C.leafD : stage === 'sprout' ? C.leafS : C.leaf;
     for (let i = 0; i < leaves; i++) {
       const a = (i / leaves) * Math.PI * 2 + 0.5, y = h * (0.3 + 0.6 * ((i % 3) / 3));
-      this.add(inst, SPH, leafC, 'body', i, 0.3 * s * k, 0.06 * s, 0.14 * s * k, Math.cos(a) * 0.25 * s * k, y, Math.sin(a) * 0.25 * s * k, -a, 0.35);
+      this.add(inst, SPH, this.leafTone(inst, leafC, i), 'body', i, 0.3 * s * k, 0.06 * s, 0.14 * s * k, Math.cos(a) * 0.25 * s * k, y, Math.sin(a) * 0.25 * s * k, -a, 0.35);
     }
-    if (stage === 'bud') this.add(inst, SPH, inst.owner ? this.tint.copy(C.bud).lerp(inst.owner, 0.5) : C.bud, 'body', 0, 0.17 * s * k, 0.24 * s * k, 0.17 * s * k, 0, h + 0.1 * s, 0);
+    if (stage === 'bud') this.add(inst, SPH, inst.owner ? this.tint.copy(C.bud).lerp(inst.owner, 0.5) : C.bud, 'body', 0, 0.12 * s * k, 0.26 * s * k, 0.12 * s * k, 0, h + 0.13 * s, 0); // slim, pointed
     if (stage !== 'bloom') return;
     const n = sun ? 12 : 7, r = sun ? 0.3 : 0.2, pc = sun ? C.sunPetal : inst.bloom;
     for (let i = 0; i < n; i++) {
@@ -162,7 +164,7 @@ export class PlantField {
     const n = stage === 'sprout' ? 3 : stage === 'growing' ? 6 : 8;
     for (let i = 0; i < n; i++) { // long, flat fronds that arch out low
       const a = (i / n) * Math.PI * 2 + 0.3, len = (0.26 + 0.24 * hk) * s * (i % 2 ? 0.85 : 1), rz = 0.3;
-      this.add(inst, SPH, col, 'body', i, len, 0.03 * s, 0.13 * s, Math.cos(a) * len * 0.85, 0.14 * s + len * 0.2, Math.sin(a) * len * 0.85, -a, rz);
+      this.add(inst, SPH, this.leafTone(inst, col, i), 'body', i, len, 0.03 * s, 0.13 * s, Math.cos(a) * len * 0.85, 0.14 * s + len * 0.2, Math.sin(a) * len * 0.85, -a, rz);
     }
     if (stage === 'bud') this.add(inst, SPH, C.fernTip, 'body', 0, 0.1 * s, 0.12 * s, 0.1 * s, 0, 0.32 * s, 0);
     if (stage !== 'bloom') return;
@@ -203,7 +205,7 @@ export class PlantField {
     const n = stage === 'sprout' ? 2 : stage === 'growing' ? 4 : 5;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2, rr = (i === 0 ? 0 : 0.18) * s, br = (0.2 + 0.12 * hk) * s;
-      this.add(inst, SPH, col, 'body', i, br, br * 0.85, br, Math.cos(a) * rr, (0.15 + 0.25 * hk) * s + (i === 0 ? 0.08 * s : 0), Math.sin(a) * rr);
+      this.add(inst, SPH, this.leafTone(inst, col, i), 'body', i, br, br * 0.85, br, Math.cos(a) * rr, (0.15 + 0.25 * hk) * s + (i === 0 ? 0.08 * s : 0), Math.sin(a) * rr);
     }
     if (stage !== 'bud' && stage !== 'bloom') return;
     const bloom = stage === 'bloom', m = bloom ? 9 : 5;
@@ -258,7 +260,7 @@ export class PlantField {
     const wasStage = inst?.stage, bugsBefore = inst?.bugs ?? 0;
     if (!inst) {
       const species = speciesOf(path);
-      inst = { path, x, z, size, stage, bugs: 0, full, born: now, phase: (path.length * 2.399) % 6.28, key: '', species, bloom: new THREE.Color(), owner: null, parts: [], bugParts: [] };
+      inst = { path, x, z, size, stage, bugs: 0, full, born: now, phase: (path.length * 2.399) % 6.28, key: '', species, jit: plantJitter(path), bloom: new THREE.Color(), owner: null, parts: [], bugParts: [] };
       this.plants.set(path, inst);
     }
     inst.x = x; inst.z = z;

@@ -104,3 +104,19 @@ test('cactus grows in a terracotta pot', () => {
   const hsl = { h: 0, s: 0, l: 0 }; pot.getHSL(hsl);
   assert.ok(hsl.h < 0.08 && hsl.s > 0.3, pot.getHexString());
 });
+
+test('leaves are two-tone, and two plants of the same kind are not identical greens', () => {
+  const f = field();
+  plant(f, 'a.ts', 'growing'); plant(f, 'zz/other.ts', 'growing');
+  const leaves = (p: string) => f.get(p)!.parts.filter((x) => x.role === 'body' && x.mesh === 0 && x.idx >= 0).map((x) => f.colorOf(x).getHex());
+  assert.ok(new Set(leaves('a.ts')).size >= 2, 'one plant: leaves should alternate light and dark');
+  assert.notDeepEqual(leaves('a.ts'), leaves('zz/other.ts'));
+});
+
+test('buds are slim and pointed (taller than wide)', () => {
+  const f = field();
+  plant(f, 'a.ts', 'bud');
+  const bud = f.get('a.ts')!.parts.at(-1)!, s = new THREE.Vector3();
+  bud.base.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
+  assert.ok(s.y > s.x * 1.6 && s.x <= 0.13, `${s.x} x ${s.y}`);
+});

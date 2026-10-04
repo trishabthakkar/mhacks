@@ -29,3 +29,10 @@ test('Claude sessions and helpers are named plainly (no "bot"/"bee" jargon); a f
   assert.equal(s('subagent_stop'), "ivy's helper finished");
   assert.equal(s('blocked_edit', 'a fence held by sam'), 'ivy was stopped by a fence held by sam');
 });
+
+test('no sentence calls a Claude a "bot"', () => {
+  for (const kind of ACTIVITY_KINDS) {
+    const s = sentence({ id: 1, at: 0, handle: 'ivy', kind, path: 'src/a.ts', detail: 'x' });
+    assert.ok(!/\bbot\b/.test(s), `${kind}: "${s}"`);
+  }
+});

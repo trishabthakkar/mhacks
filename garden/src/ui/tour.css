@@ -1,0 +1,8 @@
+/* Judge tour caption (key R): one large line at the bottom centre, readable from the back of a room. */
+#tourcap { position:fixed; left:50%; bottom:64px; transform:translateX(-50%); z-index:7; max-width:min(860px, calc(100vw - 32px));
+  background:rgba(22,32,24,.86); color:#fff; font-size:20px; font-weight:600; line-height:1.35; padding:12px 20px; border-radius:14px;
+  box-shadow:0 8px 28px rgba(0,0,0,.3); text-align:center; pointer-events:none; }
+#tourcap[hidden] { display:none; }
+#tourcap small { display:block; font-size:12.5px; font-weight:500; opacity:.75; margin-top:4px; }
+body.present #tourcap { font-size:26px; bottom:84px; }
+@media (max-width: 640px) { #tourcap { font-size:15px; bottom:96px; } }

@@ -11,6 +11,9 @@ import { initShed, renderShed, tickFreshness } from './ui/shed.ts';
 import { createAnnouncer, summarize } from './ui/announce.ts';
 import './ui/board.css';
 import './ui/shed.css';
+import './ui/tour.css';
+import { tourStops } from './tour.ts';
+import { TourPlayer } from './ui/tourPlayer.ts';
 import type { Pick } from './pick.ts';
 import { inspect } from './ui/inspect.ts';
 import { repoName } from './boundary.ts';
@@ -297,10 +300,21 @@ document.getElementById('keys')?.addEventListener('click', (e) => {
 setInterval(() => tickFreshness(shed), 1000);
 document.body.classList.toggle('shed-collapsed', collapsed);
 
+// ---- judge tour (R): flies through what the garden shows right now, one caption per stop; any key or click ends it ----
+const tourCap = document.createElement('div'); tourCap.id = 'tourcap'; tourCap.hidden = true; tourCap.setAttribute('role', 'status'); document.body.append(tourCap);
+const tour = new TourPlayer({
+  select: (p) => setSelected(p),
+  caption: (c) => { tourCap.hidden = !c; tourCap.textContent = c ?? ''; if (c) { const sm = document.createElement('small'); sm.textContent = 'Press R or Esc to stop'; tourCap.append(sm); } },
+  done: () => { world.frameGarden(); refresh(); },
+});
+addEventListener('pointerdown', () => tour.stop(), { capture: true });
+
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLElement && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
+  if (tour.running) { tour.stop(); if (k === 'r' || k === 'escape') return; }
+  if (k === 'r') { world.follow = null; world.director = false; tour.start(tourStops(store.snapshot, repoName(q, store.snapshot, liveDb()))); return; }
   if (k === '?' || k === '/') { setHelp(helpEl.hidden); return; }
   if (k === 'g') { setGuide(guideEl.hidden); return; }
   if (k === 'escape' && selected && helpEl.hidden && guideEl.hidden) { setSelected(null); return; }

@@ -1,5 +1,6 @@
 // Pure: one TaskModel per task, built from a snapshot. The board, hover card, task plants and spirits all read this.
 import type { GardenSnapshot, TaskItemState, TaskStatus, TaskView } from '../../shared/types.ts';
+import { clipWords, tidy } from './ui/fmt.ts';
 
 export interface AgentLine { kind: 'main' | 'spirit'; sessionId: string; status: string; action: string; path?: string; agoMs: number }
 export interface TaskModel {
@@ -21,11 +22,11 @@ export function currentTaskOf(s: GardenSnapshot, handle: string): TaskView | und
 export function taskModels(s: GardenSnapshot): TaskModel[] {
   const color = (h: string) => s.members.find((m) => m.handle === h)?.color ?? '#888888';
   const out = (s.tasks ?? []).map((t): TaskModel => {
-    const items = (s.taskItems ?? []).filter((i) => i.taskId === t.id).sort((a, b) => a.ord - b.ord).map((i) => ({ text: i.text, state: i.state }));
+    const items = (s.taskItems ?? []).filter((i) => i.taskId === t.id).sort((a, b) => a.ord - b.ord).map((i) => ({ text: clipWords(tidy(i.text), 60), state: i.state }));
     const current = currentTaskOf(s, t.handle)?.id === t.id;
     const fenceRow = s.claims.find((c) => c.handle === t.handle && t.paths.some((p) => covers(c.path, p) || covers(p, c.path)));
     const roadblocks: string[] = [];
-    if (t.blockedReason) roadblocks.push(t.blockedReason);
+    if (t.blockedReason) roadblocks.push(tidy(t.blockedReason));
     else if (t.status === 'blocked') roadblocks.push('blocked');
     if (t.status !== 'done') {
       for (const p of s.plants) {
@@ -39,7 +40,7 @@ export function taskModels(s: GardenSnapshot): TaskModel[] {
         }))
       : [];
     return {
-      id: t.id, handle: t.handle, color: color(t.handle), title: t.title, status: t.status, bed: t.bed, paths: t.paths,
+      id: t.id, handle: t.handle, color: color(t.handle), title: tidy(t.title) || t.title, status: t.status, bed: t.bed, paths: t.paths,
       items, done: items.filter((i) => i.state === 'completed').length, total: items.length,
       ...(fenceRow ? { fence: { path: fenceRow.path, expiresAt: fenceRow.expiresAt } } : {}),
       roadblocks, agents, current, createdAt: t.createdAt, updatedAt: t.updatedAt, ...(t.doneAt ? { doneAt: t.doneAt } : {}),
@@ -52,7 +53,7 @@ export function taskModels(s: GardenSnapshot): TaskModel[] {
 export function attention(s: GardenSnapshot): Attention[] {
   const out: Attention[] = [];
   for (const t of s.tasks ?? []) {
-    if (t.status === 'blocked') out.push({ kind: 'blocked', text: `${t.handle} blocked: ${t.blockedReason ?? t.title}`, focus: t.paths[0] ?? '' });
+    if (t.status === 'blocked') out.push({ kind: 'blocked', text: `${t.handle} blocked: ${tidy(t.blockedReason ?? t.title)}`, focus: t.paths[0] ?? '' });
   }
   const latest = new Map<string, (typeof s.certifications)[number]>();
   for (const c of s.certifications) { const p = latest.get(c.path); if (!p || c.at >= p.at) latest.set(c.path, c); }

@@ -307,3 +307,19 @@ test('team_status: lists not-done tasks with progress and roadblock', async () =
   const r = await h.team_status('trisha', {});
   assert.match(r.text, /Tasks:\n  alex: "Refactor the routes" blocked 1\/2 — ✋ Botanist refused: no passing test run/);
 });
+
+test('claim_files: the task name is tidied before saving; blank after tidying is rejected', async () => {
+  const { h, db } = setup();
+  const r = await h.claim_files('trisha', { paths: ['src/x.ts'], task: '  add retry to upload client. ' });
+  assert.match(r.text, /for "Add retry to upload client"/);
+  assert.equal(db.tasks()[0]!.title, 'Add retry to upload client');
+  const bad = await h.claim_files('trisha', { paths: ['src/y.ts'], task: ' "" ' });
+  assert.equal(bad.isError, true);
+});
+
+test('set_checklist: items are tidied', async () => {
+  const { h, db } = setup();
+  await h.claim_files('trisha', { paths: ['src/x.ts'], task: 'T' });
+  await h.set_checklist('trisha', { items: [{ text: 'write the tests.', state: 'pending' }] });
+  assert.equal(db.taskItems(db.tasks()[0]!.id)[0]!.text, 'Write the tests');
+});

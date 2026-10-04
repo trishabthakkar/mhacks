@@ -7,7 +7,7 @@ import { normalizeBed } from '../layout.ts';
 import { currentTaskOf, taskModels } from '../tasks.ts';
 import { taskCardHtml } from './taskCard.ts';
 import { sentence } from './sentences.ts';
-import { ago, base, clip, esc, ICON, rel } from './fmt.ts';
+import { ago, base, clip, clipWords, esc, ICON, rel, tidy } from './fmt.ts';
 
 export interface Inspect { title: string; body: string }
 
@@ -137,7 +137,7 @@ export function hoverText(p: Pick, s: GardenSnapshot): string | null {
       const t = (s.tasks ?? []).find((x) => x.id === p.key); if (!t) return null;
       const items = (s.taskItems ?? []).filter((i) => i.taskId === t.id);
       const tail = items.length ? `${items.filter((i) => i.state === 'completed').length}/${items.length} done` : t.status.replace(/_/g, ' ');
-      return `${clip(t.title, 40)} · ${t.handle} · ${tail}`;
+      return `${clipWords(tidy(t.title), 40)} · ${t.handle} · ${tail}`;
     }
     case 'commit': { const a = s.activity.find((x) => x.id === p.key); return a ? `${a.handle} committed${a.detail ? `: ${clip(a.detail, 40)}` : ''}` : null; }
     case 'botanist': return 'The botanist · click for verdicts';

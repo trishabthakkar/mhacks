@@ -14,3 +14,20 @@ export const ICON: Record<string, string> = {
   message_sent: '🦋', message_delivered: '🦋', message_acked: '👍', handoff_offered: '🤝', handoff_accepted: '🤝',
   certify_bloom: '🌸', certify_refused: '✋',
 };
+/** Starts with a path, file, call or camelCase name: keep its case. */
+const CODEISH = /^\S*([/._(]|[a-z][A-Z])/;
+/** Tidy agent-written text for display: one line, no wrapping quotes, no trailing period, capitalised unless it starts with code. Mirrors mcp/src/tidy.ts. */
+export function tidy(s: string): string {
+  let t = s.replace(/\s+/g, ' ').trim();
+  for (let i = 0; i < 3; i++) { const m = /^(["'`])(.*)\1$/.exec(t); if (!m) break; t = m[2]!.trim(); }
+  t = t.replace(/^`([^`]+)`/, '$1');
+  t = t.replace(/(?<!\.)\.$/, '').trim();
+  if (t && !CODEISH.test(t)) t = t[0]!.toUpperCase() + t.slice(1);
+  return t;
+}
+/** Shorten to n characters at a word boundary, with an ellipsis (falls back to a hard cut for one long word). */
+export function clipWords(s: string, n: number): string {
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n - 1), sp = cut.lastIndexOf(' ');
+  return `${(sp >= n * 0.5 ? cut.slice(0, sp) : cut).replace(/[\s,;:.-]+$/, '')}…`;
+}

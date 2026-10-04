@@ -12,6 +12,7 @@ import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
 import { botFor, botHandleOf } from '../bots.ts';
+import { clipWords, tidy } from '../ui/fmt.ts';
 import { spiritText } from './spiritText.ts';
 
 export interface WorldLookup {
@@ -325,7 +326,7 @@ export class Actors {
       const group = byColor.get(this.memberColor(handle).toLowerCase()) ?? [];
       const cur = currentTaskOf(this.snap, handle);
       const name = group.length > 1 ? `${SHAPES[group.indexOf(handle) % SHAPES.length]} ${handle}` : handle;
-      const text = cur ? `${name} · ${cur.title.length > 18 ? `${cur.title.slice(0, 17)}…` : cur.title}` : name;
+      const text = cur ? `${name} · ${clipWords(tidy(cur.title), 22)}` : name;
       if (g.label.dataset.text !== text) { g.label.dataset.text = text; this.labels.setText(g.label, text); }
     }
     reconcile(this.bots, snap.members.map((m) => m.handle), (h) => {

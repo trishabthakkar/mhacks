@@ -271,7 +271,7 @@ export class GardenWorld implements WorldLookup {
     const hour = this.hourOverride ?? d.getHours() + d.getMinutes() / 60;
     // Night falls as the lamps come on: dimmer, cooler moonlight (still readable on a projector), warm lamp pools.
     const lv = lampLevel(hour);
-    this.lamps.setLevel(lv);
+    this.lamps.setLevel(lv); this.props.setNight(lv);
     const c = this.props.setHour(hour);
     (this.scene.background as THREE.Color | null) ? (this.scene.background as THREE.Color).copy(c) : (this.scene.background = c.clone());
     (this.scene.fog as THREE.Fog).color.copy(c);

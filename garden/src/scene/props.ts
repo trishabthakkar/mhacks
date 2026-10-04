@@ -58,7 +58,7 @@ export class Props {
       }
       const fp = new Float32Array(40 * 3);
       const fg = new THREE.BufferGeometry(); fg.setAttribute('position', new THREE.BufferAttribute(fp, 3));
-      this.fireflies = new THREE.Points(fg, new THREE.PointsMaterial({ color: 0xfff3a0, size: 0.14, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+      this.fireflies = new THREE.Points(fg, new THREE.PointsMaterial({ color: 0xeaff9e, map: fireflyTexture(), size: 0.42, sizeAttenuation: true, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); // soft round glows, not square pixels
       this.fireflies.visible = false; scene.add(this.fireflies);
     } else {
       this.fireflies = new THREE.Points();
@@ -89,11 +89,15 @@ export class Props {
     return this.horizon;
   }
 
+  private night = 0;
+  /** Moonlight on the lawn: 0 day … 1 night cools the grass toward blue-green (vertex colours ignore the light's hue). */
+  setNight(lv: number) { this.night = lv; this.setSeason(this.season); }
+
   /** Timelapse grading: bare dry soil early, lush mid-way, golden at the end. 0..1; `null` = normal. */
   setSeason(p: number | null) {
     this.season = p;
     const m = this.meadowMat; if (!m) return;
-    if (p === null) { m.color.set(0xffffff); return; }
+    if (p === null) { m.color.set(0xffffff).lerp(this.tmpC.set('#8ea3d4'), this.night * 0.6); return; }
     const dry = this.tmpC.set('#d9c59c'), lush = new THREE.Color('#ffffff'), gold = new THREE.Color('#fff0bf');
     if (p < 0.45) m.color.copy(dry).lerp(lush, p / 0.45); else m.color.copy(lush).lerp(gold, (p - 0.45) / 0.55);
   }
@@ -276,8 +280,19 @@ export class Props {
       const p = this.fireflies.geometry.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < p.count; i++) p.setXYZ(i, gardenX + Math.cos(t * 0.3 + i * 2.4) * (4 + (i % 9) * 1.6), 0.6 + (i % 5) * 0.4 + Math.sin(t + i) * 0.2, gardenZ + Math.sin(t * 0.27 + i * 1.7) * (3 + (i % 7) * 1.5));
       p.needsUpdate = true;
+      (this.fireflies.material as THREE.PointsMaterial).opacity = 0.6 + 0.35 * Math.sin(t * 2.3) * Math.sin(t * 0.7); // gentle flicker
     }
   }
+}
+
+/** A firefly: a bright core with a soft falloff, so each one is a small round glow. */
+function fireflyTexture(): THREE.Texture | null {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d')!, grd = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.25, 'rgba(255,255,220,0.8)'); grd.addColorStop(1, 'rgba(255,255,200,0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
 }
 
 /** Soft, puffy cumulus drawn once on a canvas: lit tops, blue-grey flat-ish bottoms, feathered edges. */

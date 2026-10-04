@@ -250,32 +250,33 @@ export class Props {
     if (!strips.length) return;
     const FLOWER = ['#f4a6c1', '#b9a3e3', '#f7d154', '#fbf7ee', '#f29e7c', '#8fb8f0', '#e86f8a'].map((c) => new THREE.Color(c));
     const soil = mat('#5b4129');
+    const lowBall = new THREE.IcosahedronGeometry(1, 0), clumpBall = new THREE.IcosahedronGeometry(1, 1); // faceted and cheap: there are thousands
     type P = { x: number; z: number; s: number; c: THREE.Color; k: number };
     const clumps: P[] = [], heads: P[] = [], spires: P[] = [];
     let n = 0;
     for (const st of strips) {
       const along = st.w >= st.d, len = along ? st.w : st.d;
       const sm = mesh(geo.box, soil, along ? len : 0.8, 0.1, along ? 0.8 : len, st.x, 0.0, st.z); sm.castShadow = false; sm.receiveShadow = true; this.world.add(sm);
-      for (let a = -len / 2 + 0.3; a <= len / 2 - 0.3; a += 0.5, n++) {
-        for (const row of [-0.18, 0.18]) {
+      for (let a = -len / 2 + 0.3; a <= len / 2 - 0.3; a += 0.42, n++) {
+        for (const row of [n % 2 ? -0.12 : 0.12]) { // one zig-zag row: full-looking, half the instances
           const off = row + (hash2(n, row > 0 ? 3 : 4) - 0.5) * 0.12, aa = a + (row > 0 ? 0.25 : 0) + (hash2(n, 5) - 0.5) * 0.1;
           const x = along ? st.x + aa : st.x + off, z = along ? st.z + off : st.z + aa;
           const drift = FLOWER[Math.floor((along ? x : z) / 2.5 + st.x * 0.1 + st.z * 0.13 + 100) % FLOWER.length]!;
-          const sz = 0.22 + hash2(n, row > 0 ? 6 : 7) * 0.1;
+          const sz = 0.26 + hash2(n, row > 0 ? 6 : 7) * 0.12;
           clumps.push({ x, z, s: sz, c: drift, k: hash2(n, 8) });
-          for (let f = 0; f < 3; f++) { const fa = hash2(n * 3 + f, 9) * Math.PI * 2, fr = sz * 0.55; heads.push({ x: x + Math.cos(fa) * fr, z: z + Math.sin(fa) * fr, s: sz, c: drift, k: hash2(n * 3 + f, 10) }); }
+          for (let f = 0; f < 2; f++) { const fa = hash2(n * 3 + f, 9) * Math.PI * 2, fr = sz * 0.55; heads.push({ x: x + Math.cos(fa) * fr, z: z + Math.sin(fa) * fr, s: sz, c: drift, k: hash2(n * 3 + f, 10) }); }
         }
         if (n % 3 === 1) spires.push({ x: along ? st.x + a : st.x, z: along ? st.z : st.z + a, s: 0.5 + hash2(n, 11) * 0.35, c: FLOWER[(n >> 1) % 2 ? 1 : 5]!, k: 0 });
       }
     }
     const d = new THREE.Object3D(), leaf = new THREE.Color(), col = new THREE.Color();
-    const foliage = new THREE.InstancedMesh(geo.sphere, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 }), clumps.length);
+    const foliage = new THREE.InstancedMesh(clumpBall, new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.9 }), clumps.length);
     clumps.forEach((p, i) => {
       d.position.set(p.x, p.s * 0.55, p.z); d.scale.set(p.s, p.s * 0.85, p.s); d.rotation.set(0, p.k * 6, 0); d.updateMatrix();
       foliage.setMatrixAt(i, d.matrix); foliage.setColorAt(i, leaf.set('#4f8f45').offsetHSL((p.k - 0.5) * 0.04, 0, (p.k - 0.5) * 0.08));
     });
     const flowerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.6 });
-    const spireBits = spires.length * 5, blooms = new THREE.InstancedMesh(geo.sphere, flowerMat, heads.length + spireBits);
+    const spireBits = spires.length * 5, blooms = new THREE.InstancedMesh(lowBall, flowerMat, heads.length + spireBits);
     heads.forEach((p, i) => {
       const r = 0.06 + p.k * 0.03; d.position.set(p.x, p.s * 1.05 + p.k * 0.08, p.z); d.scale.set(r, r * 0.8, r); d.updateMatrix();
       blooms.setMatrixAt(i, d.matrix); blooms.setColorAt(i, col.copy(p.c).offsetHSL(0, 0, (p.k - 0.5) * 0.1));
@@ -289,7 +290,7 @@ export class Props {
     });
     const stems = new THREE.InstancedMesh(geo.cyl, mat('#3f7d3a'), spires.length);
     spires.forEach((p, j) => { d.position.set(p.x, (0.35 + 4 * p.s * 0.22) / 2, p.z); d.scale.set(0.02, 0.35 + 4 * p.s * 0.22, 0.02); d.updateMatrix(); stems.setMatrixAt(j, d.matrix); });
-    for (const m of [foliage, blooms, stems]) { m.castShadow = true; m.receiveShadow = true; this.world.add(m); }
+    for (const m of [foliage, blooms, stems]) { m.castShadow = false; m.receiveShadow = true; this.world.add(m); } // low clumps by the fence: shadows aren't worth thousands of instances in the shadow pass
   }
 
   /** The garden shed at the back-right, with a noticeboard whose notes mirror the HTML panel. Click it to toggle the panel. */

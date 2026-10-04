@@ -33,7 +33,7 @@ export class GardenLamps {
   private roofMat = new THREE.MeshStandardMaterial({ color: '#3b2f28', flatShading: true, roughness: 0.7, metalness: 0.2 });
   private paneMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: WARM, emissiveIntensity: 0, roughness: 0.4 });
   private glowMat = new THREE.MeshBasicMaterial({ map: softTexture(0.55), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, fog: false });
-  private haloMat = new THREE.PointsMaterial({ map: softTexture(0.9), size: 1.6, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, fog: false });
+  private haloMat = new THREE.PointsMaterial({ map: softTexture(0.9), size: 1.0, sizeAttenuation: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, fog: false });
   private glowGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private roofGeo = new THREE.ConeGeometry(1, 1, 4).rotateY(Math.PI / 4); // a little four-sided lantern roof
   private level = -1;
@@ -60,14 +60,14 @@ export class GardenLamps {
       d.position.set(l.x, h / 2, l.z); d.scale.set(0.055, h, 0.055); d.updateMatrix(); this.posts!.setMatrixAt(i, d.matrix);
       d.position.set(l.x, h + 0.11 * s, l.z); d.scale.set(0.17 * s, 0.22 * s, 0.17 * s); d.updateMatrix(); this.panes!.setMatrixAt(i, d.matrix);
       d.position.set(l.x, h + 0.29 * s, l.z); d.scale.set(0.2 * s, 0.15 * s, 0.2 * s); d.updateMatrix(); this.roofs!.setMatrixAt(i, d.matrix);
-      if (hi) { const r = l.kind === 'path' ? 2.8 : 4.6; d.position.set(l.x, 0.03, l.z); d.scale.set(r, 1, r); d.updateMatrix(); this.glows!.setMatrixAt(i, d.matrix); }
+      if (hi) { const r = l.kind === 'path' ? 2.0 : 3.2; /* small: transparent overdraw stays cheap; the falloff keeps it soft */ d.position.set(l.x, 0.03, l.z); d.scale.set(r, 1, r); d.updateMatrix(); this.glows!.setMatrixAt(i, d.matrix); }
       halo.set([l.x, h + 0.11 * s, l.z], i * 3);
     });
     this.posts.castShadow = true; this.roofs.castShadow = true;
     this.glows.renderOrder = 1;
     const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.BufferAttribute(halo, 3));
     this.halos = new THREE.Points(hg, this.haloMat); this.halos.renderOrder = 2; this.halos.frustumCulled = false;
-    this.group.add(this.posts, this.panes, this.roofs, this.glows, this.halos);
+    this.group.add(this.posts, this.panes, this.roofs, this.glows); if (hi) this.group.add(this.halos); // low quality: no halos
     const real = lamps.filter((l) => l.real).slice(0, this.lights.length);
     this.lights.forEach((p, i) => { const l = real[i]; p.visible = !!l; if (l) p.position.set(l.x, height(l) + 0.3, l.z); });
     const lv = this.level; this.level = -1; this.setLevel(Math.max(0, lv));
@@ -93,7 +93,7 @@ export class GardenLamps {
     this.level = l;
     this.group.visible = l > 0.01;
     this.paneMat.emissiveIntensity = 1.8 * l;
-    this.glowMat.opacity = 0.7 * l;
+    this.glowMat.opacity = 0.85 * l;
     this.haloMat.opacity = 0.75 * l;
     for (const p of this.lights) p.intensity = 7 * l;
   }

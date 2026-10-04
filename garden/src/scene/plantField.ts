@@ -4,7 +4,7 @@ import { plantJitter, speciesOf, type Species } from '../species.ts';
 import { flowerColor, geo, hashString } from './materials.ts';
 
 type Role = 'body' | 'petal' | 'center' | 'bug';
-interface Part { mesh: 0 | 1; slot: number; base: THREE.Matrix4; role: Role; idx: number } // idx -1: pot/soil, not the plant
+interface Part { mesh: Pool; slot: number; base: THREE.Matrix4; role: Role; idx: number } // idx -1: pot/soil, not the plant
 
 export interface PlantInst {
   path: string; x: number; z: number; size: number; stage: PlantStage; bugs: number; full: boolean;
@@ -12,7 +12,9 @@ export interface PlantInst {
   species: Species; jit: { dh: number; dl: number }; bloom: THREE.Color; owner: THREE.Color | null; parts: Part[]; bugParts: Part[];
 }
 
-const SPH = 0, CYL = 1;
+const SPH = 0, CYL = 1, LOW = 2; // LOW: faceted 80-triangle balls for ground-cover rosettes (there are hundreds)
+type Pool = 0 | 1 | 2;
+const LOW_BALL = new THREE.IcosahedronGeometry(1, 1);
 const STEM_H: Record<PlantStage, number> = { seed: 0, sprout: 0.35, growing: 0.8, bud: 0.95, bloom: 1.0, dormant: 0.55 };
 const C = {
   soil: new THREE.Color('#6b4a2f'), stem: new THREE.Color('#3f7d3a'), stemD: new THREE.Color('#8a8570'),
@@ -51,9 +53,9 @@ export function plantHeight(stage: PlantStage, size: number, full: boolean): num
  */
 export class PlantField {
   private meshes: THREE.InstancedMesh[] = [];
-  private cap: [number, number] = [0, 0];
-  private high: [number, number] = [0, 0]; // highest used slot + 1
-  private free: [number[], number[]] = [[], []];
+  private cap: [number, number, number] = [0, 0, 0];
+  private high: [number, number, number] = [0, 0, 0]; // highest used slot + 1
+  private free: [number[], number[], number[]] = [[], [], []];
   private plants = new Map<string, PlantInst>();
   private mat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.85, metalness: 0 });
   private mT = new THREE.Matrix4(); private mA = new THREE.Matrix4(); private mB = new THREE.Matrix4(); private mO = new THREE.Matrix4();
@@ -61,11 +63,11 @@ export class PlantField {
   private col = new THREE.Color(); private tint = new THREE.Color(); private tuftC = new THREE.Color();
   /** Foliage colour for one leaf: this plant's jitter, alternate leaves a shade lighter (two-tone). */
   private leafTone(inst: PlantInst, base: THREE.Color, i: number) { return this.tint.copy(base).offsetHSL(inst.jit.dh, 0, inst.jit.dl + (i % 2 ? 0.06 : -0.02)); }
-  private dirtyColor: [boolean, boolean] = [false, false];
+  private dirtyColor: [boolean, boolean, boolean] = [false, false, false];
   private zero = new THREE.Matrix4().makeScale(0, 0, 0);
 
   constructor(private scene: THREE.Scene) {
-    this.grow(SPH, 1024); this.grow(CYL, 256);
+    this.grow(SPH, 1024); this.grow(CYL, 256); this.grow(LOW, 1024);
   }
 
   get count() { return this.plants.size; }
@@ -75,11 +77,11 @@ export class PlantField {
   /** The instance colour of one part (tests, debugging). */
   colorOf(p: Part) { return new THREE.Color().fromArray(this.meshes[p.mesh]!.instanceColor!.array, p.slot * 3); }
   all() { return this.plants.values(); }
-  stats() { return { sphere: this.high[SPH], cylinder: this.high[CYL], plants: this.plants.size }; }
+  stats() { return { sphere: this.high[SPH], cylinder: this.high[CYL], low: this.high[LOW], plants: this.plants.size }; }
 
-  private grow(kind: 0 | 1, cap: number) {
+  private grow(kind: Pool, cap: number) {
     const old = this.meshes[kind];
-    const m = new THREE.InstancedMesh(kind === SPH ? geo.sphere : geo.cyl, this.mat, cap);
+    const m = new THREE.InstancedMesh(kind === SPH ? geo.sphere : kind === CYL ? geo.cyl : LOW_BALL, this.mat, cap);
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     m.castShadow = true; m.receiveShadow = false; m.frustumCulled = false;
     m.count = this.high[kind];
@@ -94,7 +96,7 @@ export class PlantField {
     m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
   }
 
-  private alloc(kind: 0 | 1): number {
+  private alloc(kind: Pool): number {
     const f = this.free[kind];
     if (f.length) return f.pop()!;
     if (this.high[kind] >= this.cap[kind]) this.grow(kind, this.cap[kind] * 2);
@@ -112,7 +114,7 @@ export class PlantField {
     parts.length = 0;
   }
 
-  private add(inst: PlantInst, kind: 0 | 1, color: THREE.Color, role: Role, idx: number,
+  private add(inst: PlantInst, kind: Pool, color: THREE.Color, role: Role, idx: number,
     sx: number, sy: number, sz: number, px: number, py: number, pz: number, ry = 0, rz = 0): Part {
     const slot = this.alloc(kind);
     const base = new THREE.Matrix4().compose(
@@ -130,14 +132,14 @@ export class PlantField {
     if (!inst.full) { // ground cover: a small low rosette (or a few pebbles for images), coloured by species
       const tc = this.tuftC.copy(d ? C.tuftD : TUFT[sp]); if (!d && inst.owner) tc.lerp(inst.owner, 0.35); // owner tint: who works where
       if (sp === 'stone') {
-        for (let i = 0; i < 3; i++) { const a = i * 2.1 + inst.phase; this.add(inst, SPH, i ? PEBBLES[(i + 1) % PEBBLES.length]! : tc, 'body', i, 0.14 * s, 0.07 * s, 0.11 * s, Math.cos(a) * 0.12 * s, 0.06, Math.sin(a) * 0.12 * s, a); }
+        for (let i = 0; i < 3; i++) { const a = i * 2.1 + inst.phase; this.add(inst, LOW, i ? PEBBLES[(i + 1) % PEBBLES.length]! : tc, 'body', i, 0.14 * s, 0.07 * s, 0.11 * s, Math.cos(a) * 0.12 * s, 0.06, Math.sin(a) * 0.12 * s, a); }
         return;
       }
-      this.add(inst, SPH, tc, 'body', 0, 0.09 * s, (sp === 'cactus' ? 0.2 : 0.11) * s, 0.09 * s, 0, 0.13, 0); // raised centre the leaves grow from
+      this.add(inst, LOW, tc, 'body', 0, 0.09 * s, (sp === 'cactus' ? 0.2 : 0.11) * s, 0.09 * s, 0, 0.13, 0); // raised centre the leaves grow from
       const n = sp === 'fern' ? 6 : 5;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2 + inst.phase;
-        this.add(inst, SPH, this.leafTone(inst, tc, i), 'body', i + 1, 0.27 * s, 0.05 * s, 0.12 * s, Math.cos(a) * 0.15 * s, 0.13, Math.sin(a) * 0.15 * s, -a, 0.5); // leaves meet at the centre and tilt up
+        this.add(inst, LOW, this.leafTone(inst, tc, i), 'body', i + 1, 0.27 * s, 0.05 * s, 0.12 * s, Math.cos(a) * 0.15 * s, 0.13, Math.sin(a) * 0.15 * s, -a, 0.5); // leaves meet at the centre and tilt up
       }
       return;
     }
@@ -349,7 +351,7 @@ export class PlantField {
         this.meshes[b.mesh]!.setMatrixAt(b.slot, this.mB.multiplyMatrices(T, this.mO));
       }
     }
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < 3; k++) {
       this.meshes[k]!.instanceMatrix.needsUpdate = true;
       if (this.dirtyColor[k]) { this.meshes[k]!.instanceColor!.needsUpdate = true; this.dirtyColor[k] = false; }
     }

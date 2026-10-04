@@ -5,7 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { ACTIVITY_KINDS, DEFAULT_CLAIM_MODE, MAX_MESSAGE_BODY } from '../../shared/constants.ts';
 import { daemonPort, files, loadConfig, repoFor, sproutHome, type JoinedRepo, type SproutConfig } from './config.ts';
 import { FakeDb, openDb, type ActivityArgs, type ClaimRowLite, type SproutDb } from './db.ts';
-import type { CheckResult, DaemonEvent, DaemonStatus, InboxMessage, MessagesView } from './events.ts';
+import type { CheckResult, DaemonEvent, DaemonStatus, InboxMessage, MessagesView, TodoState } from './events.ts';
 import { GitPoller } from './gitFeed.ts';
 import { formatUntil } from './hookMap.ts';
 import { clip, detail as cleanDetail, isTestCommand, maskSecrets, redactCommand } from './redact.ts';
@@ -20,7 +20,8 @@ export type Op =
   | { op: 'recordTestRun'; args: { handle: string; repo: string; command: string; exitCode: number } }
   | { op: 'recordDiff'; args: { handle: string; paths: string[]; commit?: string } }
   | { op: 'markDelivered'; args: { handle: string; id: string } }
-  | { op: 'setPaused'; args: { handle: string; paused: boolean } };
+  | { op: 'setPaused'; args: { handle: string; paused: boolean } }
+  | { op: 'setTaskItems'; args: { handle: string; items: { text: string; state: string }[] } };
 
 /** A claim matches a file if equal, or if the claim ends with '/' and the file starts with it. */
 export function claimMatches(claimPath: string, path: string): boolean {
@@ -185,6 +186,7 @@ export class Daemon {
         case 'recordTestRun': await this.db.recordTestRun(op.args.handle, op.args.repo, op.args.command, op.args.exitCode); break;
         case 'recordDiff': await this.db.recordDiff(op.args.handle, op.args.paths, op.args.commit); break;
         case 'markDelivered': await this.db.markDelivered(op.args.handle, op.args.id); break;
+        case 'setTaskItems': await this.db.setTaskItems(op.args.handle, op.args.items); break;
         case 'setPaused': await this.db.setPaused(op.args.handle, op.args.paused); break;
         default: void a;
       }
@@ -265,6 +267,11 @@ export class Daemon {
         this.testRun(repo, command, exitCode, `test ${exitCode === 0 ? 'pass' : 'fail'}: ${command}`);
         return;
       }
+      case 'todos':
+      case 'todo_op':
+        if (!byName(ev.repo) || !shareOf(this.cfg).activity) return; // checklists count as "activity" sharing
+        this.todo(ev);
+        return;
       case 'diff': {
         const repo = byName(ev.repo);
         if (!repo) return;
@@ -365,7 +372,60 @@ export class Daemon {
   }
 
   /** Sends now or says why not: a person typing a message should know whether it went. */
-/** Fence paths for this member (from `sprout claim`). The module owns the rules; its error text is returned as-is. */
+  // ---------- Claude's to-do list -> task checklist ----------
+  /** Per Claude session: id -> item. TaskCreate/TaskUpdate arrive one change at a time. */
+  todoLists = new Map<string, Map<string, { text: string; state: TodoState; ord: number }>>();
+  private todoTimers = new Map<string, NodeJS.Timeout>();
+  private todoOrd = 0;
+
+  todo(ev: Extract<DaemonEvent, { type: 'todos' | 'todo_op' }>): void {
+    const key = typeof ev.sessionId === 'string' ? ev.sessionId.slice(0, 128) : '';
+    let list = this.todoLists.get(key);
+    if (!list) { list = new Map(); this.todoLists.set(key, list); }
+    const clean = (t: unknown) => (typeof t === 'string' ? (cleanDetail(t) ?? '').slice(0, 80) : '');
+    const st = (v: unknown): TodoState => (v === 'in_progress' || v === 'completed' ? v : 'pending');
+    if (ev.type === 'todos') {
+      list.clear();
+      for (const i of (Array.isArray(ev.items) ? ev.items : []).slice(0, 20)) {
+        const text = clean(i?.text);
+        if (text) { const ord = this.todoOrd++; list.set(`w${ord}`, { text, state: st(i.state), ord }); }
+      }
+    } else {
+      const id = String(ev.id ?? '').slice(0, 40);
+      if (!id) return;
+      if (ev.state === 'deleted') list.delete(id);
+      else {
+        const cur = list.get(id);
+        const text = clean(ev.text) || cur?.text;
+        if (!text) return; // update for an item created before this daemon started: nothing to show
+        list.set(id, { text, state: ev.state ? st(ev.state) : cur?.state ?? 'pending', ord: cur?.ord ?? this.todoOrd++ });
+      }
+    }
+    // TaskCreate xN arrives in a burst: send the settled list once.
+    clearTimeout(this.todoTimers.get(key));
+    const t = setTimeout(() => { this.todoTimers.delete(key); this.flushTodos(key); }, 250);
+    t.unref?.();
+    this.todoTimers.set(key, t);
+  }
+
+  /** The checklist for a session: creation order, at most 20 (oldest completed dropped first). */
+  todoItems(key: string): { text: string; state: TodoState }[] {
+    const items = [...(this.todoLists.get(key)?.values() ?? [])].sort((a, b) => a.ord - b.ord);
+    while (items.length > 20) {
+      const i = items.findIndex((x) => x.state === 'completed');
+      items.splice(i >= 0 ? i : 0, 1);
+    }
+    return items.map(({ text, state }) => ({ text, state }));
+  }
+
+  flushTodos(key: string): void {
+    if (this.cfg.paused) return;
+    const items = this.todoItems(key);
+    const done = items.filter((i) => i.state === 'completed').length;
+    this.enqueueOrSend({ op: 'setTaskItems', args: { handle: this.cfg.handle, items } }, `checklist ${done}/${items.length}`);
+  }
+
+  /** Fence paths for this member (from `sprout claim`). The module owns the rules; its error text is returned as-is. */
   async claim(rawPaths: unknown[], ttl?: unknown): Promise<{ ok: true; paths: string[]; until: number } | { ok: false; error: string }> {
     const paths = [...new Set(rawPaths.map((p) => safePath(p)).filter((p): p is string => !!p))].slice(0, 50);
     if (!paths.length) return { ok: false, error: 'no repo-relative paths to claim' };

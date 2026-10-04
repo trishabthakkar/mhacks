@@ -41,6 +41,8 @@ export interface SproutDb {
   claimFiles(handle: string, paths: string[], ttlMinutes?: number): Promise<void>;
   /** Empty `paths`: release all of mine. */
   releaseFiles(handle: string, paths: string[]): Promise<void>;
+  /** Replace the checklist of this member's current task (the module creates a task if there is none). */
+  setTaskItems(handle: string, items: { text: string; state: string }[]): Promise<void>;
 }
 
 type Log = (line: string) => void;
@@ -123,6 +125,7 @@ export class FakeDb implements SproutDb {
       this.claimRows.push({ id: String(this.claimRows.length + 1), path: p, handle, expiresAt: now + ttlMinutes * 60_000 });
     }
   }
+  setTaskItems(handle: string, items: { text: string; state: string }[]) { return this.call('setTaskItems', { handle, items }); }
   async releaseFiles(handle: string, paths: string[]) {
     await this.call('releaseFiles', { handle, paths });
     this.claimRows = this.claimRows.filter((c) => c.handle !== handle || (paths.length > 0 && !paths.includes(c.path)));

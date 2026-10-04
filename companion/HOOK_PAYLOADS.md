@@ -57,6 +57,17 @@ Verified 2026-10-03 against **Claude Code 2.1.288** by running a real headless s
 {"hook_event_name":"SubagentStart","agent_id":"aa67ece49f0e2c57b","agent_type":"Explore"}
 ```
 
+## To-do list (TaskCreate / TaskUpdate), verified Oct 4
+
+Claude Code 2.1.288 tracks its plan with **incremental** `TaskCreate` / `TaskUpdate` calls, not `TodoWrite`. They show up headless once Claude loads them through ToolSearch. Real payloads are in `test/fixtures/todos.jsonl`.
+
+| Tool | `tool_input` | `tool_response` |
+|---|---|---|
+| TaskCreate | `{subject, description, activeForm}` | `{task: {id: "1", subject}}` |
+| TaskUpdate | `{taskId: "1", status: "in_progress"/"completed"/"deleted"?, subject?}` | `{success: true, taskId, updatedFields, statusChange: {from, to}}` |
+
+The companion sends only the `subject` (masked, ≤80 chars) and the state, never the `description`. The daemon keeps one list per Claude session and sends the whole checklist through `setTaskItems` after each change. `TodoWrite` (a full list in `tool_input.todos[{content, status}]`) is also handled, for older versions.
+
 ## Latency
 
 See status/P3.md (measured per hook path).

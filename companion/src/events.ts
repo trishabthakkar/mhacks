@@ -9,8 +9,14 @@ export type DaemonEvent =
     }
   | { type: 'test_run'; repo: string; command: string; exitCode: number; sessionId?: string }
   | { type: 'diff'; repo: string; paths: string[]; commit?: string }
+  /** Claude's to-do list. TodoWrite sends the whole list; TaskCreate/TaskUpdate send one change (`op`). Text is a short masked subject, never the description. */
+  | { type: 'todos'; repo: string; sessionId?: string; items: TodoItem[] }
+  | { type: 'todo_op'; repo: string; sessionId?: string; op: 'create' | 'update'; id: string; text?: string; state?: TodoState | 'deleted' }
   /** Raw interactive shell command from shell-init (redacted by the daemon, never logged raw). */
   | { type: 'shell'; cmd: string; exitCode: number; cwd: string };
+
+export type TodoState = 'pending' | 'in_progress' | 'completed';
+export interface TodoItem { text: string; state: TodoState }
 
 export interface InboxMessage { id: string; fromHandle: string; kind: string; body: string; sentAt: number }
 

@@ -4,7 +4,7 @@
 import { isAbsolute, resolve } from 'node:path';
 import type { ActivityKind } from '../../shared/types.ts';
 import { repoFor, type JoinedRepo } from './config.ts';
-import type { CheckResult, DaemonEvent, InboxMessage } from './events.ts';
+import type { CheckResult, DaemonEvent, InboxMessage, TodoState } from './events.ts';
 import { detail, isTestCommand, redactCommand, relPath } from './redact.ts';
 
 export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -112,6 +112,10 @@ export function mapHook(eventName: string, p: HookPayload, ctx: MapCtx): HookPla
         const lines = absTool && path ? ctx.countLines?.(absTool) : undefined;
         return { events: [act(isCreate(p.tool_response) ? 'create' : 'edit', { path, lines })] };
       }
+      if (tool === 'TodoWrite' || tool === 'TaskCreate' || tool === 'TaskUpdate') {
+        const ev = mapTodo(tool, p, repo.name, sessionId);
+        return { events: ev ? [ev] : [] };
+      }
       if (tool === 'Bash') {
         // The `bash` activity was already sent on PreToolUse (the bot walks over while it runs);
         // here only the test result, so one command is one feed line.
@@ -166,4 +170,44 @@ export function inboxOutput(msgs: InboxMessage[]): string | undefined {
   if (!msgs.length) return undefined;
   const text = msgs.map(wrapMessage).join('\n');
   return JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: text } });
+}
+
+// ---- Claude's to-do list (verified payloads: test/fixtures/todos.jsonl) ----
+
+const TODO_STATES = new Set(['pending', 'in_progress', 'completed']);
+const todoText = (v: unknown) => (typeof v === 'string' ? (detail(v) ?? '').slice(0, 80) : '');
+const todoState = (v: unknown): TodoState => (TODO_STATES.has(v as string) ? (v as TodoState) : 'pending');
+
+function obj(v: unknown): Record<string, unknown> | undefined {
+  if (v && typeof v === 'object') return v as Record<string, unknown>;
+  if (typeof v === 'string') { try { const o = JSON.parse(v); return o && typeof o === 'object' ? o : undefined; } catch { return undefined; } }
+  return undefined;
+}
+
+/** Only the short subject and its state leave the laptop (masked, ≤80 chars); never the description. */
+export function mapTodo(tool: string, p: HookPayload, repo: string, sessionId?: string): DaemonEvent | undefined {
+  const input = p.tool_input ?? {};
+  if (tool === 'TodoWrite') {
+    const raw = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
+    const items = raw.slice(0, 20).map((t) => ({ text: todoText(t.content), state: todoState(t.status) })).filter((i) => i.text);
+    return { type: 'todos', repo, sessionId, items };
+  }
+  if (tool === 'TaskCreate') {
+    const task = obj(obj(p.tool_response)?.task);
+    const id = task?.id != null ? String(task.id) : '';
+    const text = todoText(input.subject ?? task?.subject);
+    if (!id || !text) return undefined;
+    return { type: 'todo_op', repo, sessionId, op: 'create', id, text, state: 'pending' };
+  }
+  // TaskUpdate
+  const id = input.taskId != null ? String(input.taskId) : '';
+  if (!id) return undefined;
+  const resp = obj(p.tool_response);
+  if (resp && resp.success === false) return undefined;
+  const ev: Extract<DaemonEvent, { type: 'todo_op' }> = { type: 'todo_op', repo, sessionId, op: 'update', id };
+  if (input.status === 'deleted') ev.state = 'deleted';
+  else if (input.status !== undefined) ev.state = todoState(input.status);
+  const text = todoText(input.subject);
+  if (text) ev.text = text;
+  return ev.state || ev.text ? ev : undefined;
 }

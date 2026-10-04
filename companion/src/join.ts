@@ -66,7 +66,7 @@ export function sproutHooks(node = process.execPath, bin = binPath()): Record<st
       { matcher: 'Edit|Write|MultiEdit|NotebookEdit', hooks: [cmd('PreToolUse')] },
       { matcher: 'Bash', hooks: [cmd('PreToolUse', bg)] },
     ],
-    PostToolUse: [{ matcher: 'Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [cmd('PostToolUse', bg)] }],
+    PostToolUse: [{ matcher: 'Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit|Bash|TodoWrite|TaskCreate|TaskUpdate', hooks: [cmd('PostToolUse', bg)] }],
     PostToolUseFailure: [{ hooks: [cmd('PostToolUseFailure', bg)] }],
     SubagentStart: [{ hooks: [cmd('SubagentStart', bg)] }],
     SubagentStop: [{ hooks: [cmd('SubagentStop', bg)] }],

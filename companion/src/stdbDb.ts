@@ -190,6 +190,9 @@ export class StdbDb implements SproutDb {
   claimFiles(handle: string, paths: string[], ttlMinutes?: number) {
     return withTimeout(this.r().claimFiles({ handle, paths, ttlMinutes }), CALL_TIMEOUT_MS, 'claimFiles');
   }
+  setTaskItems(handle: string, items: { text: string; state: string }[]) {
+    return withTimeout(this.r().setTaskItems({ handle, items }), CALL_TIMEOUT_MS, 'setTaskItems');
+  }
   releaseFiles(handle: string, paths: string[]) {
     return withTimeout(this.r().releaseFiles({ handle, paths }), CALL_TIMEOUT_MS, 'releaseFiles');
   }

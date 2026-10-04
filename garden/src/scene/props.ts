@@ -278,7 +278,8 @@ export class Props {
     const flowerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.6 });
     const spireBits = spires.length * 5, blooms = new THREE.InstancedMesh(lowBall, flowerMat, heads.length + spireBits);
     heads.forEach((p, i) => {
-      const r = 0.06 + p.k * 0.03; d.position.set(p.x, p.s * 1.05 + p.k * 0.08, p.z); d.scale.set(r, r * 0.8, r); d.updateMatrix();
+      // on the clump's surface (0.55 r out sits ~1.26 r up), big enough to read from the overview
+      const r = 0.09 + p.k * 0.04; d.position.set(p.x, p.s * 1.27 + p.k * 0.04, p.z); d.scale.set(r, r * 0.8, r); d.updateMatrix();
       blooms.setMatrixAt(i, d.matrix); blooms.setColorAt(i, col.copy(p.c).offsetHSL(0, 0, (p.k - 0.5) * 0.1));
     });
     spires.forEach((p, j) => { // a tapering column of florets on a stem

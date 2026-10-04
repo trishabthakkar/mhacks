@@ -1,17 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ActivityView } from '../../shared/types.ts';
-import { layoutGarden } from './layout.ts';
-import { lilyPads, MAX_PADS, pondSpot } from './pond.ts';
+import { layoutGarden, layoutPaths } from './layout.ts';
+import { BANK, lilyPads, MAX_PADS, pondLink, pondSpot } from './pond.ts';
 
 const HOUR = 3_600_000, NOW = 100 * HOUR;
 const act = (id: number, kind: ActivityView['kind'], at: number): ActivityView => ({ id, at, handle: 'manahil', kind, detail: '' });
 
-test('the pond sits to the right of the beds without touching any', () => {
-  const l = layoutGarden(['a', 'b', 'c', 'd'].flatMap((bed) => Array.from({ length: 20 }, (_, i) => ({ path: `${bed}/${i}.ts`, bed, lines: 9 }))));
-  const p = pondSpot(l);
-  assert.ok(p.r >= 2);
-  for (const b of l.beds) assert.ok(p.x - p.r > b.x + b.w / 2 + 2, `pond overlaps ${b.name}`);
+const garden = (rows: number) => layoutGarden(Array.from({ length: rows * 2 }, (_, b) => `bed${b}`)
+  .flatMap((bed) => Array.from({ length: 30 }, (_, i) => ({ path: `${bed}/${i}.ts`, bed, lines: 9 }))));
+
+test('the pond and its bank stay clear of every bed and every path end', () => {
+  for (const rows of [1, 2, 4]) {
+    const l = garden(rows), p = pondSpot(l), edge = p.x - p.r * BANK;
+    assert.ok(p.r >= 2);
+    for (const b of l.beds) assert.ok(edge > b.x + b.w / 2 + 1, `pond overlaps ${b.name}`);
+    for (const q of layoutPaths(l)) assert.ok(edge > q.x + q.w / 2 + 0.5, 'pond overlaps a path');
+  }
+});
+
+test('the pond lines up with a row path, and a link path runs from it to the water', () => {
+  for (const rows of [1, 3, 4]) {
+    const l = garden(rows), p = pondSpot(l), paths = layoutPaths(l), link = pondLink(l);
+    const row = paths.find((q) => q.w > q.d && Math.abs(q.z - p.z) < 1e-6);
+    assert.ok(row, 'pond not aligned with a row path');
+    assert.ok(Math.abs(link.x - link.w / 2 - (row.x + row.w / 2)) < 0.3, 'link does not start at the row path');
+    assert.ok(link.x + link.w / 2 >= p.x - p.r * 1.05, 'link does not reach the water');
+    assert.ok(Math.abs(link.z - p.z) < 1e-6);
+  }
 });
 
 test('one lily pad per commit from the last day, nothing else', () => {

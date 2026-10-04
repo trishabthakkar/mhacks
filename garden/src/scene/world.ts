@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GardenSnapshot, PlantStage, PlantView } from '../../../shared/types.ts';
-import { BED_PAD, layoutGarden, layoutPaths, layoutTaskPlants, SPACING, type BedLayout, type GardenLayout, type PlantLayout } from '../layout.ts';
+import { BED_PAD, layoutGarden, layoutPaths, layoutTaskPlants, SPACING, type BedLayout, type GardenLayout, type PathLayout, type PlantLayout } from '../layout.ts';
 import { bedStyleOf, collapseGenerated, speciesOf } from '../species.ts';
 import { TaskPlants } from './taskPlants.ts';
 import { currentTaskOf, taskModels } from '../tasks.ts';
@@ -12,7 +12,7 @@ import { Labels, Particles } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField } from './plantField.ts';
 import { Pond } from './pond.ts';
-import { pondSpot } from '../pond.ts';
+import { pondLink, pondSpot } from '../pond.ts';
 import { Nav } from '../nav.ts';
 import { CameraRig } from './camera.ts';
 import { PALETTE } from './palette.ts';
@@ -23,6 +23,15 @@ const LOD_LIMIT = 80; // above this many plants, quiet ones become ground cover
 const ACTIVE_MS = 30 * 60_000;
 
 /** Free the GPU buffers of baked (merged) scenery before it is rebuilt; the shared unit shapes are left alone. */
+/** The row path level with the pond simply carries on to the water (one path, no seam where two would meet). */
+function withPondLink(paths: PathLayout[], link: PathLayout): PathLayout[] {
+  return paths.map((p) => {
+    if (p.w <= p.d || p.z !== link.z) return p;
+    const x0 = p.x - p.w / 2, x1 = Math.max(p.x + p.w / 2, link.x + link.w / 2);
+    return { ...p, x: (x0 + x1) / 2, w: x1 - x0 };
+  });
+}
+
 const capC = new THREE.Color();
 /** A bed border's top edge: the border colour, a little lighter. */
 const capColor = (border: string) => `#${capC.set(border).offsetHSL(0, -0.04, 0.1).getHexString()}`;
@@ -252,7 +261,7 @@ export class GardenWorld implements WorldLookup {
       const ps = pondSpot(this.layout); this.pond.place(ps.x, ps.z, ps.r);
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
-      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, layoutPaths(this.layout));
+      this.props.rebuild(Math.max(6, this.layout.width / 2), Math.max(4, this.layout.depth / 2), hf.frontZ, withPondLink(layoutPaths(this.layout), pondLink(this.layout)));
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;

@@ -63,6 +63,13 @@ export class Pond {
         if (i % 2 === 0) this.still.add(mesh(geo.cyl, mat('#6b4423'), 0.06, 0.22, 0.06, cx + ox, h - 0.1, cz + oz)); // cattail
       }
     }
+    // Where the row path meets the water: a little wooden dock, and a bench facing the pond.
+    const plank = mat('#a8754a'), dark = mat('#6e4526'), x0 = -r * 1.3, x1 = -r * 0.62;
+    for (let i = 0; i < 6; i++) this.still.add(mesh(geo.box, plank, (x1 - x0) / 6 - 0.04, 0.07, 1.3, x0 + ((i + 0.5) / 6) * (x1 - x0), 0.14, 0));
+    for (const px of [x0 + 0.15, x1 - 0.15]) for (const pz of [-0.6, 0.6]) this.still.add(mesh(geo.cyl, dark, 0.06, 0.4, 0.06, px, 0, pz));
+    const bx = -r * 1.42 - 0.3, bz = -1.9; // behind the dock, away from the front lane and the botanist
+    this.still.add(mesh(geo.box, plank, 0.5, 0.08, 1.6, bx, 0.48, bz), mesh(geo.box, plank, 0.08, 0.45, 1.6, bx - 0.22, 0.75, bz));
+    for (const dz of [-0.65, 0.65]) this.still.add(mesh(geo.box, dark, 0.45, 0.48, 0.08, bx, 0.24, bz + dz));
     mergeByMaterial(this.still);
     this.group.position.set(x, 0, z);
     if (this.label) this.labels.remove(this.label);
@@ -122,5 +129,5 @@ export class Pond {
     }
   }
 
-  get extentX() { return this.group.position.x + this.r * 1.3; }
+  get extentX() { return this.group.position.x + this.r * 1.45; }
 }

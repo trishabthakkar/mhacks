@@ -43,12 +43,14 @@ export class Props {
 
     if (quality === 'high') {
       for (let v = 0; v < 3; v++) this.cloudTex.push(makeCloudTexture(v));
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 16; i++) {
         const m = new THREE.SpriteMaterial({ map: this.cloudTex[i % 3], transparent: true, opacity: 0.95, fog: false, depthWrite: false });
         const c = new THREE.Sprite(m);
         const w = 110 + hash2(i, 1) * 90;
         c.scale.set(w, w * 0.4, 1);
-        c.position.set((hash2(i, 4) - 0.5) * 440, 27 + hash2(i, 5) * 18, -140 - hash2(i, 6) * 120);
+        // A ring around the whole sky (even spacing + jitter), so clouds show from every side as the camera orbits.
+        c.userData.ang = ((i + hash2(i, 4) * 0.7) / 16) * Math.PI * 2; c.userData.rad = 190 + hash2(i, 6) * 90;
+        c.position.set(Math.cos(c.userData.ang) * c.userData.rad, 27 + hash2(i, 5) * 18, Math.sin(c.userData.ang) * c.userData.rad);
         c.renderOrder = -1; this.clouds.push(c); scene.add(c);
       }
       const fp = new Float32Array(40 * 3);
@@ -219,7 +221,7 @@ export class Props {
   /** Per-frame: drifting clouds, firefly dance. Allocation-free. */
   update(t: number, dt: number, gardenX: number, gardenZ: number, motion: number) {
     this.skyMesh.position.copy(this.scene.position);
-    for (const c of this.clouds) { c.position.x += dt * 1.2 * motion; if (c.position.x > 320) c.position.x = -320; }
+    for (const c of this.clouds) { const a = (c.userData.ang += dt * 0.006 * motion), r = c.userData.rad as number; c.position.x = Math.cos(a) * r; c.position.z = Math.sin(a) * r; }
     if (this.fireflies.visible) {
       const p = this.fireflies.geometry.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < p.count; i++) p.setXYZ(i, gardenX + Math.cos(t * 0.3 + i * 2.4) * (4 + (i % 9) * 1.6), 0.6 + (i % 5) * 0.4 + Math.sin(t + i) * 0.2, gardenZ + Math.sin(t * 0.27 + i * 1.7) * (3 + (i % 7) * 1.5));

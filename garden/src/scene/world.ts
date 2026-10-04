@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { GardenSnapshot, PlantStage } from '../../../shared/types.ts';
-import { layoutGarden, layoutTaskPlants, type GardenLayout } from '../layout.ts';
+import type { GardenSnapshot, PlantStage, PlantView } from '../../../shared/types.ts';
+import { layoutGarden, layoutTaskPlants, type BedLayout, type GardenLayout, type PlantLayout } from '../layout.ts';
+import { bedStyleOf, collapseGenerated, speciesOf } from '../species.ts';
 import { TaskPlants } from './taskPlants.ts';
 import { currentTaskOf, taskModels } from '../tasks.ts';
 import { taskCardHtml } from '../ui/taskCard.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import { Labels, Particles } from './effects.ts';
-import { flowerColor, geo, mat, mergeByMaterial, mesh } from './materials.ts';
+import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField } from './plantField.ts';
 import { Nav } from '../nav.ts';
 import { CameraRig } from './camera.ts';
@@ -52,6 +53,8 @@ export class GardenWorld implements WorldLookup {
   private layoutFirst = true;
   private snap!: GardenSnapshot;
   private plantXZ = new Map<string, THREE.Vector3>();
+  private viewPlants: PlantView[] = []; // snapshot plants with each module_bindings folder folded into one hedge
+  private hedgeOf = new Map<string, string>(); // generated file -> its hedge path
   private bedLabels: HTMLElement[] = [];
   /** Blooms held back until the botanist reaches the plant (path -> deadline in performance.now ms). */
   private pendingBloom = new Map<string, number>();
@@ -159,7 +162,7 @@ export class GardenWorld implements WorldLookup {
   plantPos(path: string) { return this.plantXZ.get(path); }
   taskPlantPos(handle: string) { const t = this.snap ? currentTaskOf(this.snap, handle) : undefined; return t ? this.tasks.posOf(t.id) : undefined; }
   bedCenter(bed: string) { const b = this.layout.beds.find((x) => x.name === bed); return b ? new THREE.Vector3(b.x, 0, b.z) : undefined; }
-  bedOfPath(path: string) { return this.layout.plants.find((p) => p.path === path)?.bed; }
+  bedOfPath(path: string) { const key = this.hedgeOf.get(path) ?? path; return this.layout.plants.find((p) => p.path === key)?.bed; }
   private gates = new Map<string, THREE.Vector3>(); // claim path -> gate point, rebuilt with the fences
   fenceGate(path: string) {
     const claim = this.snap?.claims.find((c) => c.path === path || (c.path.endsWith('/') && path.startsWith(c.path)));
@@ -172,6 +175,7 @@ export class GardenWorld implements WorldLookup {
   setMotion(m: number) { this.actors.motion = m; this.fx.reducedMotion = m < 0.5; }
 
   private fenceRect(claimPath: string) {
+    claimPath = this.hedgeOf.get(claimPath) ?? claimPath;
     const hit = this.layout.plants.filter((p) => p.path === claimPath || (claimPath.endsWith('/') && p.path.startsWith(claimPath)));
     if (!hit.length) return undefined;
     const m = 0.95;
@@ -208,11 +212,15 @@ export class GardenWorld implements WorldLookup {
   }
 
   private syncLayout() {
-    this.layout = layoutGarden(this.snap.plants);
+    const folded = collapseGenerated(this.snap.plants);
+    this.viewPlants = folded.plants; this.hedgeOf = folded.hedgeOf;
+    this.layout = layoutGarden(this.viewPlants);
     this.plantXZ.clear();
     for (const p of this.layout.plants) this.plantXZ.set(p.path, new THREE.Vector3(p.x, 0, p.z));
+    for (const [file, hedge] of this.hedgeOf) { const at = this.plantXZ.get(hedge); if (at) this.plantXZ.set(file, at); }
     this.extent = Math.max(10, Math.max(this.layout.width, this.layout.depth) / 2 + 2);
-    const key = JSON.stringify(this.layout.beds);
+    const hedges = this.layout.plants.filter((p) => speciesOf(p.path) === 'clover');
+    const key = JSON.stringify([this.layout.beds, hedges]);
     if (key !== this.layoutKey) {
       this.layoutKey = key;
       disposeGeometries(this.bedGroup);
@@ -220,10 +228,10 @@ export class GardenWorld implements WorldLookup {
       for (const el of this.bedLabels) this.labels.remove(el);
       this.bedLabels = [];
       for (const b of this.layout.beds) {
-        this.buildBed(b);
-        const lp = new THREE.Vector3(b.x, 0.5, b.z + b.d / 2 + 0.2);
-        this.bedLabels.push(this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => lp, 'label bed'));
+        const sign = this.buildBed(b, this.layout.plants.filter((p) => p.bed === b.name));
+        this.bedLabels.push(this.labels.add((b.greenhouse ? `${b.name} (greenhouse)` : b.name).replace(/^(.{22}).+$/, '$1…'), () => sign, 'label bed'));
       }
+      for (const h of hedges) { const at = new THREE.Vector3(h.x, 0.75, h.z); this.bedLabels.push(this.labels.add('generated', () => at, 'label plant')); }
       mergeByMaterial(this.bedGroup);
       this.nav = new Nav(this.layout.beds);
       const hf = this.homeFrame;
@@ -235,10 +243,25 @@ export class GardenWorld implements WorldLookup {
     this.onLayout(this.layout);
   }
 
-  /** A raised bed: wooden border and corner posts, tilled soil with furrows; the tests bed gets a glass greenhouse. */
-  private buildBed(b: { x: number; z: number; w: number; d: number; greenhouse: boolean }) {
-    const t = 0.28, h = 0.42, wood = mat(PALETTE.wood), post = mat(PALETTE.woodDark), g = this.bedGroup;
+  /**
+   * A bed, dressed by bedStyleOf: a raised bed with a border from a small palette (picked by folder name), tilled
+   * soil and a signboard; the tests bed gets a glass greenhouse; root files sit on stepping stones. Returns where
+   * the folder-name label goes (on the signboard).
+   */
+  private buildBed(b: BedLayout, plants: PlantLayout[]): THREE.Vector3 {
+    const style = bedStyleOf(b.name), g = this.bedGroup;
     const sh = (o: THREE.Mesh, cast = true) => { o.castShadow = cast; o.receiveShadow = true; return o; };
+    // signboard at the front-left corner, just outside the bed
+    const sx0 = b.x - b.w / 2 + 0.55, sz0 = b.z + b.d / 2 + 0.3;
+    g.add(sh(mesh(geo.box, mat(PALETTE.woodDark), 0.1, 0.8, 0.1, sx0, 0.4, sz0)), sh(mesh(geo.box, mat(PALETTE.woodLight), 0.95, 0.42, 0.07, sx0, 0.78, sz0 + 0.06)));
+    const sign = new THREE.Vector3(sx0, 0.78, sz0 + 0.1);
+    if (style.kind === 'stones') {
+      g.add(sh(mesh(geo.box, mat(PALETTE.path), b.w - 0.4, 0.04, b.d - 0.4, b.x, 0.02, b.z), false));
+      for (const p of plants) g.add(sh(mesh(geo.cyl, mat(PALETTE.stone), 0.62, 0.14, 0.55, p.x, 0.07, p.z), false));
+      return sign;
+    }
+    const t = 0.28, h = 0.42, g2 = style.kind === 'greenhouse';
+    const wood = mat(g2 ? PALETTE.wood : style.border), post = mat(g2 ? PALETTE.woodDark : style.post);
     g.add(sh(mesh(geo.box, mat(PALETTE.soil), b.w - t * 2, 0.34, b.d - t * 2, b.x, 0.17, b.z), false));
     // furrows between plant rows (rows sit SPACING apart from BED_PAD)
     const rows = Math.max(1, Math.round((b.d - 2) / 1.7));
@@ -249,7 +272,7 @@ export class GardenWorld implements WorldLookup {
     g.add(sh(mesh(geo.box, wood, b.w, h, t, b.x, h / 2, b.z - b.d / 2 + t / 2)), sh(mesh(geo.box, wood, b.w, h, t, b.x, h / 2, b.z + b.d / 2 - t / 2)));
     g.add(sh(mesh(geo.box, wood, t, h, b.d - t * 2, b.x - b.w / 2 + t / 2, h / 2, b.z)), sh(mesh(geo.box, wood, t, h, b.d - t * 2, b.x + b.w / 2 - t / 2, h / 2, b.z)));
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(sh(mesh(geo.box, post, 0.36, h + 0.14, 0.36, b.x + sx * (b.w / 2 - 0.12), (h + 0.14) / 2, b.z + sz * (b.d / 2 - 0.12))));
-    if (!b.greenhouse) return;
+    if (!g2) return sign;
     const frame = mat(PALETTE.frame), pane = mat(PALETTE.glass, { opacity: 0.2 }), H = 2.3;
     const hw = b.w / 2, hd = b.d / 2;
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(mesh(geo.box, frame, 0.1, H, 0.1, b.x + sx * hw, H / 2 + 0.2, b.z + sz * hd));
@@ -260,6 +283,7 @@ export class GardenWorld implements WorldLookup {
     }
     g.add(mesh(geo.box, frame, b.w, 0.1, 0.1, b.x, H + 0.2 + 0.85, b.z)); // ridge beam
     g.add(mesh(geo.box, post, 0.8, 1.7, 0.05, b.x, 1.05, b.z + hd + 0.02)); // door
+    return sign;
   }
 
   private isClaimed(path: string) {
@@ -274,7 +298,7 @@ export class GardenWorld implements WorldLookup {
       for (const v of this.plantLabels.values()) this.labels.remove(v.el);
       this.plantLabels.clear(); return;
     }
-    const byPath = new Map(this.snap.plants.map((p) => [p.path, p]));
+    const byPath = new Map(this.viewPlants.map((p) => [p.path, p]));
     const want = this.layout.plants.filter((p) => this.field.get(p.path)?.full).slice(0, 60);
     const keep = new Set(want.map((p) => p.path));
     for (const [path, v] of this.plantLabels) if (!keep.has(path)) { this.labels.remove(v.el); this.plantLabels.delete(path); }
@@ -295,9 +319,10 @@ export class GardenWorld implements WorldLookup {
   private syncPlants(reset: boolean) {
     const now = this.time, plants = this.layout.plants;
     this.field.keep(new Set(plants.map((p) => p.path)));
-    const byPath = new Map(this.snap.plants.map((p) => [p.path, p]));
+    const byPath = new Map(this.viewPlants.map((p) => [p.path, p]));
     const lod = !this.expandAll && plants.length > LOD_LIMIT;
     const live = new Set<string>();
+    const colorOf = new Map(this.snap.members.map((m) => [m.handle, m.color]));
     if (lod) for (const a of this.snap.agents) if (a.currentPath && a.status !== 'dormant') live.add(a.currentPath);
     for (const lp of plants) {
       const pv = byPath.get(lp.path)!;
@@ -305,10 +330,11 @@ export class GardenWorld implements WorldLookup {
       const hold = this.pendingBloom.get(lp.path);
       if (stage === 'bloom' && hold !== undefined) { if (performance.now() < hold) stage = 'bud'; else this.pendingBloom.delete(lp.path); }
       // Large gardens: quiet plants shrink to ground cover; anything that matters stays full.
-      const full = !lod || stage === 'bud' || stage === 'bloom' || pv.bugs > 0 || this.snap.at - pv.lastActivity < ACTIVE_MS || live.has(lp.path) || this.isClaimed(lp.path);
-      const r = this.field.upsert(lp.path, lp.x, lp.z, lp.size, stage, pv.bugs, full, now, reset);
+      const full = !lod || speciesOf(lp.path) === 'clover' || stage === 'bud' || stage === 'bloom' || pv.bugs > 0 || this.snap.at - pv.lastActivity < ACTIVE_MS || live.has(lp.path) || this.isClaimed(lp.path);
+      const owner = pv.lastTouchedBy ? colorOf.get(pv.lastTouchedBy) : undefined;
+      const r = this.field.upsert(lp.path, lp.x, lp.z, lp.size, stage, pv.bugs, full, now, reset, owner);
       if (r.inst.stage === 'bloom' && r.wasStage !== undefined && r.wasStage !== 'bloom') {
-        this.fx.burst(this.tmpV.set(lp.x, 1, lp.z), flowerColor(lp.path).getHex(), 50, 2.6, 3);
+        this.fx.burst(this.tmpV.set(lp.x, 1, lp.z), r.inst.bloom.getHex(), 50, 2.6, 3);
       }
       if (pv.bugs < r.bugsBefore && r.bugsBefore > 0) this.fx.burst(this.tmpV.set(lp.x, 0.8, lp.z), 0x222222, 12, 1.2, 4);
     }
@@ -390,7 +416,7 @@ export class GardenWorld implements WorldLookup {
   private syncWarnIcons() {
     const want = new Set<string>();
     for (const lp of this.layout.plants) {
-      const pv = this.snap.plants.find((p) => p.path === lp.path);
+      const pv = this.viewPlants.find((p) => p.path === lp.path);
       if (!pv || pv.bugs < 3) continue;
       want.add(lp.path);
       if (!this.warnIcons.has(lp.path)) {

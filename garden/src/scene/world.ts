@@ -10,6 +10,8 @@ import { isClick, pickAt, pickColumn, samePick, type Pick, type PickScene } from
 import type { Store, StoreUpdate } from '../data/store.ts';
 import { Actors, iconMat, type WorldLookup } from './actors.ts';
 import type { Spot } from './wander.ts';
+import { GardenLamps } from './lamps.ts';
+import { lampLevel, lampSpots } from '../lamps.ts';
 import { Labels, Particles } from './effects.ts';
 import { geo, mat, mergeByMaterial, mesh } from './materials.ts';
 import { PlantField, plantHeight } from './plantField.ts';
@@ -78,6 +80,9 @@ export class GardenWorld implements WorldLookup {
   nav = new Nav([]);
   private props!: Props;
   private boundary!: GardenBoundary;
+  private lamps!: GardenLamps;
+  /** ?hour=21 previews any time of day (sky, sun and lamps) instead of the local clock. */
+  private hourOverride = (() => { const q = new URLSearchParams(globalThis.location?.search ?? ''); const h = Number(q.get('hour')); return q.has('hour') && Number.isFinite(h) ? Math.min(24, Math.max(0, h)) : undefined; })();
   private repoName = 'our garden';
   /** The repo name painted on the arch (set by the page; repaints at once, even with no data arriving). */
   set repo(name: string) { if (name === this.repoName) return; this.repoName = name; if (this.snap) this.boundary.setSign(name, signLine(this.snap)); }
@@ -107,7 +112,7 @@ export class GardenWorld implements WorldLookup {
   private spotRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 40), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0, depthWrite: false }));
   private lockMesh = new THREE.Group();
   private pulse = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 40), new THREE.MeshBasicMaterial({ color: 0xff7a59, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
-  private baseHemi = 1.2; private baseSun = 2.7;
+  private baseHemi = 1.2; private baseSun = 2.7; private moon = new THREE.Color('#9fb3ff');
   private contact!: ContactShadows;
   private post?: Post;
   private dim = 1;
@@ -174,6 +179,7 @@ export class GardenWorld implements WorldLookup {
     const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI), mat('#8d8d8d')); shackle.position.y = 0.11;
     this.lockMesh.add(shackle); this.lockMesh.scale.setScalar(0.6); this.lockMesh.visible = false; this.scene.add(this.lockMesh);
     this.sun.position.set(16, 21, 13); this.sun.castShadow = true; this.scene.add(this.sun.target);
+    this.lamps = new GardenLamps(this.scene, this.quality);
     this.contact = new ContactShadows(this.scene); this.contact.visible = this.quality !== 'low';
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.03; // no shadow acne (moire spokes on the meadow)
@@ -262,13 +268,16 @@ export class GardenWorld implements WorldLookup {
     for (const a of u.newActivity) this.actors.onActivity(a);
     for (const e of u.events) if (e.table === 'handoffs' && e.op !== 'deleted') this.actors.onHandoff(e.row as never, e.op);
     const d = new Date(u.snapshot.at || Date.now());
-    const hour = d.getHours() + d.getMinutes() / 60;
+    const hour = this.hourOverride ?? d.getHours() + d.getMinutes() / 60;
+    // Night falls as the lamps come on: dimmer, cooler moonlight (still readable on a projector), warm lamp pools.
+    const lv = lampLevel(hour);
+    this.lamps.setLevel(lv);
     const c = this.props.setHour(hour);
     (this.scene.background as THREE.Color | null) ? (this.scene.background as THREE.Color).copy(c) : (this.scene.background = c.clone());
     (this.scene.fog as THREE.Fog).color.copy(c);
-    const night = hour < 5 || hour > 20.5;
-    this.baseHemi = night ? 1.0 : 1.2; this.baseSun = night ? 0.9 : hour > 17.5 ? 2.1 : 2.7;
-    this.sun.color.set(hour > 17.5 && hour < 20.5 ? '#ffc58a' : '#fff0d0');
+    const daySun = hour > 17.5 || hour < 7 ? 2.1 : 2.7;
+    this.baseHemi = 1.2 + (0.6 - 1.2) * lv; this.baseSun = daySun + (0.5 - daySun) * lv;
+    this.sun.color.set(hour > 17.5 && hour < 20.5 ? '#ffc58a' : '#fff0d0').lerp(this.moon, lv);
   }
 
   private syncLayout() {
@@ -314,6 +323,7 @@ export class GardenWorld implements WorldLookup {
       const shed = this.props.shed.position, sr = this.props.shed.rotation.y;
       this.fixedSpots.push({ x: shed.x + Math.sin(sr) * 2, z: shed.z + Math.cos(sr) * 2, fx: shed.x, fz: shed.z });
       this.potKey = '\u0000'; this.refreshPotSpots();
+      this.lamps.rebuild(lampSpots(fence, layoutPaths(this.layout), shed, { beds: this.layout.beds, pond: ps }));
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;

@@ -21,11 +21,11 @@ npm run build && npm run preview         # production bundle (≈ 270 KB gzip in
 | Backup, no "demo data" label | `/?source=fake&present=1&badge=0` (hides the label; only use it if you say it is a recording) |
 | Another host/db | `/?host=wss://…&db=name` |
 
-Parameters: `source=fake` (offline timeline) · `step=N` freeze on timeline frame N (0..14) · `paused=1` · `speed=N` · `loop=0` · `present=1` projector mode · `badge=0` hide the demo label · `shot=full|bed-src|botanist|plan` repeatable screenshot camera · `quality=low` · `debug=1` fps + `window.__garden` · `bench=300` synthetic garden · `nogl=1` simulate no WebGL · `repo=<name>` name on the arch sign (default: the newest test run's repo folder, else the db name without `sprout-`) · `ao=0` / `bloom=0` turn off ambient occlusion / bloom (`quality=low` turns off all post-processing and contact shadows).
+Parameters: `source=fake` (offline timeline) · `step=N` freeze on timeline frame N (0..14) · `paused=1` · `speed=N` · `loop=0` · `present=1` projector mode · `badge=0` hide the demo label · `shot=full|bed-src|botanist|plan` repeatable screenshot camera · `quality=low` · `debug=1` fps + `window.__garden` · `bench=300` synthetic garden · `nogl=1` simulate no WebGL · `repo=<name>` name on the arch sign (default: the newest test run's repo folder, else the db name without `sprout-`) · `hour=21` preview any time of day (sky, moonlight and the garden lamps, which fade on at dusk) · `ao=0` / `bloom=0` turn off ambient occlusion / bloom (`quality=low` turns off all post-processing and contact shadows).
 
 ## Keys
 
-**Click anything** (plant, bed, gardener, botanist, task pot, pond or lily pad, the arch) to inspect it in the shed; hover for a one-line tooltip; `Esc` or ← goes back. A drag never selects. In `present=1` the camera slowly circles after a minute without input.
+**Click anything** (plant, bed, gardener, botanist, task pot, pond or lily pad, the arch) to inspect it in the shed; hover for a one-line tooltip and a ring (plants also glow); `Esc` or ← goes back. A drag never selects. Every teammate always has a bot: awake beside them while their Claude works, asleep at home (z z z) otherwise. Idle gardeners wander the garden; calm mode keeps them home. In `present=1` the camera slowly circles after a minute without input.
 
 Press `?` in the page. Short version: drag orbit, arrows/Q/E/+/- camera, `1 2 3` views, `F` reframe, `D` director, `P` plan, `S` shed, `C` cue strip, `H` hide UI, `L` plant labels, `B` expand all plants, `M` calm, `K` contrast, `Space` and `←/→` step the demo timeline.
 

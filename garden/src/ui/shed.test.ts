@@ -127,3 +127,16 @@ test('review fix: member colours are whitelisted before going into style attribu
   assert.equal(safeColor('red;background:url(//evil.example/x)'), '#888888');
   assert.doesNotMatch(shedHtml(full({ members: [{ handle: 'x', color: 'red;background:url(//e/x)', online: true, paused: false, lastSeen: 0 }] }), opts, view), /url\(/);
 });
+
+test('header: the repo name is the title, with connection and freshness beneath it', () => {
+  const h = shedHtml(full(), opts, view);
+  const head = h.slice(0, h.indexOf('shed-scroll'));
+  assert.match(head, /<h2[^>]*>mhacks<\/h2>/);
+  assert.match(head, /data-fresh/);
+  assert.match(head, /live/);
+});
+
+test('each person wears a plant tag in their colour with their initial', () => {
+  const h = shedHtml(full(), opts, view);
+  assert.match(h, /class="tag"[^>]*>T</); // trisha
+});

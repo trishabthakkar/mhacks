@@ -72,7 +72,7 @@ function teamHtml(s: GardenSnapshot, o: ShedOptions, expanded: ReadonlySet<strin
     ].join('');
     const following = o.following === m.handle || (o.following?.startsWith('agent:') && s.agents.some((a) => `agent:${a.sessionId}` === o.following && a.handle === m.handle));
     return `<li class="person${following ? ' following' : ''}" style="--c:${safeColor(m.color)}">
-      <div class="top"><button class="name" data-select="member:${esc(m.handle)}" aria-label="Inspect ${esc(m.handle)}">${esc(m.handle)}</button>
+      <div class="top"><span class="tag" aria-hidden="true">${esc((m.handle[0] ?? '?').toUpperCase())}</span><button class="name" data-select="member:${esc(m.handle)}" aria-label="Inspect ${esc(m.handle)}">${esc(m.handle)}</button>
         <span class="pill ${st}">${st}</span>
         <button class="icon sm" data-focus="member:${esc(m.handle)}" aria-label="Follow ${esc(m.handle)} with the camera" title="Follow with the camera">🎥</button></div>
       <div class="what">${what}</div>${badges ? `<div class="badges">${badges}</div>` : ''}
@@ -132,11 +132,11 @@ export function shedHtml(s: GardenSnapshot, o: ShedOptions, view: { tab: Tab; fi
     : `<div class="tabs" role="tablist">${(['team', 'activity'] as const).map((t) => `<button role="tab" data-tab="${t}" aria-selected="${view.tab === t}" class="${view.tab === t ? 'on' : ''}">${t === 'team' ? 'Team' : 'Activity'}</button>`).join('')}</div>
        <div role="tabpanel">${view.tab === 'team' ? teamHtml(s, o, view.expanded) : activityHtml(s, view.filter, view.lastMaxId)}</div>`;
   return `<div class="shed-head">
-      <span aria-hidden="true">🌱</span><h2>Garden shed</h2>
-      <span class="conn"><span class="conn-dot${live ? ' live' : ''}" aria-hidden="true"></span><span class="conn-text" role="status">${esc(o.connection)}</span></span>
+      <div class="shed-title"><h2 title="Garden shed">${esc(o.repo || 'Garden')}</h2>
+        <p class="conn"><span class="conn-dot${live ? ' live' : ''}" aria-hidden="true"></span><span class="conn-text" role="status">${esc(o.connection)}</span><span class="fresh" data-fresh>updated just now</span></p></div>
       <button class="icon" data-toggle aria-label="${o.collapsed ? 'Open' : 'Collapse'} the garden shed (S)" aria-expanded="${!o.collapsed}">${o.collapsed ? '▤' : '✕'}</button>
     </div>
-    <div class="shed-scroll" tabindex="-1">${attn}${main}<div class="fresh sub" data-fresh>updated just now</div></div>`;
+    <div class="shed-scroll" tabindex="-1">${attn}${main}</div>`;
 }
 
 /** Esc inside the shed: leave the inspector first; only then collapse the panel. */

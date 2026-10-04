@@ -4,12 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sprout garden</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet" />
     <style>
-      :root { --ink:#2b2a24; --card:rgba(255,252,243,.92); --line:rgba(60,50,30,.18); --ctl:rgba(43,42,36,.62); }
+      :root { --ink:#1f3326; --card:rgba(243,247,241,.92); --line:rgba(185,154,107,.38); --ctl:rgba(31,51,38,.6); --ui-font:"Bricolage Grotesque", ui-rounded, "Avenir Next", system-ui, sans-serif; }
       :focus-visible { outline:3px solid #2a6df4; outline-offset:2px; }
       .sr-only { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
       * { box-sizing: border-box; }
-      html, body { margin:0; height:100%; overflow:hidden; font-family: ui-rounded, "Avenir Next", system-ui, sans-serif; color:var(--ink); background:#cfe6ee; }
+      html, body { margin:0; height:100%; overflow:hidden; font-family: var(--ui-font); color:var(--ink); background:#cfe6ee; }
       #app { position:fixed; inset:0; }
       #app canvas { display:block; }
       #app::after { content:''; position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(20,30,20,.28) 100%); } /* soft vignette */
@@ -76,7 +78,11 @@
       button.cue.done { background:#d8f3dc; border-color:#74c69d; } button.cue.partial { background:#fff3c4; border-color:#d9b94a; } button.cue.cur { outline:3px solid #2a6df4; outline-offset:1px; font-weight:700; } button.cue.reset { opacity:.6; }
       #help, #guide { position:fixed; inset:0; z-index:12; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; } #help[hidden], #guide[hidden] { display:none; }
       .guide-card { background:var(--card); border-radius:16px; padding:18px 26px; width:min(860px, 94vw); max-height:90vh; overflow:auto; } .guide-card h2 { margin:0 0 10px; } .guide-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px 26px; } .guide-card h3 { margin:0 0 4px; font-size:13px; text-transform:uppercase; letter-spacing:.05em; opacity:.65; } .guide-card ul { list-style:none; margin:0; padding:0; } .guide-card li { display:flex; gap:8px; align-items:baseline; font-size:15px; line-height:1.35; padding:3px 0; } .guide-card li i { font-style:normal; flex:none; width:1.4em; } .guide-card li b { margin-right:6px; } .guide-card .sub { margin-top:12px; }
-      #keys button { all:unset; cursor:pointer; font-weight:700; padding:1px 7px; border:1px solid var(--line); border-radius:999px; background:#fff; } #keys button:focus-visible { outline:3px solid #2a6df4; }
+      #keys { display:flex; align-items:center; gap:10px; padding:5px 8px 5px 6px; border-radius:12px; border-color:rgba(255,255,255,.7); backdrop-filter:blur(10px); box-shadow:0 10px 26px -14px rgba(24,48,30,.5); }
+      #keys button { all:unset; cursor:pointer; font-weight:650; padding:3px 10px; border-radius:8px; color:var(--ink); } #keys button:hover { background:rgba(31,51,38,.07); } #keys button:focus-visible { outline:3px solid #2a6df4; }
+      #keys .hints { display:flex; gap:10px; padding-left:10px; border-left:1px solid var(--line); color:var(--ctl); font-size:12px; white-space:nowrap; }
+      #keys kbd { font:700 11px/1 var(--ui-font); display:inline-block; min-width:18px; padding:3px 5px 4px; margin-right:4px; text-align:center; color:var(--ink); background:#fff; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; }
+      @media (max-width: 899px) { #keys .hints { display:none; } }
       .help-card { background:var(--card); border-radius:16px; padding:18px 26px; max-width:520px; max-height:90vh; overflow:auto; } .help-card h2 { margin:0 0 8px; } .help-card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 18px; margin:0; } .help-card dt { font-weight:700; font-family:ui-monospace,Menlo,monospace; font-size:13px; } .help-card dd { margin:0; }
       body.no-badge #status { display:none; }
       #status button { font:inherit; margin-left:8px; padding:0 10px; border-radius:999px; border:1px solid var(--ctl); background:#fff; cursor:pointer; }
@@ -93,7 +99,7 @@
     <main id="app" aria-label="Garden view"></main>
     <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
     <p id="sr-summary" class="sr-only"></p>
-    <div id="topbar"><div id="keys" aria-label="Keyboard shortcuts"><button data-open="help">? Keys</button> <button data-open="guide">G Guide</button> · <b>P</b> board · <b>S</b> shed · <b>D</b> director · <b>T</b> timelapse</div><div id="banner" role="status" hidden></div></div>
+    <div id="topbar"><div id="keys" aria-label="Keyboard shortcuts"><button data-open="guide">Guide</button><button data-open="help">Keys</button><span class="hints" aria-label="Shortcuts"><span><kbd>P</kbd>Board</span><span><kbd>S</kbd>Shed</span><span><kbd>D</kbd>Director</span><span><kbd>T</kbd>Timelapse</span></span></div><div id="banner" role="status" hidden></div></div>
     <aside id="shed" aria-label="Garden shed noticeboard"></aside>
     <div id="plan" hidden role="region" aria-label="Garden plan"></div>
     <div id="empty" hidden><b>No files planted yet</b><br/>Run <code>sprout join</code> in your repo and the garden fills in.</div>

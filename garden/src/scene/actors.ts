@@ -11,7 +11,7 @@ const CHAR_SCALE = 2.3; // Kenney characters are ~0.6 units tall; our people are
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
-import { botFor, botHandleOf, followHandle } from '../bots.ts';
+import { botFor, botHandleOf, followHandle, sleepZScale } from '../bots.ts';
 import { clipWords, tidy } from '../ui/fmt.ts';
 import { spiritText } from './spiritText.ts';
 
@@ -243,6 +243,8 @@ export class Actors {
   private bubblePos = new THREE.Vector3();
   private bp = new THREE.Vector3();
   motion = 1;
+  /** Camera distance to its target (set by the world each frame): sleeping z's grow when it is far. */
+  viewDist = 20;
   /** Latest place something happened, for director mode. */
   focus: THREE.Vector3 | undefined;
 
@@ -582,10 +584,12 @@ export class Actors {
         b.body.position.y = 0.18; b.body.scale.y = 1 + 0.03 * Math.sin(t * 1.4) * mo;
         b.obj.rotation.x = settled ? 0.25 : 0;
         for (const e of b.rig.eyes) e.scale.y = 0.03 * 0.25;
+        const zk = sleepZScale(this.viewDist);
         b.rig.zs.forEach((z, i) => {
           z.visible = settled;
           const ph = mo < 0.5 ? i / 3 : (t / 2.5 + i / 3) % 1;
-          z.position.set(0.15 + ph * 0.25, 0.75 + ph * 0.7, 0); z.material.opacity = mo < 0.5 ? 0.8 : 1 - ph;
+          z.position.set((0.15 + ph * 0.25) * zk, 0.75 + ph * 0.7 * zk, 0); z.material.opacity = mo < 0.5 ? 0.8 : 1 - ph;
+          z.scale.setScalar((0.3 + i * 0.06) * zk);
         });
         b.obj.scale.setScalar(1);
         continue;

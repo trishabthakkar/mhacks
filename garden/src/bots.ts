@@ -34,3 +34,6 @@ export function botLine(s: GardenSnapshot, handle: string): string {
   if (asleep) return `Claude asleep · last active ${ago(s.at - agent.lastSeen)}`;
   return `Claude ${AWAKE[agent.status] ?? agent.status}${agent.currentPath ? ` on ${base(agent.currentPath)}` : ''}`;
 }
+
+/** How much to enlarge a sleeping bot's z z z for a camera this far away: 1× up close, up to 3× from the overview. */
+export const sleepZScale = (dist: number) => Math.min(3, Math.max(1, dist / 12));

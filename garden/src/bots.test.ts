@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentView, GardenSnapshot } from '../../shared/types.ts';
-import { botFor, botHandleOf, botLine, followHandle } from './bots.ts';
+import { botFor, botHandleOf, botLine, followHandle, sleepZScale } from './bots.ts';
 
 const NOW = 10_000_000;
 const ag = (o: Partial<AgentView>): AgentView => ({ sessionId: 's', handle: 'trisha', kind: 'claude', status: 'idle', currentAction: '', lastSeen: 0, ...o });
@@ -52,4 +52,11 @@ test('followHandle: only the session the bot shows, while awake-ish (an ended se
   assert.equal(followHandle(snap([ag({ sessionId: 'x', status: 'dormant' })]), 'x'), undefined);
   assert.equal(followHandle(snap([ag({ sessionId: 'i', status: 'idle' })]), 'i'), 'trisha');
   assert.equal(followHandle(s, 'nope'), undefined);
+});
+
+test('sleepZScale: z z z grow when the camera is far, so a sleeping bot reads from the overview', () => {
+  assert.equal(sleepZScale(5), 1);
+  assert.equal(sleepZScale(12), 1);
+  assert.ok(sleepZScale(30) > 2 && sleepZScale(30) <= 3);
+  assert.equal(sleepZScale(200), 3);
 });

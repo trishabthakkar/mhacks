@@ -172,8 +172,8 @@ export class GardenWorld implements WorldLookup {
     this.shaft.position.y = 3.6; this.scene.add(this.shaft);
     this.pulse.rotation.x = -Math.PI / 2; this.pulse.visible = false; this.scene.add(this.pulse);
     this.spotRing.rotation.x = -Math.PI / 2; this.spotRing.position.y = 0.32; this.scene.add(this.spotRing);
-    // rings draw over soil and leaves (a plant's ring would otherwise sit inside its mound)
-    for (const r of [this.selRing, this.hoverRing]) { r.rotation.x = -Math.PI / 2; r.visible = false; (r.material as THREE.Material).depthTest = false; r.renderOrder = 10; this.scene.add(r); }
+    // rings sit just above the soil (ringY), so they stay depth-tested: people and trees in front still hide them
+    for (const r of [this.selRing, this.hoverRing]) { r.rotation.x = -Math.PI / 2; r.visible = false; this.scene.add(r); }
     this.hoverEl.className = 'tip'; this.hoverEl.setAttribute('aria-hidden', 'true');
     this.lockMesh.add(mesh(geo.box, mat('#c9a227'), 0.28, 0.22, 0.12, 0, 0, 0));
     const shackle = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 12, Math.PI), mat('#8d8d8d')); shackle.position.y = 0.11;
@@ -324,6 +324,7 @@ export class GardenWorld implements WorldLookup {
       this.fixedSpots.push({ x: shed.x + Math.sin(sr) * 2, z: shed.z + Math.cos(sr) * 2, fx: shed.x, fz: shed.z });
       this.potKey = '\u0000'; this.refreshPotSpots();
       this.lamps.rebuild(lampSpots(fence, layoutPaths(this.layout), shed, { beds: this.layout.beds, pond: ps }));
+      this.lamps.prewarm(this.renderer, this.camera); // no stutter when the lamps switch on at dusk
       this.rig.setLand(this.props.landRadius);
       if (!this.rig.userMoved) this.refit(this.layoutFirst);
       this.layoutFirst = false;
@@ -751,6 +752,7 @@ export class GardenWorld implements WorldLookup {
       this.spotRing.position.set(shot.point.x, 0.32, shot.point.z); this.spotRing.scale.setScalar(1 + Math.sin(t * 3) * 0.06 * mo);
       if (!this.rig.userMoved && !this.calm) this.rig.pushIn(shot.point, 6.6);
     } else if (this.rig.cinema) this.rig.release();
+    this.actors.viewDist = this.camera.position.distanceTo(this.controls.target);
     this.field.update(t, mo);
     this.pond.update(dt, mo);
     this.tasks.update(t, mo);

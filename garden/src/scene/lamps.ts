@@ -24,7 +24,7 @@ export class GardenLamps {
   private lights: THREE.PointLight[] = [];
   private postMat = new THREE.MeshStandardMaterial({ color: PALETTE.woodDark, flatShading: true, roughness: 0.9 });
   private bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff1c9, emissive: WARM, emissiveIntensity: 0 });
-  private glowMat = new THREE.MeshBasicMaterial({ map: glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
+  private glowMat = new THREE.MeshBasicMaterial({ map: typeof document === 'undefined' ? null : glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
   private glowGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private level = -1;
 
@@ -53,6 +53,20 @@ export class GardenLamps {
     const real = lamps.filter((l) => l.real).slice(0, this.lights.length);
     this.lights.forEach((p, i) => { const l = real[i]; p.visible = !!l; if (l) p.position.set(l.x, height(l) + 0.3, l.z); });
     const lv = this.level; this.level = -1; this.setLevel(Math.max(0, lv));
+  }
+
+  private warmed = false;
+  /**
+   * Compile the scene once with the lamp lights on, so switching them on at dusk reuses the cached shaders instead of
+   * recompiling every lit material mid-demo. Call after the first rebuild; it runs once.
+   */
+  prewarm(renderer: Pick<THREE.WebGLRenderer, 'compile'>, camera: THREE.Camera) {
+    if (this.warmed || !this.lights.some((p) => p.visible)) return;
+    this.warmed = true;
+    const was = this.group.visible;
+    this.group.visible = true;
+    try { renderer.compile(this.group.parent ?? this.group, camera); } catch { /* best effort */ }
+    this.group.visible = was;
   }
 
   /** 0 = day (hidden) … 1 = full night. */

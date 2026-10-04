@@ -37,3 +37,13 @@ export function botLine(s: GardenSnapshot, handle: string): string {
 
 /** How much to enlarge a sleeping bot's z z z for a camera this far away: 1× up close, up to 3× from the overview. */
 export const sleepZScale = (dist: number) => Math.min(3, Math.max(1, dist / 12));
+
+/** Files a member touched in the last `windowMs` (any activity with a path), newest first, no repeats, at most `max`. */
+export function recentFiles(s: GardenSnapshot, handle: string, windowMs = 30 * 60_000, max = 4): string[] {
+  const out: string[] = [];
+  for (const a of s.activity.filter((x) => x.handle === handle && x.path && s.at - x.at <= windowMs).sort((x, y) => y.at - x.at)) {
+    if (!out.includes(a.path!)) out.push(a.path!);
+    if (out.length >= max) break;
+  }
+  return out;
+}

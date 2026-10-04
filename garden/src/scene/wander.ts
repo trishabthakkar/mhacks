@@ -36,3 +36,18 @@ export function roamSpot(t: number, seed: number, spots: Spot[]): Spot | undefin
   const count = odd ? Math.floor(n / 2) : Math.ceil(n / 2);
   return spots[odd + 2 * Math.min(count - 1, Math.floor(hash2(j, seed + 17) * count))];
 }
+
+const WORK_SLOT = 10; // seconds at one file before (maybe) moving to another
+
+/**
+ * Which file a working gardener stands at, at time t: mostly the file their Claude is editing now (about 70% of
+ * slots), otherwise one of the task's other files; with no current file (running commands, reading) they walk the
+ * task's files in turn. Undefined when there is nothing to go to.
+ */
+export function workSpot(t: number, seed: number, current: string | undefined, taskPaths: string[]): string | undefined {
+  const k = Math.floor((Math.max(0, t) + seed * 1.9) / WORK_SLOT);
+  const others = taskPaths.filter((p) => p !== current);
+  if (current && (!others.length || hash2(k, seed) < 0.7)) return current;
+  if (!others.length) return undefined;
+  return current ? others[Math.floor(hash2(k, seed + 7) * others.length) % others.length] : others[(seed + k) % others.length];
+}

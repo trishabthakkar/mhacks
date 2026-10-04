@@ -214,6 +214,11 @@ export class GardenWorld implements WorldLookup {
 
   // ---- WorldLookup ----
   plantPos(path: string) { return this.plantXZ.get(path); }
+  workPos(path: string) {
+    const at = this.plantXZ.get(path); if (at) return at;
+    const pre = path.endsWith('/') ? path : `${path}/`, inside = this.layout.plants.find((p) => p.path.startsWith(pre));
+    return inside ? this.plantXZ.get(inside.path) : undefined;
+  }
   taskPlantPos(handle: string) { const t = this.snap ? currentTaskOf(this.snap, handle) : undefined; return t ? this.tasks.posOf(t.id) : undefined; }
   bedCenter(bed: string) { const b = this.layout.beds.find((x) => x.name === bed); return b ? new THREE.Vector3(b.x, 0, b.z) : undefined; }
   bedOfPath(path: string) { const key = this.hedgeOf.get(path) ?? path; return this.layout.plants.find((p) => p.path === key)?.bed; }

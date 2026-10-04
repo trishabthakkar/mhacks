@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentView, GardenSnapshot } from '../../shared/types.ts';
-import { botFor, botHandleOf, botLine, followHandle, sleepZScale } from './bots.ts';
+import { botFor, botHandleOf, botLine, followHandle, recentFiles, sleepZScale } from './bots.ts';
 
 const NOW = 10_000_000;
 const ag = (o: Partial<AgentView>): AgentView => ({ sessionId: 's', handle: 'trisha', kind: 'claude', status: 'idle', currentAction: '', lastSeen: 0, ...o });
@@ -59,4 +59,15 @@ test('sleepZScale: z z z grow when the camera is far, so a sleeping bot reads fr
   assert.equal(sleepZScale(12), 1);
   assert.ok(sleepZScale(30) > 2 && sleepZScale(30) <= 3);
   assert.equal(sleepZScale(200), 3);
+});
+
+test('recentFiles: files this member touched in the last 30 min, newest first, no repeats, capped', () => {
+  const act = (id: number, handle: string, path: string | undefined, ago: number, kind = 'edit') => ({ id, at: NOW - ago, handle, kind, path, detail: '' });
+  const s = { ...snap([]), activity: [
+    act(1, 'trisha', 'old.ts', 40 * 60_000), act(2, 'trisha', 'a.ts', 5 * 60_000), act(3, 'trisha', 'b.ts', 4 * 60_000, 'read'),
+    act(4, 'trisha', 'a.ts', 3 * 60_000), act(5, 'seno', 'z.ts', 60_000), act(6, 'trisha', undefined, 60_000, 'bash'),
+    act(7, 'trisha', 'c.ts', 2 * 60_000), act(8, 'trisha', 'd.ts', 60_000), act(9, 'trisha', 'e.ts', 30_000),
+  ] } as unknown as GardenSnapshot;
+  assert.deepEqual(recentFiles(s, 'trisha'), ['e.ts', 'd.ts', 'c.ts', 'a.ts']);
+  assert.deepEqual(recentFiles(s, 'nobody'), []);
 });

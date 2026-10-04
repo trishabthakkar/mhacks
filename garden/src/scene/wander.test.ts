@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { idleSpot, roamSpot, tendSpot } from './wander.ts';
+import { idleSpot, roamSpot, tendSpot, workSpot } from './wander.ts';
 
 const key = (p: { x: number; z: number }) => `${p.x.toFixed(3)},${p.z.toFixed(3)}`;
 
@@ -74,4 +74,29 @@ test('roamSpot: stays cheap an hour in', () => {
   const t0 = performance.now();
   for (let i = 0; i < 2000; i++) roamSpot(3600 + i, i % 9, spots);
   assert.ok(performance.now() - t0 < 500);
+});
+
+const tally = (fn: (t: number) => string | undefined, secs = 600) => { const c = new Map<string, number>(); for (let t = 0; t < secs; t += 0.5) { const p = fn(t) ?? '∅'; c.set(p, (c.get(p) ?? 0) + 1); } return c; };
+
+test('workSpot: with a file being edited, most of the time there, but it also visits the task\'s other files', () => {
+  const c = tally((t) => workSpot(t, 5, 'a.ts', ['a.ts', 'b.ts', 'c.ts']));
+  const total = [...c.values()].reduce((x, y) => x + y, 0);
+  assert.ok(c.get('a.ts')! / total > 0.55 && c.get('a.ts')! / total < 0.85, JSON.stringify([...c]));
+  assert.ok(c.has('b.ts') && c.has('c.ts'));
+  assert.ok(!c.has('∅'));
+});
+
+test('workSpot: no current file (running commands, reading) → walks between the task\'s files', () => {
+  const c = tally((t) => workSpot(t, 2, undefined, ['a.ts', 'b.ts', 'c.ts']));
+  for (const p of ['a.ts', 'b.ts', 'c.ts']) assert.ok((c.get(p) ?? 0) > 100, JSON.stringify([...c]));
+  let changes = 0, prev = workSpot(0, 2, undefined, ['a.ts', 'b.ts']);
+  for (let t = 0.5; t < 120; t += 0.5) { const p = workSpot(t, 2, undefined, ['a.ts', 'b.ts']); if (p !== prev) changes++; prev = p; }
+  assert.ok(changes >= 8 && changes <= 20, String(changes)); // moves every ~6–14 s, not every frame
+});
+
+test('workSpot: only the current file, or nothing at all', () => {
+  assert.equal(workSpot(33, 1, 'a.ts', []), 'a.ts');
+  assert.equal(workSpot(33, 1, undefined, []), undefined);
+  assert.equal(workSpot(33, 1, undefined, ['only.ts']), 'only.ts');
+  assert.equal(workSpot(42, 3, 'a.ts', ['b.ts']), workSpot(42, 3, 'a.ts', ['b.ts'])); // deterministic
 });

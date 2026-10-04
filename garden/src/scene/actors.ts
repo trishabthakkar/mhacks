@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Pick } from '../pick.ts';
 import type { ActivityView, AgentView, GardenSnapshot, MessageView } from '../../../shared/types.ts';
 import { geo, hashString, mat, mesh } from './materials.ts';
-import { idleSpot, roamSpot, tendSpot, type Spot } from './wander.ts';
+import { idleSpot, roamSpot, tendSpot, workSpot, type Spot } from './wander.ts';
 import { CharacterKit, type Character } from './characters.ts';
 import { BOTANIST_MODEL, characterFor } from './characterPick.ts';
 import { applyOutfit, outfitModel } from './outfits.ts';
@@ -11,12 +11,14 @@ const CHAR_SCALE = 2.3; // Kenney characters are ~0.6 units tall; our people are
 import type { Labels, Particles } from './effects.ts';
 import type { Nav, Pt } from '../nav.ts';
 import { currentTaskOf } from '../tasks.ts';
-import { botFor, botHandleOf, followHandle, sleepZScale } from '../bots.ts';
+import { botFor, botHandleOf, followHandle, recentFiles, sleepZScale } from '../bots.ts';
 import { clipWords, tidy } from '../ui/fmt.ts';
 import { spiritText } from './spiritText.ts';
 
 export interface WorldLookup {
   plantPos(path: string): THREE.Vector3 | undefined;
+  /** Where to work on a task path: the plant itself, or for a folder ("src/api/") a plant inside it. */
+  workPos(path: string): THREE.Vector3 | undefined;
   taskPlantPos(handle: string): THREE.Vector3 | undefined;
   bedCenter(bed: string): THREE.Vector3 | undefined;
   bedOfPath(path: string): string | undefined;
@@ -295,6 +297,9 @@ export class Actors {
   }
   private botPos(sessionId: string) { return this.bots.get(botHandleOf(this.snap, sessionId) ?? '')?.obj.position; }
   /** The member's Claude session the garden shows (the busiest one); may be idle or ended. */
+  /** Recently touched files per member, recomputed on each snapshot (not per frame). */
+  private recentByHandle = new Map<string, string[]>();
+  private recent(h: string) { return this.recentByHandle.get(h) ?? []; }
   private claudeAgent(handle: string) { return botFor(this.snap, handle).agent; }
 
   clearTransient() {
@@ -338,6 +343,8 @@ export class Actors {
       return { obj: b.m.obj, m: b.m, alert: b.alert, body: b.body, asleep: true, rig: b.rig };
     }, this.scene, (b) => { (b.rig.tip.material as THREE.Material).dispose(); for (const z of b.rig.zs) z.material.dispose(); });
     for (const [h, b] of this.bots) { const f = botFor(snap, h); b.agent = f.agent; b.asleep = f.asleep; }
+    this.recentByHandle.clear();
+    for (const m of snap.members) this.recentByHandle.set(m.handle, recentFiles(snap, m.handle));
 
     // Spirits: one per subagent, hopping between its owner's task plant and the file it's on; a finished one flies home and pops.
     const subs = snap.agents.filter((a) => a.kind === 'subagent' && a.status !== 'dormant');
@@ -524,11 +531,17 @@ export class Actors {
       // Calm mode keeps everyone on one spot.
       const seed = hashString(h) % 97, wt = mo < 0.5 ? 0 : t;
       let target: THREE.Vector3 = this.home(h), kneel = false, plant: THREE.Vector3 | undefined, roam: THREE.Vector3 | undefined;
+      // Working: tend the file being edited most of the time, and walk between the task's other files (running
+      // commands or reading has no current file, so they keep moving through the task); no files yet → their task pot.
+      const working = agent?.status === 'working' && this.bots.get(h)?.asleep === false;
+      const taskFiles = working ? currentTaskOf(this.snap, h)?.paths ?? [] : [];
+      const wf = working ? workSpot(wt, seed, agent.currentPath, taskFiles.length ? taskFiles : this.recent(h)) : undefined;
+      const wp = working ? (wf ? this.world.workPos(wf) : undefined) ?? this.world.taskPlantPos(h) : undefined;
       if (ov && now <= ov.until) target = ov.pos;
-      else if (agent?.currentPath && (agent.status === 'working' || agent.status === 'blocked')) {
+      else if (wp) { const o = tendSpot(wt, seed); target = this.tgt.set(wp.x + o.x, 0, wp.z + o.z); kneel = true; plant = wp; }
+      else if (agent?.currentPath && agent.status === 'blocked') {
         const p = this.world.plantPos(agent.currentPath);
-        if (p && agent.status === 'working') { const o = tendSpot(wt, seed); target = this.tgt.set(p.x + o.x, 0, p.z + o.z); kneel = true; plant = p; }
-        else if (p) target = this.tgt.copy(p).add(Actors.OFF_GARDENER);
+        if (p) target = this.tgt.copy(p).add(Actors.OFF_GARDENER);
       } else if (agent?.status !== 'waiting') {
         // Nothing to do: wander the garden, stopping to look at things (calm mode stays near home).
         const r = mo >= 0.5 && this.bots.get(h)?.asleep !== false ? roamSpot(t, seed, this.world.roamSpots) : undefined;

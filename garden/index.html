@@ -26,27 +26,12 @@
       .bubble.big { font-size:18px; max-width:380px; padding:10px 16px; border-width:3px; box-shadow:0 8px 28px rgba(0,0,0,.3); }
       .bubble.big strong { display:block; font-size:19px; margin-bottom:2px; } .bubble.big.refused strong { color:#b3261e; } .bubble.big.bloom strong { color:#1f7a4a; }
       .bubble.big ul { margin:4px 0 0; padding-left:20px; } .bubble.big li { margin:2px 0; }
-      aside#shed { position:fixed; top:12px; right:12px; width:300px; max-height:calc(100% - 24px); display:flex; flex-direction:column; background:var(--card); border:1px solid var(--line); border-radius:14px; font-size:13px; backdrop-filter: blur(6px); }
-      aside#shed.collapsed { width:auto; }
-      aside#shed.collapsed .shed-scroll { display:none; } aside#shed.collapsed h2 { font-size:14px; }
-      .shed-head { display:flex; align-items:center; gap:8px; padding:10px 12px 6px; } .shed-head h2 { margin:0; font-size:16px; flex:1; }
-      .shed-scroll { overflow:auto; padding:0 14px 12px; }
-      .conn { font-size:11px; border-radius:999px; padding:1px 8px; border:1px solid var(--line); background:#fff; } .conn.demo { background:#ffe9a8; border-color:#d9b94a; } .conn.live { background:#d8f3dc; border-color:#74c69d; }
-      aside h3 { margin:12px 0 4px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.65; }
-      aside ul { list-style:none; margin:0; padding:0; } aside li { padding:3px 0; border-bottom:1px solid var(--line); }
-      aside li:last-child { border:0; } .sub { opacity:.65; font-size:12px; } code { font-size:12px; background:rgba(0,0,0,.06); padding:0 4px; border-radius:4px; }
+      .sub { opacity:.65; font-size:12px; } code { font-size:12px; background:rgba(0,0,0,.06); padding:0 4px; border-radius:4px; }
       button.who, button.link { all:unset; cursor:pointer; display:inline-flex; gap:6px; align-items:center; } button.who:hover, button.link:hover { text-decoration:underline; }
-      #shed ul.agents { list-style:none; margin:2px 0 0 18px; padding:0; } #shed ul.agents li { padding:1px 0; border:0; font-size:12px; }
-      #shed ul.agents code { font-size:11px; } #shed .following { background:#fff1b8; border-radius:6px; padding:1px 6px; margin-left:-6px; box-shadow:0 0 0 2px #f2c230; }
       button.who:focus-visible, button.link:focus-visible, button.icon:focus-visible, button.chip:focus-visible, .plan-bar button:focus-visible { outline:3px solid #2a6df4; outline-offset:1px; border-radius:6px; }
       button.icon { all:unset; cursor:pointer; width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; } button.icon:hover { background:rgba(0,0,0,.08); }
       .dot { width:10px; height:10px; border-radius:50%; border:2px solid; display:inline-block; box-shadow:0 0 0 1px rgba(0,0,0,.5); }
-      .chips { display:flex; gap:4px; flex-wrap:wrap; margin:2px 0 6px; } button.chip { all:unset; cursor:pointer; font-size:11px; padding:2px 9px; border-radius:999px; border:1px solid var(--ctl); background:#fff; } button.chip.on { background:var(--ink); color:#fff; }
-      .why { margin:2px 0 0 14px !important; list-style:disc !important; } .why li { border:0; padding:0; font-size:12px; }
-      .feed li.new { animation: slidein .4s ease-out; background:rgba(255,226,122,.35); } @keyframes slidein { from { opacity:0; transform:translateY(-6px);} to { opacity:1; transform:none; } }
       @media (max-width: 899px) {
-        aside#shed { top:auto; right:0; left:0; bottom:0; width:auto; max-height:42vh; border-radius:14px 14px 0 0; }
-        aside#shed.collapsed { left:auto; right:8px; bottom:8px; border-radius:14px; }
         #keys { display:none; }
         #status { bottom:auto; top:12px; left:12px; } #fps { bottom:auto; top:48px; }
       }
@@ -75,7 +60,7 @@
       #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); display:flex; flex-direction:column; gap:6px; z-index:10; } .toast { background:var(--ink); color:#fff; padding:8px 16px; border-radius:10px; font-size:13px; box-shadow:0 4px 14px rgba(0,0,0,.3); }
       body.stale #app canvas { filter:saturate(.65) brightness(.93); }
       .label.plant { font-weight:500; font-size:11px; background:rgba(255,252,243,.88); } .label.task.done { display:none !important; }
-      body.hc .label, body.hc .bubble, body.hc .edgearrow { outline:2px solid #111; background:#fff; color:#000; border-color:#000; } body.hc aside#shed, body.hc #keys, body.hc #status { border:2px solid #000; background:#fff; } body.hc .sub { opacity:1; }
+      body.hc .label, body.hc .bubble, body.hc .edgearrow { outline:2px solid #111; background:#fff; color:#000; border-color:#000; } body.hc #keys, body.hc #status { border:2px solid #000; background:#fff; } body.hc .sub { opacity:1; }
       #timeline { position:fixed; left:50%; bottom:12px; transform:translateX(-50%); z-index:8; display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:8px 14px; width:min(96vw,780px); box-shadow:0 6px 20px rgba(0,0,0,.18); } #timeline[hidden] { display:none; }
       #timeline button { font:inherit; padding:3px 10px; border-radius:8px; border:1px solid var(--ctl); background:#fff; cursor:pointer; } #timeline input[type=range] { flex:1; min-width:140px; }
       .tl-time { font-size:12px; opacity:.8; } .tl-speed { font-size:12px; min-width:48px; text-align:center; font-weight:700; } .tl-note { width:100%; text-align:center; font-size:11px; opacity:.78; }
@@ -88,10 +73,10 @@
       .guide-card { background:var(--card); border-radius:16px; padding:18px 26px; width:min(860px, 94vw); max-height:90vh; overflow:auto; } .guide-card h2 { margin:0 0 10px; } .guide-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px 26px; } .guide-card h3 { margin:0 0 4px; font-size:13px; text-transform:uppercase; letter-spacing:.05em; opacity:.65; } .guide-card ul { list-style:none; margin:0; padding:0; } .guide-card li { display:flex; gap:8px; align-items:baseline; font-size:15px; line-height:1.35; padding:3px 0; } .guide-card li i { font-style:normal; flex:none; width:1.4em; } .guide-card li b { margin-right:6px; } .guide-card .sub { margin-top:12px; }
       #keys button { all:unset; cursor:pointer; font-weight:700; padding:1px 7px; border:1px solid var(--line); border-radius:999px; background:#fff; } #keys button:focus-visible { outline:3px solid #2a6df4; }
       .help-card { background:var(--card); border-radius:16px; padding:18px 26px; max-width:520px; max-height:90vh; overflow:auto; } .help-card h2 { margin:0 0 8px; } .help-card dl { display:grid; grid-template-columns:auto 1fr; gap:4px 18px; margin:0; } .help-card dt { font-weight:700; font-family:ui-monospace,Menlo,monospace; font-size:13px; } .help-card dd { margin:0; }
-      body.no-badge #status, body.no-badge .conn.demo { display:none; }
+      body.no-badge #status { display:none; }
       #status button { font:inherit; margin-left:8px; padding:0 10px; border-radius:999px; border:1px solid var(--ctl); background:#fff; cursor:pointer; }
       @media (pointer: coarse) { button, .chip, button.icon, #timeline button, .plan-bar button { min-height:44px; min-width:44px; } .plan-bar input { min-height:44px; } button.who, button.link { min-height:44px; } }
-      body.present #keys { display:none; } body.present aside#shed { font-size:16px; width:360px; } body.present .sub { font-size:14px; } body.present aside h3 { font-size:13px; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
+      body.present #keys { display:none; } body.present .sub { font-size:14px; } body.present .label { font-size:15px; padding:2px 10px; } body.present .bubble { font-size:17px; max-width:380px; }
       @media print { body > *:not(#plan) { display:none !important; } #plan { position:static; background:#fff; } .plan-bar button, .plan-bar input { display:none; } #plan svg { border:0; height:90vh; } }
       body.plan-open #shed, body.plan-open #status, body.plan-open #keys { display:none; }
       body.hide-ui #shed, body.hide-ui #status, body.hide-ui #keys, body.hide-ui .labels, body.hide-ui #banner, body.hide-ui #cue, body.hide-ui #toasts, body.hide-ui #fps, body.hide-ui .edgearrow { display:none !important; }

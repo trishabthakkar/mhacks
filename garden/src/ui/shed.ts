@@ -1,13 +1,15 @@
 import type { GardenSnapshot } from '../../../shared/types.ts';
 import { sentence } from './sentences.ts';
+import { base, clip, esc, ICON, rel } from './fmt.ts';
+import { groupFeed, shedAttention } from './attention.ts';
+import { inspect } from './inspect.ts';
+import { parsePick, pickKey, type Pick } from '../pick.ts';
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const mins = (ms: number) => Math.round(ms / 60000);
 const fmtMin = (m: number) => (m <= 0 ? 'under a minute' : m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`);
-const base = (p: string) => p.split('/').filter(Boolean).pop() ?? p;
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export type Filter = 'all' | 'claims' | 'messages' | 'tests' | 'botanist';
+export type Tab = 'team' | 'activity';
 const FILTERS: Array<[Filter, string, ReadonlySet<string> | null]> = [
   ['all', 'All', null],
   ['claims', 'Fences', new Set(['claim', 'release', 'blocked_edit'])],
@@ -15,6 +17,7 @@ const FILTERS: Array<[Filter, string, ReadonlySet<string> | null]> = [
   ['tests', 'Tests', new Set(['test_pass', 'test_fail', 'commit'])],
   ['botanist', 'Botanist', new Set(['certify_bloom', 'certify_refused'])],
 ];
+const ATTN_MAX = 3, MAX_PEOPLE = 10, MAX_GROUPS = 4;
 
 export interface ShedOptions {
   source: string;
@@ -23,6 +26,9 @@ export interface ShedOptions {
   collapsed: boolean;
   /** What the camera follows: a handle, or "agent:<sessionId>". */
   following?: string | null;
+  /** What is open in the inspector (null: the tabs). */
+  selected: Pick | null;
+  repo: string;
 }
 
 /** A gardener's live bot and subagents, each a button that flies the camera to it. `following` marks the followed one. */
@@ -36,11 +42,110 @@ export function agentRows(s: GardenSnapshot, handle: string, following?: string 
     return `<li><button class="link agent${following === key ? ' following' : ''}" data-focus="${esc(key)}" aria-label="Fly the camera to ${esc(handle)}'s ${sub ? 'helper agent' : 'bot'}">${sub ? '✨ helper' : '🤖 bot'} · ${what}</button></li>`;
   }).join('')}</ul>`;
 }
-export type FocusKind = 'member' | 'agent' | 'plant' | 'fence';
-export interface ShedHandlers { onFocus(kind: FocusKind, key: string): void; onToggle(): void }
 
+export { memberStatus } from './inspect.ts';
+import { memberStatus } from './inspect.ts';
+
+export type FocusKind = 'member' | 'agent' | 'plant' | 'fence';
+export interface ShedHandlers { onFocus(kind: FocusKind, key: string): void; onSelect(p: Pick | null): void; onToggle(): void }
+
+function teamHtml(s: GardenSnapshot, o: ShedOptions, expanded: ReadonlySet<string>): string {
+  const lastRun = new Map<string, number>();
+  for (const t of s.testRuns) lastRun.set(t.handle, t.exitCode);
+  const online = s.members.filter((m) => m.online), offline = s.members.length - online.length;
+  if (!s.members.length) return '<p class="sub">Nobody has joined yet. Run <code>sprout join</code>.</p>';
+  const cards = online.slice(0, MAX_PEOPLE).map((m) => {
+    const st = memberStatus(s, m.handle);
+    const bot = s.agents.find((a) => a.handle === m.handle && a.kind === 'claude' && a.status !== 'dormant');
+    const helpers = s.agents.filter((a) => a.handle === m.handle && a.kind === 'subagent' && a.status !== 'dormant').length;
+    const unread = s.messages.filter((x) => x.toHandle === m.handle && x.status !== 'acked').length;
+    const fences = s.claims.filter((c) => c.handle === m.handle).length;
+    const t = lastRun.get(m.handle);
+    const action = (bot?.currentAction || bot?.status || '').replace(/_/g, ' ');
+    const what = !bot ? 'no agent running' : !bot.currentPath && (st === 'idle' || action === st) ? 'between tasks'
+      : `${esc(clip(action, 22))}${bot.currentPath ? ` · <code>${esc(clip(base(bot.currentPath), 26))}</code>` : ''}`;
+    const badges = [
+      unread ? `<span class="badge">✉ ${unread}</span>` : '',
+      t === undefined ? '' : t === 0 ? '<span class="badge good">✓ tests</span>' : '<span class="badge bad">✗ tests</span>',
+      fences ? `<span class="badge">🔒 ${fences}</span>` : '',
+      helpers ? `<button class="badge" data-expand="${esc(m.handle)}" aria-expanded="${expanded.has(m.handle)}">+${helpers} helper${helpers === 1 ? '' : 's'}</button>` : '',
+    ].join('');
+    const following = o.following === m.handle || (o.following?.startsWith('agent:') && s.agents.some((a) => `agent:${a.sessionId}` === o.following && a.handle === m.handle));
+    return `<li class="person${following ? ' following' : ''}" style="--c:${esc(m.color)}">
+      <div class="top"><button class="name" data-select="member:${esc(m.handle)}" aria-label="Inspect ${esc(m.handle)}">${esc(m.handle)}</button>
+        <span class="pill ${st}">${st}</span>
+        <button class="icon sm" data-focus="member:${esc(m.handle)}" aria-label="Follow ${esc(m.handle)} with the camera" title="Follow with the camera">🎥</button></div>
+      <div class="what">${what}</div>${badges ? `<div class="badges">${badges}</div>` : ''}
+      ${expanded.has(m.handle) ? agentRows(s, m.handle, o.following) : ''}</li>`;
+  }).join('');
+  const more = online.length > MAX_PEOPLE ? online.length - MAX_PEOPLE : 0;
+  return `<ul class="people">${cards}</ul>${offline || more ? `<p class="sub fold">${[more ? `+${more} more online` : '', offline ? `+${offline} offline` : ''].filter(Boolean).join(' · ')}</p>` : ''}`;
+}
+
+function openNowHtml(s: GardenSnapshot): string {
+  const color = (h: string) => s.members.find((m) => m.handle === h)?.color ?? '#888';
+  const rows: string[] = [];
+  for (const c of s.claims) {
+    const left = mins(c.expiresAt - s.at);
+    rows.push(`<li><span class="i">🔒</span><button class="link" data-focus="fence:${esc(c.path)}"><b style="color:${esc(color(c.handle))}">${esc(c.handle)}</b> fenced <code>${esc(clip(c.path, 28))}</code></button><span class="t">${left <= 5 ? '⚠ ' : ''}${fmtMin(left)}</span></li>`);
+  }
+  const groups = new Map<string, { from: string; to: string; count: number; waiting: number; body: string; sent: number; oldest: number }>();
+  for (const m of s.messages) {
+    if (m.status === 'acked') continue;
+    const k = `${m.fromHandle}\0${m.toHandle}`, g = groups.get(k);
+    if (g) { g.count++; g.oldest = Math.min(g.oldest, m.sentAt); if (m.status === 'sent') g.waiting++; if (m.sentAt >= g.sent) { g.sent = m.sentAt; g.body = m.body; } }
+    else groups.set(k, { from: m.fromHandle, to: m.toHandle, count: 1, waiting: m.status === 'sent' ? 1 : 0, body: m.body, sent: m.sentAt, oldest: m.sentAt });
+  }
+  const sorted = [...groups.values()].sort((a, b) => b.sent - a.sent);
+  for (const g of sorted.slice(0, MAX_GROUPS)) {
+    const state = g.waiting === g.count ? 'not delivered yet' : g.waiting ? `${g.waiting} undelivered` : 'delivered, not acked';
+    rows.push(`<li><span class="i">🦋</span><span class="s"><b>${esc(g.from)}</b> → <b>${esc(g.to)}</b>${g.count > 1 ? ` ×${g.count}` : ''} <span class="sub">${state}</span><span class="sub quote">${esc(clip(g.body, 90))}</span></span><span class="t">${rel(s.at - g.oldest)}</span></li>`);
+  }
+  if (sorted.length > MAX_GROUPS) rows.push(`<li class="sub">+${sorted.length - MAX_GROUPS} more conversations</li>`);
+  for (const h of (s.handoffs ?? []).filter((x) => x.status === 'offered')) rows.push(`<li><span class="i">🤝</span><span class="s"><b>${esc(h.fromHandle)}</b> → <b>${esc(h.toHandle)}</b> <span class="sub">${esc(clip(h.task, 60))}</span></span></li>`);
+  for (const c of s.certifications.slice(-3).reverse()) rows.push(`<li><span class="i">${c.result === 'bloom' ? '🌸' : '✋'}</span><span class="s"><button class="link" data-select="plant:${esc(c.path)}">${c.result === 'bloom' ? 'Bloom' : 'Refused'} <code>${esc(clip(base(c.path), 26))}</code></button> <span class="sub">${esc(c.handle)}</span></span><span class="t">${rel(s.at - c.at)}</span></li>`);
+  return rows.length ? `<section class="open-now"><h3>Open now</h3><ul class="rows">${rows.join('')}</ul></section>` : '';
+}
+
+function activityHtml(s: GardenSnapshot, filter: Filter, lastMaxId: number): string {
+  const allowed = FILTERS.find((f) => f[0] === filter)![2];
+  const rows = groupFeed(s.activity.slice(-60).filter((a) => !allowed || allowed.has(a.kind))).slice(-14).reverse();
+  const feed = rows.map(({ a, count }) => {
+    const sel = a.path ? ` data-select="plant:${esc(a.path)}"` : '';
+    return `<li class="${lastMaxId >= 0 && a.id > lastMaxId ? 'new' : ''}"><span class="i" aria-hidden="true">${ICON[a.kind] ?? '•'}</span>${a.path ? `<button class="link s"${sel}>` : '<span class="s">'}${esc(sentence(a))}${count > 1 ? ` <b>×${count}</b>` : ''}${a.path ? '</button>' : '</span>'}<span class="t">${rel(s.at - a.at)}</span></li>`;
+  }).join('') || '<li class="sub">nothing yet</li>';
+  const chips = FILTERS.map(([k, label]) => `<button class="chip${k === filter ? ' on' : ''}" data-filter="${k}" aria-pressed="${k === filter}">${label}</button>`).join('');
+  return `${openNowHtml(s)}<div class="chips" role="group" aria-label="Filter the feed">${chips}</div><ul class="rows feed" aria-label="Live feed">${feed}</ul>`;
+}
+
+/** The whole panel as HTML. Pure (the DOM wrapper below only diffs and wires events). */
+export function shedHtml(s: GardenSnapshot, o: ShedOptions, view: { tab: Tab; filter: Filter; expanded: ReadonlySet<string>; lastMaxId: number }): string {
+  const live = o.source !== 'fake' && o.connection === 'live';
+  const items = shedAttention(s);
+  const attn = items.length
+    ? `<section class="attn" aria-label="Needs attention"><h3>Needs attention</h3>${items.slice(0, ATTN_MAX).map((i) =>
+        `<button class="row"${i.pick ? ` data-select="${esc(pickKey(i.pick))}"` : ''}><span class="i" aria-hidden="true">${i.icon}</span><span>${i.text}</span></button>`).join('')}${items.length > ATTN_MAX ? `<p class="sub">+${items.length - ATTN_MAX} more</p>` : ''}</section>`
+    : '<section class="attn quiet" aria-label="Needs attention">All quiet 🌿</section>';
+  const insp = o.selected ? inspect(o.selected, s, { repo: o.repo }) : null;
+  const main = insp
+    ? `<section class="insp" aria-label="Inspector"><div class="insp-head"><button class="icon" data-back aria-label="Back to the shed (Esc)">←</button><h3>${esc(insp.title)}</h3></div>${insp.body}</section>`
+    : `<div class="tabs" role="tablist">${(['team', 'activity'] as const).map((t) => `<button role="tab" data-tab="${t}" aria-selected="${view.tab === t}" class="${view.tab === t ? 'on' : ''}">${t === 'team' ? 'Team' : 'Activity'}</button>`).join('')}</div>
+       <div role="tabpanel">${view.tab === 'team' ? teamHtml(s, o, view.expanded) : activityHtml(s, view.filter, view.lastMaxId)}</div>`;
+  return `<div class="shed-head">
+      <span aria-hidden="true">🌱</span><h2>Garden shed</h2>
+      <span class="conn"><span class="conn-dot${live ? ' live' : ''}" aria-hidden="true"></span><span class="conn-text" role="status">${esc(o.connection)}</span></span>
+      <button class="icon" data-toggle aria-label="${o.collapsed ? 'Open' : 'Collapse'} the garden shed (S)" aria-expanded="${!o.collapsed}">${o.collapsed ? '▤' : '✕'}</button>
+    </div>
+    <div class="shed-scroll" tabindex="-1">${attn}${main}<div class="fresh sub" data-fresh>updated just now</div></div>`;
+}
+
+// ---- DOM wrapper ----
+const TAB_KEY = 'sprout.shed.tab';
+let tab: Tab = 'team';
+try { if (localStorage.getItem(TAB_KEY) === 'activity') tab = 'activity'; } catch { /* storage blocked */ }
 let filter: Filter = 'all';
-let lastSig = '';
+const expanded = new Set<string>();
+let lastHtml = '';
 let lastMaxId = -1; // -1 until the first render, so existing history isn't flagged as new
 let hovering = false;
 let pending: (() => void) | undefined;
@@ -48,115 +153,35 @@ let updatedAt = Date.now();
 
 /** Wire clicks once on the container; rendering never recreates the listeners. */
 export function initShed(el: HTMLElement, h: ShedHandlers) {
+  const rerender = () => { lastHtml = ''; el.dispatchEvent(new CustomEvent('shed-rerender')); };
   el.addEventListener('click', (e) => {
-    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-focus],[data-filter],[data-toggle]');
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-toggle],[data-back],[data-tab],[data-filter],[data-expand],[data-select],[data-focus]');
     if (!t) return;
     if (t.dataset.toggle !== undefined) { h.onToggle(); return; }
-    if (t.dataset.filter) { filter = t.dataset.filter as Filter; lastSig = ''; el.dispatchEvent(new CustomEvent('shed-rerender')); return; }
+    if (t.dataset.back !== undefined) { h.onSelect(null); return; }
+    if (t.dataset.tab) { tab = t.dataset.tab as Tab; try { localStorage.setItem(TAB_KEY, tab); } catch { /* ignore */ } rerender(); return; }
+    if (t.dataset.filter) { filter = t.dataset.filter as Filter; rerender(); return; }
+    if (t.dataset.expand) { const k = t.dataset.expand; if (expanded.has(k)) expanded.delete(k); else expanded.add(k); rerender(); return; }
+    if (t.dataset.select) { const p = parsePick(t.dataset.select); if (p) h.onSelect(p); return; }
     const [kind, ...rest] = (t.dataset.focus ?? '').split(':');
     if (kind) h.onFocus(kind as FocusKind, rest.join(':'));
   });
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') h.onToggle();
-  });
+  el.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); h.onToggle(); } });
   el.addEventListener('mouseenter', () => { hovering = true; });
   el.addEventListener('mouseleave', () => { hovering = false; pending?.(); pending = undefined; });
 }
 
-/** Re-render only when something visible changed; keeps scroll and avoids churn while the pointer is over the panel. */
+/** Re-render only when the HTML changed; defer while the pointer is over the panel (keeps what's under the cursor still). */
 export function renderShed(el: HTMLElement, s: GardenSnapshot, o: ShedOptions) {
-  const lastRun = new Map<string, number>();
-  for (const t of s.testRuns) lastRun.set(t.handle, t.exitCode); // later runs overwrite earlier ones
-  const sig = JSON.stringify([
-    o.source, o.connection, o.collapsed, filter,
-    s.members.map((m) => [m.handle, m.online]),
-    o.following ?? null,
-    s.agents.filter((a) => a.status !== 'dormant').map((a) => [a.sessionId, a.handle, a.status, a.currentPath, a.currentAction]),
-    s.claims.map((c) => [c.id, c.path, mins(c.expiresAt - s.at)]),
-    s.messages.filter((m) => m.status !== 'acked').map((m) => [m.id, m.status, mins(s.at - m.sentAt)]),
-    (s.handoffs ?? []).slice(-5).map((h) => [h.id, h.status]),
-    s.certifications.slice(-3).map((c) => c.id),
-    [...lastRun],
-    s.activity.slice(-40).map((a) => a.id),
-  ]);
-  if (sig === lastSig) return;
-  if (hovering && !o.collapsed) { pending = () => renderShed(el, s, o); return; }
-  lastSig = sig; updatedAt = Date.now();
-
-  const scroller = el.querySelector<HTMLElement>('.shed-scroll');
-  const scroll = scroller?.scrollTop ?? 0;
+  const html = shedHtml(s, o, { tab, filter, expanded, lastMaxId });
   el.classList.toggle('collapsed', o.collapsed);
-
-  const dot = (c: string, on: boolean) => `<span class="dot" style="background:${on ? c : 'transparent'};border-color:${c}" aria-hidden="true"></span>`;
-  const MAX_PEOPLE = 10;
-  const ordered = [...s.members].sort((a, b) => Number(b.online) - Number(a.online));
-  const gardeners = ordered.slice(0, MAX_PEOPLE).map((m) => {
-    const bot = s.agents.find((a) => a.handle === m.handle && a.kind === 'claude' && a.status !== 'dormant');
-    const unread = s.messages.filter((x) => x.toHandle === m.handle && x.status !== 'acked').length;
-    const t = lastRun.get(m.handle);
-    const what = !m.online ? 'offline' : bot ? `${bot.status}${bot.currentPath ? ` · ${esc(base(bot.currentPath))}` : ''}` : 'no agent';
-    return `<li><button class="who${o.following === m.handle ? ' following' : ''}" data-focus="member:${esc(m.handle)}" aria-label="Follow ${esc(m.handle)} with the camera">${dot(m.color, m.online)}<b>${esc(m.handle)}</b></button>
-      <span class="sub">${what}${unread ? ` · ✉ ${unread} unread` : ''}${t === undefined ? '' : ` · tests ${t === 0 ? '✓ pass' : '✗ fail'}`}</span>${agentRows(s, m.handle, o.following)}</li>`;
-  }).join('') + (ordered.length > MAX_PEOPLE ? `<li class="sub">+${ordered.length - MAX_PEOPLE} more (offline)</li>` : '') || '<li class="sub">nobody has joined yet</li>';
-
-  const color = (h: string) => s.members.find((m) => m.handle === h)?.color ?? '#888';
-  const fences = s.claims.map((c) => {
-    const left = mins(c.expiresAt - s.at);
-    return `<li><button class="link" data-focus="fence:${esc(c.path)}"><b style="color:${color(c.handle)}">${esc(c.handle)}</b> fenced <code>${esc(c.path)}</code></button>
-      <span class="sub">${left <= 5 ? '⚠ ' : ''}expires in ${fmtMin(left)}</span></li>`;
-  }).join('') || '<li class="sub">no fences up</li>';
-
-  // Many near-identical messages (a busy team, or a stuck inbox) collapse into one line per sender -> recipient.
-  const groups = new Map<string, { from: string; to: string; kind: string; count: number; oldest: number; waiting: number; body: string; sent: number }>();
-  for (const m of s.messages) {
-    if (m.status === 'acked') continue;
-    const k = `${m.fromHandle}\0${m.toHandle}`, g = groups.get(k);
-    if (g) { g.count++; g.oldest = Math.min(g.oldest, m.sentAt); if (m.status === 'sent') g.waiting++; if (m.sentAt >= g.sent) { g.sent = m.sentAt; g.body = m.body; } }
-    else groups.set(k, { from: m.fromHandle, to: m.toHandle, kind: m.kind, count: 1, oldest: m.sentAt, waiting: m.status === 'sent' ? 1 : 0, body: m.body, sent: m.sentAt });
-  }
-  const sortedGroups = [...groups.values()].sort((a, b) => b.sent - a.sent);
-  const MAX_GROUPS = 4;
-  const open = sortedGroups.slice(0, MAX_GROUPS).map((g) => {
-    const age = fmtMin(mins(s.at - g.oldest));
-    const state = g.waiting === g.count ? 'waiting for delivery' : g.waiting ? `${g.waiting} undelivered` : 'delivered, not acknowledged';
-    return `<li><b>${esc(g.from)}</b> → <b>${esc(g.to)}</b>${g.count > 1 ? ` <b>×${g.count}</b>` : ''} <span class="sub">${esc(g.kind)} · ${state} · oldest ${age}</span><div class="sub">${esc(clip(g.body, 110))}</div></li>`;
-  }).join('') + (sortedGroups.length > MAX_GROUPS ? `<li class="sub">+${sortedGroups.length - MAX_GROUPS} more conversations</li>` : '') || '<li class="sub">no open requests</li>';
-
-  const hand = (s.handoffs ?? []).filter((h) => h.status === 'offered').map((h) =>
-    `<li>🌱 <b>${esc(h.fromHandle)}</b> → <b>${esc(h.toHandle)}</b> <span class="sub">${esc(clip(h.task, 80))} · waiting to accept</span></li>`).join('');
-
-  const certs = s.certifications.slice(-3).reverse().map((c) => {
-    const items = c.result === 'refused' ? c.reason.split(/;\s*/).filter(Boolean) : [];
-    return `<li><button class="link" data-focus="plant:${esc(c.path)}">${c.result === 'bloom' ? '🌸 Bloom' : '✋ Refused'} <code>${esc(base(c.path))}</code></button>
-      <span class="sub">${esc(c.handle)} · ${fmtMin(mins(s.at - c.at))} ago</span>
-      ${items.length ? `<ul class="why">${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : c.task ? `<div class="sub">${esc(c.task)}</div>` : ''}</li>`;
-  }).join('') || '<li class="sub">the botanist has not been asked yet</li>';
-
-  const allowed = FILTERS.find((f) => f[0] === filter)![2];
-  const feedRows = s.activity.slice(-40).filter((a) => !allowed || allowed.has(a.kind)).slice(-14).reverse();
-  const feed = feedRows.map((a) => `<li${lastMaxId >= 0 && a.id > lastMaxId ? ' class="new"' : ''}>${esc(sentence(a))}</li>`).join('') || '<li class="sub">nothing yet</li>';
+  if (html === lastHtml) return;
+  if (hovering && !o.collapsed && lastHtml && !o.selected === !lastHtml.includes('data-back')) { pending = () => renderShed(el, s, o); return; }
+  lastHtml = html; updatedAt = Date.now();
   lastMaxId = Math.max(lastMaxId, 0, ...s.activity.map((a) => a.id));
-  const chips = FILTERS.map(([k, label]) => `<button class="chip${k === filter ? ' on' : ''}" data-filter="${k}" aria-pressed="${k === filter}">${label}</button>`).join('');
-
-  el.innerHTML = `
-    <div class="shed-head">
-      <h2>Garden shed</h2>
-      <span class="conn ${o.source === 'fake' ? 'demo' : 'live'}" role="status">${esc(o.connection)}</span>
-      <button class="icon" data-toggle aria-label="${o.collapsed ? 'Open' : 'Collapse'} the garden shed (S)" aria-expanded="${!o.collapsed}">${o.collapsed ? '▤' : '✕'}</button>
-    </div>
-    <div class="shed-scroll" tabindex="-1">
-      <h3>Gardeners</h3><ul>${gardeners}</ul>
-      <h3>Fences</h3><ul>${fences}</ul>
-      <h3>Open requests</h3><ul>${open}</ul>
-      ${hand ? `<h3>Handoffs</h3><ul>${hand}</ul>` : ''}
-      <h3>Botanist</h3><ul>${certs}</ul>
-      <h3 id="feed-h">Happening now</h3>
-      <div class="chips" role="group" aria-label="Filter the live feed">${chips}</div>
-      <ul class="feed" aria-labelledby="feed-h">${feed}</ul>
-      <div class="fresh sub" data-fresh>updated just now</div>
-    </div>`;
-  const sc = el.querySelector<HTMLElement>('.shed-scroll');
-  if (sc) sc.scrollTop = scroll;
+  const sc = el.querySelector<HTMLElement>('.shed-scroll'), scroll = sc?.scrollTop ?? 0;
+  el.innerHTML = html;
+  const sc2 = el.querySelector<HTMLElement>('.shed-scroll'); if (sc2) sc2.scrollTop = o.selected ? 0 : scroll;
 }
 
 /** Cheap once-a-second tick for the "updated Ns ago" line; no re-render. */

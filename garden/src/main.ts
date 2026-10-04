@@ -10,6 +10,10 @@ import { GardenWorld } from './scene/world.ts';
 import { initShed, renderShed, tickFreshness } from './ui/shed.ts';
 import { createAnnouncer, summarize } from './ui/announce.ts';
 import './ui/board.css';
+import './ui/shed.css';
+import type { Pick } from './pick.ts';
+import { inspect } from './ui/inspect.ts';
+import { repoName } from './boundary.ts';
 import { initPlan, renderPlan } from './ui/plan.ts';
 import { CUE_STEPS, renderCue, resetCue, seen, toggleManual } from './ui/cue.ts';
 import { applyShot } from './ui/shots.ts';
@@ -76,6 +80,13 @@ function setCollapsed(v: boolean) {
   document.body.classList.toggle('shed-collapsed', v);
   refresh();
   world.refit();
+}
+// What the shed inspector shows (a plant, bed, gardener...), or null for the Team / Activity tabs.
+let selected: Pick | null = null;
+function setSelected(p: Pick | null) {
+  if (p?.kind === 'shed') { setCollapsed(!collapsed); return; }
+  selected = p;
+  if (p && collapsed) setCollapsed(false); else refresh();
 }
 
 // ---- connection state ----
@@ -221,6 +232,7 @@ function setPlan(on: boolean) {
 
 initShed(shed, {
   onFocus: (kind, key) => { if (planOn) setPlan(false); world.focus(kind, key); refresh(); },
+  onSelect: (p) => { if (planOn) setPlan(false); setSelected(p); },
   onToggle: () => setCollapsed(!collapsed),
 });
 shed.addEventListener('shed-rerender', () => refresh());
@@ -232,7 +244,9 @@ initPlan(plan, {
 function refresh() {
   const s = store.snapshot;
   const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
-  renderShed(shed, s, { source, connection, collapsed, following: world.follow });
+  const repo = repoName(q, s, liveDb());
+  if (selected && !inspect(selected, s, { repo })) selected = null; // the subject left the garden
+  renderShed(shed, s, { source, connection, collapsed, following: world.follow, selected, repo });
   emptyState.hidden = s.plants.length > 0 || conn.state === 'connecting';
   // The chip only carries what the shed pill doesn't: camera modes and the demo pause control.
   const modes = `${world.director ? 'director' : ''}${world.follow ? `${world.director ? ' · ' : ''}following ${world.followLabel}` : ''}${world.expandAll ? ' · all plants' : ''}`;
@@ -286,6 +300,7 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k === '?' || k === '/') { setHelp(helpEl.hidden); return; }
   if (k === 'g') { setGuide(guideEl.hidden); return; }
+  if (k === 'escape' && selected && helpEl.hidden && guideEl.hidden) { setSelected(null); return; }
   if (k === 'escape' && !helpEl.hidden) { setHelp(false); return; }
   if (k === 'escape' && !guideEl.hidden) { setGuide(false); return; }
   if (k === 'c') { setCue(!cueOn); return; }

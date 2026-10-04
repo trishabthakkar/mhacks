@@ -1,0 +1,12 @@
+/* "Since you were last here" card, under the top bar on the left. */
+#since { position:fixed; top:60px; left:12px; z-index:6; width:min(360px, calc(100vw - 32px)); background:rgba(255,255,255,.94);
+  border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,.18); padding:10px 10px 8px; font-size:13.5px; color:#1f2a20; backdrop-filter:blur(6px); }
+#since .hd { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 4px 6px; }
+#since .hd strong { font-size:13.5px; }
+#since button { all:unset; cursor:pointer; }
+#since .x { font-size:18px; line-height:1; padding:2px 6px; border-radius:6px; opacity:.6; }
+#since .x:hover, #since .x:focus-visible { opacity:1; background:rgba(0,0,0,.06); }
+#since .ln { display:block; width:calc(100% - 12px); padding:5px 6px; border-radius:8px; }
+#since .ln:hover, #since .ln:focus-visible { background:rgba(80,140,80,.12); }
+body.present #since, body.hide-ui #since { display:none; }
+@media (max-width: 640px) { #since { top:auto; bottom:84px; } }

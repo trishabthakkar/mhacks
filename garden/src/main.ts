@@ -12,6 +12,9 @@ import { createAnnouncer, summarize } from './ui/announce.ts';
 import './ui/board.css';
 import './ui/shed.css';
 import './ui/tour.css';
+import './ui/since.css';
+import { lastVisit, sinceSummary } from './since.ts';
+import { showSince } from './ui/sinceCard.ts';
 import { tourStops } from './tour.ts';
 import { TourPlayer } from './ui/tourPlayer.ts';
 import type { Pick } from './pick.ts';
@@ -246,8 +249,26 @@ initPlan(plan, {
   onClose: () => setPlan(false),
 });
 
+// ---- since you were last here: once per page load, on live data (or ?since=<minutes> to preview) ----
+// ?me=<handle> adds what's yours (messages, refusals on your files) and is remembered in this browser.
+const me = (() => { try { const m = q.get('me'); if (m) localStorage.setItem('sprout.me', m); return m ?? localStorage.getItem('sprout.me') ?? undefined; } catch { return q.get('me') ?? undefined; } })();
+let sinceDone = false;
+function maybeSince(s: GardenSnapshot) {
+  const preview = q.has('since') && Number.isFinite(Number(q.get('since')));
+  if (sinceDone || !s.plants.length || (!preview && conn.state !== 'live')) return;
+  sinceDone = true;
+  const prev = preview ? s.at - Number(q.get('since')) * 60_000 : lastVisit((() => { try { return localStorage; } catch { return { getItem: () => null, setItem: () => undefined }; } })(), liveDb(), Date.now());
+  if (!preview) { // keep "last visit" = the last time this page was open
+    const mark = () => { try { localStorage.setItem(`sprout.lastVisit.${liveDb()}`, String(Date.now())); } catch { /* private mode */ } };
+    setInterval(mark, 60_000); addEventListener('pagehide', mark);
+  }
+  const card = prev !== undefined ? sinceSummary(s, prev, me) : null;
+  if (card) showSince(card, (p) => setSelected(p));
+}
+
 function refresh() {
   const s = store.snapshot;
+  maybeSince(s);
   const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
   const repo = repoName(q, s, liveDb());
   world.repo = repo;

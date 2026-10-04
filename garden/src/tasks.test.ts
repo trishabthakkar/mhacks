@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FAKE_STEPS, makeFakeSnapshots } from '../../shared/fake-data.ts';
-import { attention, currentTaskOf, taskModels } from './tasks.ts';
+import { attention, currentTaskOf, shownTasks, taskModels } from './tasks.ts';
 
 const snaps = makeFakeSnapshots(FAKE_STEPS + 1);
 
@@ -51,4 +51,13 @@ test('taskModels tidies agent-written titles, steps and roadblocks for display (
   assert.equal(m.title, 'Add retry to upload client');
   assert.equal(m.items[0]!.text, 'Write the tests for the retry backoff and the jitter and…');
   assert.ok(m.roadblocks.includes('Waiting on the botanist'), JSON.stringify(m.roadblocks));
+});
+
+test('shownTasks: ?tasks=current keeps only each person\'s current task (leftover open tasks stay off the projector)', () => {
+  const ms = taskModels(snaps[9]!);
+  const cur = shownTasks(ms, 'current');
+  assert.ok(cur.length > 0 && cur.every((m) => m.current));
+  assert.equal(new Set(cur.map((m) => m.handle)).size, cur.length); // one per person
+  assert.deepEqual(shownTasks(ms, null), ms);
+  assert.deepEqual(shownTasks(ms, 'all'), ms);
 });

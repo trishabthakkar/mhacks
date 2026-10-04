@@ -65,3 +65,8 @@ export function attention(s: GardenSnapshot): Attention[] {
   for (const h of s.handoffs ?? []) if (h.status === 'offered') out.push({ kind: 'handoff', text: `${h.fromHandle} → ${h.toHandle}: "${h.task}" needs accepting`, focus: '' });
   return out;
 }
+
+/** Which task pots to draw: all open tasks (default), or with ?tasks=current only each person's current one. */
+export function shownTasks(models: TaskModel[], mode: string | null): TaskModel[] {
+  return mode === 'current' ? models.filter((m) => m.current) : models;
+}

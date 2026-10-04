@@ -4,7 +4,7 @@ import type { GardenSnapshot, PlantStage, PlantView } from '../../../shared/type
 import { BED_PAD, layoutGarden, layoutPaths, layoutTaskPlants, SPACING, type BedLayout, type GardenLayout, type PathLayout, type PlantLayout } from '../layout.ts';
 import { bedStyleOf, collapseGenerated, speciesOf } from '../species.ts';
 import { TaskPlants } from './taskPlants.ts';
-import { currentTaskOf, taskModels } from '../tasks.ts';
+import { currentTaskOf, taskModels, shownTasks } from '../tasks.ts';
 import { hoverText } from '../ui/inspect.ts';
 import { isClick, personAt, pickAt, pickColumn, samePick, type Pick, type PickScene } from '../pick.ts';
 import type { Store, StoreUpdate } from '../data/store.ts';
@@ -83,6 +83,8 @@ export class GardenWorld implements WorldLookup {
   private props!: Props;
   private boundary!: GardenBoundary;
   private lamps!: GardenLamps;
+  /** ?tasks=current: only each person's current task pot (keeps leftover open tasks off the projector). */
+  private taskMode = new URLSearchParams(globalThis.location?.search ?? '').get('tasks');
   /** Teammates about to edit the same files: an amber dashed line joins them (and the shed warns). */
   private overlapLines!: OverlapLines; private overlapPairs: Overlap[] = [];
   /** ?hour=21 previews any time of day (sky, sun and lamps) instead of the local clock. */
@@ -266,7 +268,7 @@ export class GardenWorld implements WorldLookup {
     this.boundary.setSign(this.repo, signLine(u.snapshot));
     this.pond.sync(u.snapshot.activity, u.snapshot.at, u.snapshot.members);
     this.actors.sync(u.snapshot);
-    const models = taskModels(u.snapshot);
+    const models = shownTasks(taskModels(u.snapshot), this.taskMode);
     this.tasks.sync(models, layoutTaskPlants(this.layout, models), this.time);
     this.refreshPotSpots();
     this.overlapPairs = overlaps(u.snapshot);

@@ -266,9 +266,12 @@ function maybeSince(s: GardenSnapshot) {
   if (card) showSince(card, (p) => setSelected(p));
 }
 
+// ?timelapse=1: open straight into the seasons timelapse (30 s autoplay) once the garden has data
+let autoTimelapse = q.get('timelapse') === '1';
 function refresh() {
   const s = store.snapshot;
   maybeSince(s);
+  if (autoTimelapse && s.plants.length && (source !== 'live' || conn.state === 'live')) { autoTimelapse = false; void enterTimelapse(true); }
   const connection = conn.state === 'live' ? 'live' : conn.state === 'connecting' ? 'connecting…' : conn.state === 'reconnecting' ? `reconnecting (${conn.attempt})` : 'demo data';
   const repo = repoName(q, s, liveDb());
   world.repo = repo;

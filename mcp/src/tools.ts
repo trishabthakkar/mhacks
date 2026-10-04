@@ -3,8 +3,8 @@
 // Every handler returns a friendly string — nothing throws out of here.
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
-import { DEFAULT_CLAIM_TTL_MIN, MAX_MESSAGE_BODY } from '../../shared/constants.ts';
-import type { AgentView, ReportableStatus, SproutDb } from './db.ts';
+import { DEFAULT_CLAIM_TTL_MIN, MAX_MESSAGE_BODY, MAX_TASK_ITEMS, MAX_TASK_TITLE } from '../../shared/constants.ts';
+import type { AgentView, ReportableStatus, SproutDb, TaskItemState } from './db.ts';
 import { clock, minutesLeft } from './time.ts';
 
 export interface ToolResult { text: string; isError?: true }
@@ -138,12 +138,25 @@ export function makeHandlers(db: SproutDb, opts: HandlerOptions = {}) {
         }
       }
 
+      const openTasks = db.tasks().filter((t) => t.status !== 'done').sort((a, b) => a.handle.localeCompare(b.handle) || b.updatedAt - a.updatedAt);
+      lines.push('', 'Tasks:');
+      if (!openTasks.length) lines.push('  (none)');
+      for (const tk of openTasks) {
+        const items = db.taskItems(tk.id), done = items.filter((i) => i.state === 'completed').length;
+        const prog = items.length ? ` ${done}/${items.length}` : '';
+        lines.push(`  ${tk.handle === me ? 'you' : tk.handle}: "${tk.title}" ${tk.status}${prog}${tk.blockedReason ? ` — ✋ ${tk.blockedReason}` : ''}`);
+      }
+
       const unread = db.messagesTo(me).filter((m) => m.status !== 'acked').length;
       lines.push('', unread ? `Your inbox: ${unread} unread — call read_inbox.` : 'Your inbox: empty.');
       return ok(lines.join('\n'));
     }),
 
-    claim_files: tool<{ paths: string[]; ttl_minutes?: number }>(async (me, { paths, ttl_minutes }) => {
+    claim_files: tool<{ paths: string[]; task: string; ttl_minutes?: number }>(async (me, { paths, task, ttl_minutes }) => {
+      const title = (task ?? '').trim();
+      if (!title) return err('Name the task in a few words, e.g. task: "Add untilText helper". It becomes the plant teammates see.');
+      if (title.length > MAX_TASK_TITLE) return err(`Task name is ${title.length} chars; keep it under ${MAX_TASK_TITLE}.`);
+      if (SECRET_RE.test(title)) return err('Not claimed: the task name looks like it contains a secret. Describe the work instead.');
       if (!paths?.length) return err('Give at least one path, e.g. ["src/api/"].');
       const norm: string[] = [];
       for (const raw of paths) {
@@ -167,7 +180,23 @@ export function makeHandlers(db: SproutDb, opts: HandlerOptions = {}) {
         const m = msgOf(e).replace(/\.$/, '');
         return err(/post_finding/.test(m) ? `Not claimed: ${m}.` : `Not claimed: ${m}. Use post_finding to ask them, or work elsewhere.`);
       }
-      return ok(`Fenced ${norm.join(', ')} until ${clock(now() + ttl * 60_000)} (${ttl} min). Release with release_files when you are done.`);
+      try {
+        await db.startTask(me, title, norm);
+      } catch (e) {
+        return ok(`Fenced ${norm.join(', ')} until ${clock(now() + ttl * 60_000)} (${ttl} min), but the task couldn't be recorded: ${msgOf(e)}.`);
+      }
+      return ok(`Fenced ${norm.join(', ')} until ${clock(now() + ttl * 60_000)} (${ttl} min) for "${title}". Release with release_files when you are done. Keep its checklist current with set_checklist.`);
+    }),
+
+    set_checklist: tool<{ items: { text: string; state: TaskItemState }[] }>(async (me, { items }) => {
+      if (!Array.isArray(items)) return err('Give items: [{ text, state }], state = pending | in_progress | completed.');
+      if (items.length > MAX_TASK_ITEMS) return err(`A checklist takes at most ${MAX_TASK_ITEMS} items; group small steps.`);
+      const clean = items.map((i) => ({ text: (i.text ?? '').trim().slice(0, MAX_TASK_TITLE), state: i.state })).filter((i) => i.text);
+      if (clean.some((i) => SECRET_RE.test(i.text))) return err('Not saved: an item looks like it contains a secret. Describe the step instead.');
+      await db.setTaskItems(me, clean);
+      const cur = db.tasks().filter((t) => t.handle === me && t.status !== 'done').sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const done = clean.filter((i) => i.state === 'completed').length;
+      return ok(`Checklist for "${cur?.title ?? 'your task'}": ${done}/${clean.length} done.`);
     }),
 
     release_files: tool<{ paths: string[] }>(async (me, { paths }) => {
@@ -316,14 +345,24 @@ export function registerTools(server: McpServer, h: Handlers, member: string | n
 
   server.registerTool('claim_files', {
     description:
-      'Fence files or folders before you edit them, so teammates\' agents know to stay out (prevents merge conflicts between clones). ' +
-      'Use repo-relative paths; a folder claim ends with "/" (e.g. "src/api/"). Claims expire after ttl_minutes (team default 30). ' +
-      'If someone else holds it, nothing is claimed and you are told who and until when: then use post_finding to ask them, or work elsewhere. Do not edit fenced files.',
+      'Fence files or folders before you edit them, and NAME THE TASK you are doing (a few words in your human\'s terms, e.g. "Add untilText helper"); it becomes the plant your teammates see. ' +
+      'Fences prevent merge conflicts between clones. Repo-relative paths; a folder ends with "/" (e.g. "src/api/"). Claims expire after ttl_minutes (team default 30). ' +
+      'If someone else holds it, nothing is claimed and you are told who and until when: then use post_finding to ask them, or work elsewhere. Do not edit fenced files. Never put secrets in the task name.',
     inputSchema: z.object({
       paths: z.array(z.string()).min(1).describe('Repo-relative files or folders ("src/api/")'),
+      task: z.string().describe(`What you are doing, ≤${MAX_TASK_TITLE} chars, e.g. "Add untilText helper"`),
       ttl_minutes: z.number().int().positive().optional().describe('Minutes until the fence expires (default: team setting, 30)'),
     }),
   }, wrap(h.claim_files));
+
+  server.registerTool('set_checklist', {
+    description:
+      'Show your plan as a checklist on your current Sprout task. Call it right after claim_files with your steps, and again whenever a step starts or finishes (send the whole list each time). ' +
+      `Each item ≤${MAX_TASK_TITLE} chars, at most ${MAX_TASK_ITEMS}; state is pending, in_progress or completed. Short summaries only, no secrets.`,
+    inputSchema: z.object({
+      items: z.array(z.object({ text: z.string(), state: z.enum(['pending', 'in_progress', 'completed']) })).describe('The full checklist, in order'),
+    }),
+  }, wrap(h.set_checklist));
 
   server.registerTool('release_files', {
     description: 'Release fences you hold once you have finished (or committed) work on those paths, so teammates can work there.',

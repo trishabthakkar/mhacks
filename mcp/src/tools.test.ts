@@ -52,15 +52,15 @@ test('team_status: members, agents, claims with expiry, handoffs, unread count',
 // ---- claims ----
 test('claim_files: success names the fence and expiry', async () => {
   const { h, db } = setup();
-  const r = await h.claim_files('trisha', { paths: ['./src/api/'] });
-  assert.equal(r.text, 'Fenced src/api/ until 6:30pm (30 min). Release with release_files when you are done.');
+  const r = await h.claim_files('trisha', { paths: ['./src/api/'], task: 'Refactor the routes' });
+  assert.equal(r.text, 'Fenced src/api/ until 6:30pm (30 min) for "Refactor the routes". Release with release_files when you are done. Keep its checklist current with set_checklist.');
   assert.equal(db.claims()[0]!.path, 'src/api/');
 });
 
 test('claim_files: conflict says who holds it, until when, and suggests post_finding', async () => {
   const { h, db } = setup();
   await db.claimFiles('alex', ['src/api/'], 30);
-  const r = await h.claim_files('trisha', { paths: ['src/api/routes.ts'], ttl_minutes: 15 });
+  const r = await h.claim_files('trisha', { paths: ['src/api/routes.ts'], ttl_minutes: 15, task: 't' });
   assert.equal(r.isError, true);
   assert.equal(
     r.text,
@@ -72,11 +72,11 @@ test('claim_files: conflict says who holds it, until when, and suggests post_fin
 
 test('claim_files: rejects absolute paths and uses config ttl by default', async () => {
   const { h, db } = setup();
-  const bad = await h.claim_files('trisha', { paths: ['/Users/t/repo/src/x.ts'] });
+  const bad = await h.claim_files('trisha', { paths: ['/Users/t/repo/src/x.ts'], task: 't' });
   assert.equal(bad.isError, true);
   assert.match(bad.text, /repo-relative/);
   db.setConfig('claimTtlMinutes', '45');
-  const ok = await h.claim_files('trisha', { paths: ['src/x.ts'] });
+  const ok = await h.claim_files('trisha', { paths: ['src/x.ts'], task: 't' });
   assert.match(ok.text, /until 6:45pm \(45 min\)/);
 });
 
@@ -219,7 +219,7 @@ test('a db that throws anything becomes a friendly error string', async () => {
     members: () => { throw new Error('cache not ready'); },
   });
   const h = makeHandlers(broken, { now: () => now.t });
-  const c = await h.claim_files('trisha', { paths: ['src/x.ts'] });
+  const c = await h.claim_files('trisha', { paths: ['src/x.ts'], task: 't' });
   assert.equal(c.isError, true);
   assert.match(c.text, /Not claimed: boom/);
   const t = await h.team_status('trisha', {});
@@ -236,7 +236,7 @@ test('claim_files: a module conflict error is shown once, without a duplicated s
     },
   });
   const h = makeHandlers(raced, { now: () => now.t });
-  const r = await h.claim_files('trisha', { paths: ['src/api/x.ts'] });
+  const r = await h.claim_files('trisha', { paths: ['src/api/x.ts'], task: 't' });
   assert.equal(r.isError, true);
   assert.equal(r.text, 'Not claimed: src/api/x.ts is fenced by alex (claim on src/api/) until 6:30pm. Use post_finding to ask them, or work elsewhere.');
 });
@@ -257,4 +257,53 @@ test('team_status: an action that just repeats the status is not printed twice',
   db.seedAgent({ sessionId: 'zzzzzz99', handle: 'alex', status: 'working', currentAction: 'working' });
   const r = await h.team_status('trisha', {});
   assert.match(r.text, /alex: agent zzzzzz working\n/);
+});
+
+// ---- tasks ----
+test('claim_files: task is required and capped at 80 chars', async () => {
+  const { h, db } = setup();
+  const none = await h.claim_files('trisha', { paths: ['src/x.ts'] } as never);
+  assert.equal(none.isError, true);
+  assert.match(none.text, /Name the task/);
+  const long = await h.claim_files('trisha', { paths: ['src/x.ts'], task: 'x'.repeat(81) });
+  assert.match(long.text, /81 chars; keep it under 80/);
+  assert.equal(db.claims().length, 0);
+  assert.equal(db.tasks().length, 0);
+});
+
+test('claim_files: creates the task after the fence, reuses it by title', async () => {
+  const { h, db } = setup();
+  await h.claim_files('trisha', { paths: ['src/api/'], task: 'Refactor the routes' });
+  await h.claim_files('trisha', { paths: ['src/db.ts'], task: 'refactor THE routes' });
+  assert.equal(db.tasks().length, 1);
+  assert.deepEqual(db.tasks()[0]!.paths, ['src/api/', 'src/db.ts']);
+  assert.equal(db.tasks()[0]!.bed, 'src');
+});
+
+test('claim_files: a fence conflict creates no task', async () => {
+  const { h, db } = setup();
+  await db.claimFiles('alex', ['src/api/'], 30);
+  await h.claim_files('trisha', { paths: ['src/api/x.ts'], task: 'T' });
+  assert.equal(db.tasks().length, 0);
+});
+
+test('set_checklist: replaces items on the current task and reports progress', async () => {
+  const { h, db } = setup();
+  await h.claim_files('trisha', { paths: ['src/x.ts'], task: 'T' });
+  const r = await h.set_checklist('trisha', { items: [{ text: 'Read', state: 'completed' }, { text: 'Write', state: 'in_progress' }, { text: 'Test', state: 'pending' }] });
+  assert.equal(r.text, 'Checklist for "T": 1/3 done.');
+  assert.equal(db.taskItems(db.tasks()[0]!.id).length, 3);
+  const bad = await h.set_checklist('trisha', { items: Array.from({ length: 21 }, (_, i) => ({ text: `s${i}`, state: 'pending' as const })) });
+  assert.match(bad.text, /at most 20/);
+  const sec = await h.set_checklist('trisha', { items: [{ text: 'use sk-ant-api03-abcdefghijklmnop', state: 'pending' }] });
+  assert.match(sec.text, /looks like it contains a secret/);
+});
+
+test('team_status: lists not-done tasks with progress and roadblock', async () => {
+  const { h, db } = setup();
+  await h.claim_files('alex', { paths: ['src/api/'], task: 'Refactor the routes' });
+  await h.set_checklist('alex', { items: [{ text: 'a', state: 'completed' }, { text: 'b', state: 'pending' }] });
+  db.setTaskBlocked('alex', 'Botanist refused: no passing test run seen after your last edit');
+  const r = await h.team_status('trisha', {});
+  assert.match(r.text, /Tasks:\n  alex: "Refactor the routes" blocked 1\/2 — ✋ Botanist refused: no passing test run/);
 });

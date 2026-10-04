@@ -34,12 +34,12 @@ test('GET /health → {ok, db, version}', async () => {
   assert.equal(body.version, '9.9.9-test');
 });
 
-test('all 12 tools are listed', async () => {
+test('all 13 tools are listed', async () => {
   const c = await client({ header: 'trisha' });
   const names = (await c.listTools()).tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     'accept_handoff', 'ack', 'claim_files', 'decline_handoff', 'handoff', 'post_finding', 'read_inbox',
-    'release_files', 'report_status', 'review', 'submit_evidence', 'team_status',
+    'release_files', 'report_status', 'review', 'set_checklist', 'submit_evidence', 'team_status',
   ].sort());
   await c.close();
 });

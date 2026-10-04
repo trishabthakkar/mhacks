@@ -101,3 +101,12 @@ test('reportStatus updates the session agent; unknown session rejects', async ()
   assert.equal(db.agents()[0]!.status, 'blocked');
   await assert.rejects(db.reportStatus('trisha', 'nope', 'working'), /no session/);
 });
+
+test('tasks: startTask reuses by title; setTaskItems with no task creates one', async () => {
+  const { db } = make();
+  await db.startTask('alex', 'Build', ['src/a/']);
+  await db.startTask('alex', 'build', ['src/b.ts']);
+  assert.equal(db.tasks().length, 1);
+  await db.setTaskItems('trisha', [{ text: 'Plan', state: 'in_progress' }]);
+  assert.equal(db.tasks().find((t) => t.handle === 'trisha')!.title, 'Plan');
+});

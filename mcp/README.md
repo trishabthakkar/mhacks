@@ -37,8 +37,9 @@ If the header can't be set, `?member=<handle>` on the URL works as a fallback.
 
 | Tool | What it does |
 |---|---|
-| `team_status()` | Who's online, every agent's status/file/action, active fences with expiry, open handoffs, your unread count |
-| `claim_files(paths, ttl_minutes?)` / `release_files(paths)` | Fence files or folders (`src/api/`); conflicts name who and until when and suggest `post_finding` |
+| `team_status()` | Who's online, every agent's status/file/action, active fences with expiry, every open task with checklist progress and roadblock, open handoffs, your unread count |
+| `claim_files(paths, task, ttl_minutes?)` / `release_files(paths)` | Fence files or folders (`src/api/`) and name the task (≤80 chars) — it becomes a task plant; conflicts name who and until when and suggest `post_finding` |
+| `set_checklist(items)` | The current task's checklist (≤20 items of `{ text, state }`, state `pending`/`in_progress`/`completed`); shows as buds on the task plant |
 | `post_finding(to, message)` | Short finding (≤500 chars) to a teammate's agent; secret-looking text is refused |
 | `read_inbox()` / `ack(id)` | Read your un-acked messages (marks them delivered), then acknowledge |
 | `handoff(task, notes, to)` / `accept_handoff(id)` / `decline_handoff(id)` | Offer a task; the receiver must accept |

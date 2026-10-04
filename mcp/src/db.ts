@@ -6,12 +6,12 @@
 // Writes call reducers; a reducer error rejects with an Error whose message is shown
 // to the agent. The module owns every rule — the MCP server only pre-checks to write
 // friendlier messages.
-import type { AgentStatus } from '../../shared/types.ts';
+import type { AgentStatus, TaskItemState } from '../../shared/types.ts';
 import type {
-  AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView,
+  AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView, TaskItemView, TaskView,
 } from '../../shared/types.ts';
 
-export type { AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView };
+export type { AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView, TaskItemState, TaskItemView, TaskView };
 
 export type ReportableStatus = Extract<AgentStatus, 'working' | 'blocked' | 'needs_review'>;
 
@@ -30,6 +30,8 @@ export interface SproutDb {
   message(id: number): MessageView | undefined;
   certifications(): CertificationView[];
   config(key: 'claimMode' | 'claimTtlMinutes' | 'requireReview'): string | undefined;
+  tasks(): TaskView[];
+  taskItems(taskId: number): TaskItemView[];
 
   // ---- writes (reducers; argument shapes in CONTRACT.md "Generated casing") ----
   claimFiles(handle: string, paths: string[], ttlMinutes: number): Promise<void>;
@@ -43,6 +45,8 @@ export interface SproutDb {
   reportStatus(handle: string, sessionId: string | undefined, status: ReportableStatus): Promise<void>;
   submitEvidence(handle: string, path: string, task: string): Promise<void>;
   review(handle: string, path: string, ok: boolean): Promise<void>;
+  startTask(handle: string, title: string, paths: string[]): Promise<void>;
+  setTaskItems(handle: string, items: { text: string; state: TaskItemState }[]): Promise<void>;
 
   /**
    * Resolve with the first certification row matching `pred` (already present or arriving

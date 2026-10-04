@@ -5,9 +5,10 @@
 import { DbConnection } from './module_bindings/index.ts';
 import type {
   AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView, ReportableStatus, SproutDb,
+  TaskItemState, TaskItemView, TaskView,
 } from './db.ts';
 
-const TABLES = ['member', 'agent', 'claim', 'message', 'handoff', 'certification', 'config'];
+const TABLES = ['member', 'agent', 'claim', 'message', 'handoff', 'certification', 'config', 'task', 'task_item'];
 const REDUCER_TIMEOUT_MS = 10_000;
 
 type Ts = { toDate(): Date };
@@ -140,6 +141,19 @@ export class StdbDb implements SproutDb {
     return undefined;
   }
 
+  tasks(): TaskView[] {
+    return [...this.c.db.task.iter()].map((x) => ({
+      id: Number(x.id), handle: x.handle, title: x.title, status: x.status as TaskView['status'], bed: x.bed, paths: [...x.paths],
+      ...(x.blockedReason ? { blockedReason: x.blockedReason } : {}), createdAt: ms(x.createdAt), updatedAt: ms(x.updatedAt),
+      ...(x.doneAt ? { doneAt: ms(x.doneAt) } : {}),
+    }));
+  }
+  taskItems(taskId: number): TaskItemView[] {
+    return [...this.c.db.taskItem.iter()].filter((i) => Number(i.taskId) === taskId)
+      .map((i) => ({ id: Number(i.id), taskId, ord: i.ord, text: i.text, state: i.state as TaskItemView['state'] }))
+      .sort((a, b) => a.ord - b.ord);
+  }
+
   // ---- writes (reducer argument shapes: CONTRACT.md "Generated casing") ----
   // Not part of SproutDb: used by integration tests and demo seeding.
   async joinMember(handle: string, color = '') { await this.call(this.c.reducers.joinMember({ handle, color })); }
@@ -173,6 +187,10 @@ export class StdbDb implements SproutDb {
   }
   async submitEvidence(handle: string, path: string, task: string) {
     await this.call(this.c.reducers.submitEvidence({ handle, path, task }));
+  }
+  async startTask(handle: string, title: string, paths: string[]) { await this.call(this.c.reducers.startTask({ handle, title, paths })); }
+  async setTaskItems(handle: string, items: { text: string; state: TaskItemState }[]) {
+    await this.call(this.c.reducers.setTaskItems({ handle, items }));
   }
   async review(handle: string, path: string, ok: boolean) {
     await this.call(this.c.reducers.submitReview({ handle, path, ok }));

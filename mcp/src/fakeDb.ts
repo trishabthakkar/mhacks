@@ -5,6 +5,7 @@ import { DEFAULT_CLAIM_TTL_MIN, MAX_MESSAGE_BODY, MEMBER_COLORS } from '../../sh
 import { clock } from './time.ts';
 import type {
   AgentView, CertificationView, ClaimView, HandoffView, MemberView, MessageView, ReportableStatus, SproutDb,
+  TaskItemState, TaskItemView, TaskView,
 } from './db.ts';
 
 const overlaps = (a: string, b: string) =>
@@ -25,6 +26,8 @@ export class FakeDb implements SproutDb {
   private _config = new Map<string, string>();
   private _waiters = new Set<(c: CertificationView) => void>();
   private nextId = 1;
+  private _tasks: TaskView[] = [];
+  private _items: TaskItemView[] = [];
 
   constructor(private now: () => number = Date.now) {}
 
@@ -55,6 +58,16 @@ export class FakeDb implements SproutDb {
   message(id: number) { return this._messages.find((m) => m.id === id); }
   certifications() { return [...this._certs]; }
   config(key: string) { return this._config.get(key); }
+  tasks() { return this._tasks.map((t) => ({ ...t, paths: [...t.paths] })); }
+  taskItems(taskId: number) { return this._items.filter((i) => i.taskId === taskId).sort((a, b) => a.ord - b.ord); }
+  private currentTask(handle: string) {
+    return this._tasks.filter((t) => t.handle === handle && t.status !== 'done').sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  }
+  /** Test helper: what the module does on a refusal. */
+  setTaskBlocked(handle: string, reason: string) {
+    const t = this.currentTask(handle);
+    if (t) { t.status = 'blocked'; t.blockedReason = reason; }
+  }
 
   // ---- writes ----
   async claimFiles(handle: string, paths: string[], ttlMinutes = DEFAULT_CLAIM_TTL_MIN) {
@@ -147,6 +160,28 @@ export class FakeDb implements SproutDb {
 
   async review(handle: string, path: string, ok: boolean) {
     this._reviews.push({ handle, path, ok, at: this.now() });
+  }
+
+  async startTask(handle: string, title: string, paths: string[]) {
+    const now = this.now();
+    const same = this._tasks.find((t) => t.handle === handle && t.status !== 'done' && t.title.toLowerCase() === title.toLowerCase());
+    if (same) { same.paths = [...new Set([...same.paths, ...paths])]; same.status = 'active'; same.updatedAt = now; return; }
+    const first = paths[0];
+    const bed = first ? (first.includes('/') ? first.split('/')[0]! : '(root)') : '(root)';
+    this._tasks.push({ id: this.nextId++, handle, title, status: 'active', bed, paths: [...paths], createdAt: now, updatedAt: now });
+  }
+
+  async setTaskItems(handle: string, items: { text: string; state: TaskItemState }[]) {
+    let t = this.currentTask(handle);
+    if (!t) {
+      if (!items.length) return;
+      await this.startTask(handle, (items.find((i) => i.state === 'in_progress') ?? items[0]!).text, []);
+      t = this.currentTask(handle)!;
+    }
+    t.updatedAt = this.now();
+    const id = t.id;
+    this._items = this._items.filter((i) => i.taskId !== id);
+    items.forEach((i, ord) => this._items.push({ id: this.nextId++, taskId: id, ord, text: i.text, state: i.state }));
   }
 
   waitForCertification(pred: (c: CertificationView) => boolean, timeoutMs: number) {

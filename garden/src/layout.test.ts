@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BED_PAD, layoutGarden, plantSize, SPACING, type LayoutInput } from './layout.ts';
+import { BED_PAD, layoutGarden, layoutTaskPlants, plantSize, SPACING, type LayoutInput } from './layout.ts';
 
 const sample: LayoutInput[] = [
   { path: 'src/a.ts', bed: 'src', lines: 100 }, { path: 'src/b.ts', bed: 'src', lines: 10 },
@@ -50,4 +50,23 @@ test('plant size is clamped and monotonic', () => {
 
 test('tests bed is a greenhouse', () => {
   assert.equal(layoutGarden(sample).beds.find((b) => b.name === 'tests')!.greenhouse, true);
+});
+
+test('task plants sit on the path in front of their bed, deterministic, no overlap with file plants', () => {
+  const l = layoutGarden([{ path: 'mcp/src/a.ts', bed: 'mcp', lines: 10 }, { path: 'mcp/src/b.ts', bed: 'mcp', lines: 10 }, { path: 'garden/x.ts', bed: 'garden', lines: 5 }]);
+  const tasks = [{ id: 2, bed: 'mcp', status: 'active', updatedAt: 5 }, { id: 1, bed: 'mcp', status: 'done', updatedAt: 9 }, { id: 3, bed: 'nope', status: 'active', updatedAt: 1 }];
+  const a = layoutTaskPlants(l, tasks), b = layoutTaskPlants(l, [...tasks].reverse());
+  assert.deepEqual(a, b);
+  const mcp = l.beds.find((x) => x.name === 'mcp')!;
+  for (const t of a.filter((x) => x.bed === 'mcp')) {
+    assert.ok(Math.abs(t.z - (mcp.z + mcp.d / 2 + 1.2)) < 1e-6);
+    for (const p of l.plants) assert.ok(Math.hypot(p.x - t.x, p.z - t.z) > 1, 'no overlap');
+  }
+  assert.equal(a.find((x) => x.id === 3)!.bed, l.beds[0]!.name); // unknown bed → first bed
+});
+
+test('at most 6 done task plants are kept (newest)', () => {
+  const l = layoutGarden([{ path: 'a/x.ts', bed: 'a', lines: 1 }]);
+  const tasks = Array.from({ length: 9 }, (_, i) => ({ id: i + 1, bed: 'a', status: 'done', updatedAt: i }));
+  assert.deepEqual(layoutTaskPlants(l, tasks).map((t) => t.id).sort((x, y) => x - y), [4, 5, 6, 7, 8, 9]);
 });

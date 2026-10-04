@@ -61,3 +61,26 @@ export function layoutGarden(input: LayoutInput[]): GardenLayout {
   }
   return { beds, plants, width, depth };
 }
+
+export interface TaskPlantLayout { id: number; bed: string; x: number; z: number }
+const TASK_GAP = 2.2;
+const MAX_DONE_TASK_PLANTS = 6;
+
+/** Task plants stand on the path just in front of their bed (toward the camera), spread across its width. */
+export function layoutTaskPlants(l: GardenLayout, tasks: { id: number; bed: string; status: string; updatedAt: number }[]): TaskPlantLayout[] {
+  if (!l.beds.length) return [];
+  const done = tasks.filter((t) => t.status === 'done').sort((a, b) => b.updatedAt - a.updatedAt || b.id - a.id).slice(0, MAX_DONE_TASK_PLANTS);
+  const keep = [...tasks.filter((t) => t.status !== 'done'), ...done].sort((a, b) => a.id - b.id);
+  const byBed = new Map<string, number[]>();
+  for (const t of keep) {
+    const bed = l.beds.some((b) => b.name === normalizeBed(t.bed)) ? normalizeBed(t.bed) : l.beds[0]!.name;
+    const ids = byBed.get(bed); if (ids) ids.push(t.id); else byBed.set(bed, [t.id]);
+  }
+  const out: TaskPlantLayout[] = [];
+  for (const [bed, ids] of byBed) {
+    const b = l.beds.find((x) => x.name === bed)!;
+    const step = Math.min(TASK_GAP, b.w / ids.length);
+    ids.forEach((id, i) => out.push({ id, bed, x: round(b.x - (step * (ids.length - 1)) / 2 + step * i), z: round(b.z + b.d / 2 + 1.2) }));
+  }
+  return out.sort((a, b) => a.id - b.id);
+}

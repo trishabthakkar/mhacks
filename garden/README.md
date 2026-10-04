@@ -21,9 +21,11 @@ npm run build && npm run preview         # production bundle (≈ 270 KB gzip in
 | Backup, no "demo data" label | `/?source=fake&present=1&badge=0` (hides the label; only use it if you say it is a recording) |
 | Another host/db | `/?host=wss://…&db=name` |
 
-Parameters: `source=fake` (offline timeline) · `step=N` freeze on timeline frame N (0..14) · `paused=1` · `speed=N` · `loop=0` · `present=1` projector mode · `badge=0` hide the demo label · `shot=full|bed-src|botanist|plan` repeatable screenshot camera · `quality=low` · `debug=1` fps + `window.__garden` · `bench=300` synthetic garden · `nogl=1` simulate no WebGL.
+Parameters: `source=fake` (offline timeline) · `step=N` freeze on timeline frame N (0..14) · `paused=1` · `speed=N` · `loop=0` · `present=1` projector mode · `badge=0` hide the demo label · `shot=full|bed-src|botanist|plan` repeatable screenshot camera · `quality=low` · `debug=1` fps + `window.__garden` · `bench=300` synthetic garden · `nogl=1` simulate no WebGL · `repo=<name>` name on the arch sign (default: the newest test run's repo folder, else the db name without `sprout-`) · `ao=0` / `bloom=0` turn off ambient occlusion / bloom (`quality=low` turns off all post-processing and contact shadows).
 
 ## Keys
+
+**Click anything** (plant, bed, gardener, botanist, task pot, pond or lily pad, the arch) to inspect it in the shed; hover for a one-line tooltip; `Esc` or ← goes back. A drag never selects. In `present=1` the camera slowly circles after a minute without input.
 
 Press `?` in the page. Short version: drag orbit, arrows/Q/E/+/- camera, `1 2 3` views, `F` reframe, `D` director, `P` plan, `S` shed, `C` cue strip, `H` hide UI, `L` plant labels, `B` expand all plants, `M` calm, `K` contrast, `Space` and `←/→` step the demo timeline.
 
@@ -35,7 +37,8 @@ Eight pills for the demo steps (PROJECT_CONTEXT.md section 13). Each turns yello
 
 - `src/data/` Store (snapshot + change events), fake timeline, live SpacetimeDB source, benchmark data.
 - `src/scene/` world, camera rig, plant field (instanced), actors (gardeners, bots, bees, butterflies, botanist), effects (labels, particles).
-- `src/ui/` shed, plan view, cue strip, sentences, screenshot shots.
+- `src/ui/` shed (attention strip, Team / Activity tabs, inspector: `shed.ts`, `attention.ts`, `inspect.ts`), plan view, cue strip, sentences, screenshot shots.
+- `src/pick.ts` pure picking (what is under the pointer); `src/boundary.ts` pure garden fence + arch repo name; `src/scene/post.ts` AO + bloom with a plain-render fallback.
 - `src/layout.ts` pure deterministic bed/plant layout.
 - `scripts/shots.md` named screenshot states.
 

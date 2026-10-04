@@ -27,6 +27,8 @@ export class Post {
       this.composer = c; this.ok = true;
     } catch (e) { console.warn('post-processing unavailable, rendering plain:', e); }
   }
+  /** AO breaks down (dark slabs on the horizon and clouds) when the camera is very far: big gardens zoomed out skip it. */
+  setAO(on: boolean) { if (this.ao && this.ao.enabled !== on) this.ao.enabled = on; }
   setSize(w: number, h: number) { if (this.ok) { this.composer!.setPixelRatio(this.r.getPixelRatio()); this.composer!.setSize(w, h); } }
   render() {
     if (this.ok) { try { this.composer!.render(); return; } catch (e) { console.warn('post-processing failed, rendering plain from now on:', e); this.ok = false; } }

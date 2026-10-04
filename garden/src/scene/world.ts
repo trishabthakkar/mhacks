@@ -29,6 +29,7 @@ import { gardenFence, signLine, type Rect } from '../boundary.ts';
 const FENCE_RING = new THREE.TorusGeometry(0.8, 0.05, 6, 24); // one-file fences share this
 const LOD_LIMIT = 80; // above this many plants, quiet ones become ground cover
 const ACTIVE_MS = 30 * 60_000;
+const AO_MAX_DIST = 160; // camera distance beyond which ambient occlusion is skipped (depth precision gives artifacts)
 
 /** Free the GPU buffers of baked (merged) scenery before it is rebuilt; the shared unit shapes are left alone. */
 /** The row path level with the pond simply carries on to the water (one path, no seam where two would meet). */
@@ -747,7 +748,7 @@ export class GardenWorld implements WorldLookup {
     this.rig.update(dt);
     this.controls.update();
     this.labels.update(this.host.clientWidth, this.host.clientHeight, this.rig.reservedRight, this.rig.reservedBottom);
-    if (render && this.available) { if (this.post) this.post.render(); else this.renderer.render(this.scene, this.camera); }
+    if (render && this.available) { if (this.post) { this.post.setAO(this.camera.position.distanceTo(this.controls.target) < AO_MAX_DIST); this.post.render(); } else this.renderer.render(this.scene, this.camera); }
     this.frames++; this.fpsT += dt;
     if (this.fpsT >= 0.5) { this.fps = Math.round(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }
   }

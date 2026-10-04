@@ -5,6 +5,8 @@ import type { InboxMessage, MessageRow } from './events.ts';
 
 export interface ClaimRowLite { id: string; path: string; handle: string; expiresAt: number }
 
+export interface DoneTask { id: string; handle: string; title: string }
+
 export interface ActivityArgs {
   handle: string; sessionId?: string; kind: string; path?: string; lines?: number; detail?: string; parentSessionId?: string;
 }
@@ -25,6 +27,10 @@ export interface SproutDb {
   undelivered(handle: string): InboxMessage[];
   /** Every message to or from `handle`, oldest first. */
   messagesOf(handle: string): MessageRow[];
+  /** Handles of members marked online. */
+  onlineMembers(): string[];
+  /** Called when a task changes to `done` after the cache is live (never for the initial snapshot). */
+  onTaskDone(cb: (t: DoneTask) => void): void;
 
   // ---- reducers ----
   joinMember(handle: string, color: string): Promise<void>;
@@ -77,6 +83,14 @@ export class FakeDb implements SproutDb {
   messagesOf(handle: string): MessageRow[] {
     return this.messages.filter((m) => m.toHandle === handle || m.fromHandle === handle);
   }
+
+  /** Online handles; tests set this directly. */
+  online: string[] = [];
+  private doneListeners: ((t: DoneTask) => void)[] = [];
+  onlineMembers(): string[] { return this.online; }
+  onTaskDone(cb: (t: DoneTask) => void): void { this.doneListeners.push(cb); }
+  /** Tests/rehearsal: a teammate's task just bloomed. */
+  taskDone(t: DoneTask): void { for (const l of this.doneListeners) l(t); }
 
   private async call(name: string, args: unknown): Promise<void> {
     if (!this.connected) throw new Error('not connected');

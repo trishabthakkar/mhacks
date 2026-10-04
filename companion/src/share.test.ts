@@ -43,7 +43,7 @@ test('isHidden: files, folders, name globs and path globs', () => {
 });
 
 test('shareOf fills defaults and ignores junk', () => {
-  assert.deepEqual(shareOf(null), { activity: true, reads: true, commands: true, tests: true, diffs: true, hidden: [], inbox: 'auto' });
+  assert.deepEqual(shareOf(null), { activity: true, reads: true, commands: true, tests: true, diffs: true, hidden: [], inbox: 'auto', compliments: true });
   const s = shareOf({ share: { reads: false, inbox: 'nope' as never, hidden: ['a/', 3 as never] } });
   assert.equal(s.reads, false);
   assert.equal(s.inbox, 'auto');

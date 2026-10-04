@@ -10,6 +10,8 @@ import { GitPoller } from './gitFeed.ts';
 import { formatUntil } from './hookMap.ts';
 import { clip, detail as cleanDetail, isTestCommand, maskSecrets, redactCommand } from './redact.ts';
 import { categoryOf, isHidden, shareOf } from './share.ts';
+import { chooseComplimenter, compliment } from './compliments.ts';
+import type { DoneTask } from './db.ts';
 
 const HEARTBEAT_MS = 30_000;
 const MAX_QUEUE = 5000;
@@ -75,6 +77,7 @@ export class Daemon {
     this.ingestSpool();
     if (opts.listen !== false) await this.listen();
     this.db = opts.db ?? (await openDb(this.cfg, this.log));
+    this.db.onTaskDone((t) => void this.complimentTask(t));
     this.db.onState((c) => {
       this.log(`[daemon] db ${c ? 'connected' : 'disconnected'}`);
       if (c) void this.onConnected();
@@ -356,6 +359,22 @@ export class Daemon {
     const mode = shareOf(this.cfg).inbox;
     if (mode === 'auto') return [];
     return this.pending().filter((m) => mode === 'off' || !this.approved.has(m.id));
+  }
+
+  // ---------- compliments ----------
+  private lastPhrase = -1;
+
+  /** A teammate's task bloomed: if I'm the one teammate picked for it, congratulate them. */
+  async complimentTask(t: DoneTask): Promise<boolean> {
+    const me = this.cfg.handle;
+    if (t.handle === me || this.cfg.paused || !shareOf(this.cfg).compliments) return false;
+    const online = this.db?.onlineMembers() ?? [];
+    if (chooseComplimenter(online.includes(me) ? online : [...online, me], t.handle, t.id) !== me) return false;
+    const c = compliment(t.handle, t.title, this.lastPhrase);
+    this.lastPhrase = c.phrase;
+    const r = await this.sendMessage(t.handle, c.body, 'finding');
+    if (!r.ok) this.log(`[daemon] compliment to ${t.handle} not sent: ${r.error}`);
+    return r.ok;
   }
 
   // ---------- messaging straight from the human (no AI involved) ----------

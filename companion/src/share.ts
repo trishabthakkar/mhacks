@@ -20,6 +20,8 @@ export interface ShareSettings {
   /** Paths never shared: `secrets/` (folder), `.env*` (glob on the file name), `src/x.ts` (file). */
   hidden: string[];
   inbox: InboxMode;
+  /** Congratulate teammates (via your companion) when their task blooms. */
+  compliments: boolean;
 }
 
 export type ShareCategory = 'activity' | 'reads' | 'commands' | 'tests' | 'diffs';
@@ -27,7 +29,7 @@ export const SHARE_CATEGORIES: readonly ShareCategory[] = ['activity', 'reads', 
 export const INBOX_MODES: readonly InboxMode[] = ['auto', 'ask', 'off'];
 
 export const DEFAULT_SHARE: ShareSettings = {
-  activity: true, reads: true, commands: true, tests: true, diffs: true, hidden: [], inbox: 'auto',
+  activity: true, reads: true, commands: true, tests: true, diffs: true, hidden: [], inbox: 'auto', compliments: true,
 };
 
 export function shareOf(cfg: Pick<SproutConfig, 'share'> | null | undefined): ShareSettings {
@@ -35,6 +37,7 @@ export function shareOf(cfg: Pick<SproutConfig, 'share'> | null | undefined): Sh
   s.hidden = Array.isArray(s.hidden) ? s.hidden.filter((h) => typeof h === 'string' && h) : [];
   if (!INBOX_MODES.includes(s.inbox)) s.inbox = 'auto';
   for (const c of SHARE_CATEGORIES) s[c] = s[c] !== false;
+  s.compliments = s.compliments !== false;
   return s;
 }
 
@@ -93,8 +96,9 @@ export function describeShare(s: ShareSettings): string[] {
   out.push('Never shared: prompt text, file contents, command arguments, secrets.');
   out.push('');
   out.push(`Messages to your agent: ${s.inbox}, ${INBOX_TEXT[s.inbox]}`);
+  out.push(`Compliments: ${s.compliments ? 'on, your companion sometimes congratulates a teammate when their task blooms' : 'off'}`);
   out.push('');
-  out.push('Change: sprout share <activity|reads|commands|tests|diffs> <on|off> · sprout share inbox <auto|ask|off>');
+  out.push('Change: sprout share <activity|reads|commands|tests|diffs> <on|off> · sprout share inbox <auto|ask|off> · sprout share compliments <on|off>');
   out.push('        sprout hide <path|glob> · sprout unhide <path|glob>');
   return out;
 }

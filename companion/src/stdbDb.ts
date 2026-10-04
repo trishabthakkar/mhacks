@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { DbConnection } from './module_bindings/index.ts';
 import { files } from './config.ts';
-import type { ActivityArgs, ClaimRowLite, SproutDb } from './db.ts';
+import type { ActivityArgs, ClaimRowLite, DoneTask, SproutDb } from './db.ts';
 import type { InboxMessage, MessageRow } from './events.ts';
 
 type Log = (line: string) => void;
@@ -24,6 +24,7 @@ export class StdbDb implements SproutDb {
   private closed = false;
   private handle = '';
   private listeners: ((c: boolean) => void)[] = [];
+  private doneListeners: ((t: DoneTask) => void)[] = [];
   private backoffMs = 1000;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
@@ -67,6 +68,11 @@ export class StdbDb implements SproutDb {
       .withDatabaseName(this.dbName)
       .withToken(token)
       .onConnect((c, _identity, tok) => {
+        // Only real transitions after the snapshot: a restart never re-sends old compliments.
+        c.db.task.onUpdate((_ctx, before, after) => {
+          if (!this.connected || before.status === 'done' || after.status !== 'done') return;
+          for (const l of this.doneListeners) l({ id: String(after.id), handle: after.handle, title: after.title });
+        });
         try { writeFileSync(files.token(), tok, { mode: 0o600 }); } catch { /* ignore */ }
         this.log(`[stdb] connected to ${this.uri} db=${this.dbName}`);
         c.subscriptionBuilder()
@@ -86,6 +92,8 @@ export class StdbDb implements SproutDb {
             'SELECT * FROM config',
             // Whole table, filtered client-side in undelivered(): WHERE filters are unverified on Maincloud.
             'SELECT * FROM message',
+            'SELECT * FROM task', // compliments when a teammate's task blooms
+            'SELECT * FROM member',
           ]);
       })
       .onConnectError((_ctx, err) => {
@@ -142,6 +150,12 @@ export class StdbDb implements SproutDb {
       .sort((a, b) => (a.id < b.id ? -1 : 1))
       .map((m) => ({ id: String(m.id), fromHandle: m.fromHandle, kind: m.kind, body: m.body, sentAt: m.sentAt.toDate().getTime() }));
   }
+
+  onlineMembers(): string[] {
+    if (!this.conn) return [];
+    return [...this.conn.db.member.iter()].filter((m) => m.online).map((m) => m.handle);
+  }
+  onTaskDone(cb: (t: DoneTask) => void): void { this.doneListeners.push(cb); }
 
   messagesOf(handle: string): MessageRow[] {
     if (!this.conn) return [];

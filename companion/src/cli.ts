@@ -35,6 +35,7 @@ What you share:
   share                              show what leaves this laptop and how messages reach your agent
   share <activity|reads|commands|tests|diffs> <on|off>
   share inbox <auto|ask|off>         auto: straight to your agent · ask: you approve each · off: never
+  share compliments <on|off>         congratulate teammates when their task blooms (default on)
   hide <path|glob…>                  never share these paths (e.g. secrets/ or '.env*')
   unhide <path|glob…>
 

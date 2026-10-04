@@ -6,7 +6,7 @@ import { describeShare, INBOX_MODES, SHARE_CATEGORIES, shareOf, type InboxMode, 
 
 type Print = (s: string) => void;
 
-const USAGE = 'usage: sprout share [<activity|reads|commands|tests|diffs> <on|off>] | sprout share inbox <auto|ask|off> | sprout hide|unhide <path|glob…>';
+const USAGE = 'usage: sprout share [<activity|reads|commands|tests|diffs> <on|off>] | sprout share inbox <auto|ask|off> | sprout share compliments <on|off> | sprout hide|unhide <path|glob…>';
 
 /** Repo-relative, forward slashes; `src` stays a file, `src/` a folder. */
 function cleanEntry(raw: string): string | undefined {
@@ -27,7 +27,9 @@ export async function shareCommand(cmd: 'share' | 'hide' | 'unhide', args: strin
   }
   if (cmd === 'share') {
     const [what, value] = args;
-    if (what === 'inbox') {
+    if (what === 'compliments' && (value === 'on' || value === 'off')) {
+      share.compliments = value === 'on';
+    } else if (what === 'inbox') {
       if (!INBOX_MODES.includes(value as InboxMode)) { console.error(USAGE); return 2; }
       share.inbox = value as InboxMode;
     } else if (SHARE_CATEGORIES.includes(what as ShareCategory) && (value === 'on' || value === 'off')) {

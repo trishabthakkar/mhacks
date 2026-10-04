@@ -57,6 +57,8 @@ Sends go out immediately or fail with the reason (offline, unknown member); they
 | `sprout share inbox <auto\|ask\|off>` | `auto`: messages go to your agent on your next prompt; `ask`: they wait for `sprout allow`; `off`: never |
 | `sprout hide <path\|glob…>` / `unhide` | never share these paths: `secrets/` (folder), `.env*` (file name anywhere), `config/**/*.json` |
 
+| `sprout share compliments <on\|off>` | when a teammate's task blooms, one online teammate's companion sends them a short congratulation ("Yay!", "You did it!", …); on by default |
+
 Stored in `~/.sprout/config.json` under `share`, enforced by the daemon before anything is sent. A hidden path's edits still show as activity, without the file name; its git changes are dropped.
 
 ## How it works

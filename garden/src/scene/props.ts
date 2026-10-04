@@ -16,7 +16,8 @@ export class Props {
   private skyMesh: THREE.Mesh;
   private skyAttr: THREE.BufferAttribute;
   private sunDisc: THREE.Mesh;
-  private clouds: THREE.Mesh[] = [];
+  private clouds: THREE.Sprite[] = [];
+  private cloudTex: THREE.CanvasTexture[] = [];
   private fireflies: THREE.Points;
   private notes: THREE.Mesh[] = [];
   private horizon = new THREE.Color(); private top = new THREE.Color(); private tmpC = new THREE.Color();
@@ -41,10 +42,13 @@ export class Props {
     this.sunDisc.renderOrder = -1; scene.add(this.sunDisc);
 
     if (quality === 'high') {
-      for (let i = 0; i < 7; i++) {
-        const c = new THREE.Mesh(geo.sphere, new THREE.MeshBasicMaterial({ color: PALETTE.cloud, transparent: true, opacity: 0.85, fog: false, depthWrite: false }));
-        c.scale.set(26 + hash2(i, 1) * 22, 5 + hash2(i, 2) * 3, 12 + hash2(i, 3) * 8);
-        c.position.set((hash2(i, 4) - 0.5) * 520, 85 + hash2(i, 5) * 40, -120 - hash2(i, 6) * 160);
+      for (let v = 0; v < 3; v++) this.cloudTex.push(makeCloudTexture(v));
+      for (let i = 0; i < 9; i++) {
+        const m = new THREE.SpriteMaterial({ map: this.cloudTex[i % 3], transparent: true, opacity: 0.95, fog: false, depthWrite: false });
+        const c = new THREE.Sprite(m);
+        const w = 110 + hash2(i, 1) * 90;
+        c.scale.set(w, w * 0.4, 1);
+        c.position.set((hash2(i, 4) - 0.5) * 440, 27 + hash2(i, 5) * 18, -140 - hash2(i, 6) * 120);
         c.renderOrder = -1; this.clouds.push(c); scene.add(c);
       }
       const fp = new Float32Array(40 * 3);
@@ -76,7 +80,7 @@ export class Props {
     this.sunDisc.position.set(Math.cos(a) * 280, Math.max(18, Math.sin(a) * 200), -150);
     (this.sunDisc.material as THREE.MeshBasicMaterial).color.set(hour > 17.5 || hour < 7 ? '#ffb27a' : '#fff3c4');
     this.fireflies.visible = this.quality === 'high' && (hour > 19.5 || hour < 5);
-    for (const c of this.clouds) (c.material as THREE.MeshBasicMaterial).opacity = day ? 0.85 : 0.25;
+    for (const c of this.clouds) { const m = c.material as THREE.SpriteMaterial; m.opacity = day ? 0.95 : 0.35; m.color.set(day ? '#ffffff' : '#7d8aa8'); }
     return this.horizon;
   }
 
@@ -214,11 +218,44 @@ export class Props {
   /** Per-frame: drifting clouds, firefly dance. Allocation-free. */
   update(t: number, dt: number, gardenX: number, gardenZ: number, motion: number) {
     this.skyMesh.position.copy(this.scene.position);
-    for (const c of this.clouds) { c.position.x += dt * 1.2 * motion; if (c.position.x > 300) c.position.x = -300; }
+    for (const c of this.clouds) { c.position.x += dt * 1.2 * motion; if (c.position.x > 320) c.position.x = -320; }
     if (this.fireflies.visible) {
       const p = this.fireflies.geometry.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < p.count; i++) p.setXYZ(i, gardenX + Math.cos(t * 0.3 + i * 2.4) * (4 + (i % 9) * 1.6), 0.6 + (i % 5) * 0.4 + Math.sin(t + i) * 0.2, gardenZ + Math.sin(t * 0.27 + i * 1.7) * (3 + (i % 7) * 1.5));
       p.needsUpdate = true;
     }
   }
+}
+
+/** Soft, puffy cumulus drawn once on a canvas: lit tops, blue-grey flat-ish bottoms, feathered edges. */
+function makeCloudTexture(variant: number): THREE.CanvasTexture {
+  const W = 512, H = 205;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d')!;
+  const puffs = 16 + variant * 3;
+  for (let i = 0; i < puffs; i++) {
+    const t = (i + 0.5) / puffs;
+    const x = 60 + t * (W - 120) + (hash2(i, 10 + variant) - 0.5) * 30;
+    const hump = Math.sin(t * Math.PI);                       // taller in the middle
+    const r = 26 + hump * 34 + hash2(i, 20 + variant) * 16;
+    const y = H - 52 - hump * 38 - hash2(i, 30 + variant) * 22 + r * 0.1;
+    const gr = g.createRadialGradient(x, y - r * 0.25, r * 0.1, x, y, r);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.6, 'rgba(255,255,255,0.85)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  // Shade the underside, then fade the very bottom so it sits flat and soft.
+  g.globalCompositeOperation = 'source-atop';
+  const sh = g.createLinearGradient(0, H * 0.3, 0, H - 40);
+  sh.addColorStop(0, 'rgba(255,255,255,0)');
+  sh.addColorStop(1, 'rgba(120,145,190,0.95)');
+  g.fillStyle = sh; g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'destination-out';
+  const fade = g.createLinearGradient(0, H - 46, 0, H);
+  fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
+  g.fillStyle = fade; g.fillRect(0, H - 46, W, 46);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
